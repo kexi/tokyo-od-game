@@ -57,6 +57,7 @@ import {
   type NoseStep,
   type GeoToLocal,
   liftAt,
+  MERGE_MAX_DZ,
   MERGE_RAMP,
   MERGE_SKIRT,
   MERGE_TUCK,
@@ -82,6 +83,8 @@ import {
   headwallQuads,
   lampQuads,
   BORE_COLOURS,
+  NEIGHBOUR_REACH_DEG,
+  stationBox,
 } from "./expresswayBore";
 import { END_NODE_EPS_M, endAhead, rangeOfChunks } from "./expresswayEnds";
 import { retireObject } from "../render/retire";
@@ -609,15 +612,49 @@ export function* deckArraySteps(
     const colour = bore ? BORE_COLOURS.retaining : CONCRETE;
     let widthM = 0;
     let heightM = 0;
+    let loweredM = 0;
+    let noneM = 0;
+    const boxes: EndWall["boxes"] = [];
+    // R1-1b A2: under another run's deck passing over the end lower than the wall's top, the wall
+    // stops at that deck's underside, stretch by stretch across (none where it is below this road).
+    const over = context ? decksOver(chunk, end, context, place, bank) : [];
     for (const { lo, hi } of spans) {
-      const built = closeEnd(end, rings[k], sections[k], lo, hi, bank, colour, pos, col, solid);
-      widthM += built.widthM;
-      heightM = Math.max(heightM, built.heightM);
+      const top = endWallTop(rings[k], sections[k], lo, hi, bank);
+      for (const col_ of capsOf(rings[k], end, lo, hi, top, bank, over)) {
+        const isNone = col_.top === null;
+        if (isNone) {
+          noneM += col_.hi - col_.lo;
+          continue;
+        }
+        if (col_.top! < top) loweredM += col_.hi - col_.lo;
+        const built = closeEnd(
+          end,
+          rings[k],
+          sections[k],
+          col_.lo,
+          col_.hi,
+          bank,
+          colour,
+          pos,
+          col,
+          solid,
+          col_.top!,
+        );
+        boxes.push({ lo: col_.lo, hi: col_.hi, top: col_.top! });
+        widthM += built.widthM;
+        heightM = Math.max(heightM, built.heightM);
+      }
+    }
+    const isGone = boxes.length === 0;
+    if (isGone) {
+      endSkips.push({ end, reason: "covered" });
+      continue;
     }
     // A viaduct's girder under the slab is hollow: its end face is closed as an embankment's is.
     const isViaduct = !bore && !isEmbankment;
     if (isViaduct) embankmentCap(sections[k], pos, col, solid, CONCRETE);
-    endWalls.push({ end, widthM: Math.round(widthM * 1000) / 1000, heightM });
+    const r3 = (v: number) => Math.round(v * 1000) / 1000;
+    endWalls.push({ end, widthM: r3(widthM), heightM, loweredM: r3(loweredM), noneM: r3(noneM), boxes });
   }
   const lamps: number[] = [];
   const isTunnel = bore === "tunnel";
@@ -989,11 +1026,27 @@ export function closeWidthStep(
   }
 }
 
-/** A wall closing a run's end (R1-1b): which end, its width across and its height over the slab's bottom. */
-export type EndWall = { end: "start" | "end"; widthM: number; heightM: number };
+/**
+ * A wall closing a run's end (R1-1b): which end, its width across and its highest top over the slab's
+ * bottom, the width whose top another run's deck over it lowered and the width it left without a box
+ * (A2), and its boxes: each across from `lo` to `hi` (metres left of the centre) with its top (the
+ * frame's y).
+ */
+export type EndWall = {
+  end: "start" | "end";
+  widthM: number;
+  heightM: number;
+  loweredM: number;
+  noneM: number;
+  boxes: Array<{ lo: number; hi: number; top: number }>;
+};
 
-/** A run's end with nothing going on left without a wall: in a tunnel (none in the data), or hidden under another deck. */
-export type EndSkip = { end: "start" | "end"; reason: "tunnel" | "hidden" };
+/**
+ * A run's end with nothing going on left without a wall: in a tunnel (none in the data), hidden
+ * under another deck, or covered (every stretch of its face under another run's deck lower than
+ * SLAB over the road, R1-1b A2).
+ */
+export type EndSkip = { end: "start" | "end"; reason: "tunnel" | "hidden" | "covered" };
 
 /** The loaded run ranges a context knows (expresswayEnds.ts RunRange), from its chunks. */
 function rangeOfRun(context: DeckContext) {
@@ -1111,15 +1164,11 @@ function closeEnd(
   pos: number[],
   col: number[],
   solid: number[],
+  topAt?: number,
 ): { widthM: number; heightM: number } {
   const back = end === "start" ? 1 : -1;
-  const ph = PARAPET_HEIGHT.value;
   const w = PARAPET_WIDTH.value;
-  const top = Math.max(
-    ...loop.map((p) => p[1]),
-    ringPoint(ring, lo, liftAt(ring, lo, bank) + ph).y,
-    ringPoint(ring, hi, liftAt(ring, hi, bank) + ph).y,
-  );
+  const top = topAt ?? endWallTop(ring, loop, lo, hi, bank);
   const corner = (u: number, d: number, isTop: boolean) => {
     const p = ringPoint(ring, u, liftAt(ring, u, bank) - SLAB);
     if (isTop) p.y = top;
@@ -1148,6 +1197,143 @@ function closeEnd(
     }
   const bottom = Math.min(box[0][1], box[1][1]);
   return { widthM: Math.round((hi - lo) * 1000) / 1000, heightM: Math.round((top - bottom) * 1000) / 1000 };
+}
+
+/**
+ * An end wall's top over `lo..hi` (the frame's y): the highest of PARAPET_HEIGHT over the road at
+ * either end and the section's corners (its retaining walls, a 分離壁's rise).
+ */
+function endWallTop(ring: DeckRing, loop: Corners, lo: number, hi: number, bank: boolean): number {
+  const ph = PARAPET_HEIGHT.value;
+  return Math.max(
+    ...loop.map((p) => p[1]),
+    ringPoint(ring, lo, liftAt(ring, lo, bank) + ph).y,
+    ringPoint(ring, hi, liftAt(ring, hi, bank) + ph).y,
+  );
+}
+
+/** Another run's deck near a run's end: its slab as quads in plan, each with its road's corners. */
+type DeckOver = { run: string; quads: Vector3[][] };
+
+/**
+ * The other runs' decks that may pass over a run's end (R1-1b A2): the loaded chunks of other runs
+ * whose stations come within NEIGHBOUR_REACH_DEG of the end node (as otherDecksAt), as the strip
+ * between their rings' slab edges at their road's height (on the bank, as the rings give it). The
+ * runs this deck shares one surface with at the end (DeckIndex.partnersAt: its `same` decks, as the
+ * merge asks) are left out: their road is cut at the seam or the 分離壁, and their strip over this
+ * road is not drawn (45068170 over 45068169's start, 0.22 m up, took 1.4 m of its wall). Why not
+ * otherDecksAt (expresswayBore.ts): it answers for embankments and cuts only, in T.P. heights on the
+ * centre line, and widens the deck by HOLE_NEIGHBOUR_M; outsideOf and openBeyond read the other's
+ * chunkRings in this frame, as here.
+ */
+function decksOver(
+  chunk: XwChunk,
+  end: "start" | "end",
+  context: DeckContext,
+  place: GeoToLocal,
+  bank: boolean,
+): DeckOver[] {
+  const o = end === "start" ? 0 : chunk.st.length - STATION_STRIDE;
+  const lon = chunk.st[o + ST.lon];
+  const lat = chunk.st[o + ST.lat];
+  // The neighbours as otherDecksAt finds them (expresswayBore.ts): a station box within
+  // NEIGHBOUR_REACH_DEG of the end node.
+  const r = NEIGHBOUR_REACH_DEG;
+  const out: DeckOver[] = [];
+  const merged = new Set(context.index.partnersAt(chunk, chunk.st[o + ST.s]));
+  for (const run of context.index.runs.keys()) {
+    const isOwnOrMerged = run === chunk.run || merged.has(run);
+    if (isOwnOrMerged) continue;
+    for (const c of context.index.chunksOf(run)) {
+      const [x0, y0, x1, y1] = stationBox(c);
+      const isNear = x1 >= lon - r && x0 <= lon + r && y1 >= lat - r && y0 <= lat + r;
+      if (!isNear) continue;
+      const other = chunkRings(c, place, bank);
+      const strip = other.rings.map((r) => [
+        ringPoint(r, other.edge, liftAt(r, other.edge, bank)),
+        ringPoint(r, -other.edge, liftAt(r, -other.edge, bank)),
+      ]);
+      const quads: Vector3[][] = [];
+      for (let i = 0; i + 1 < strip.length; i++)
+        quads.push([strip[i][0], strip[i + 1][0], strip[i + 1][1], strip[i][1]]);
+      out.push({ run, quads });
+    }
+  }
+  return out;
+}
+
+/** The road's height of a deck at a point in plan (the frame's y), or null where its slab is not. */
+function surfaceOver(deck: DeckOver, p: Vector3): number | null {
+  for (const q of deck.quads) {
+    if (!isInsideXZ(q, p)) continue;
+    for (const [a, b, c] of [
+      [q[0], q[1], q[2]],
+      [q[0], q[2], q[3]],
+    ]) {
+      const y = heightInTriangle(a, b, c, p);
+      if (y !== null) return y;
+    }
+  }
+  return null;
+}
+
+/** A point's height on the plane of a triangle where its plan holds the point (x/z), else null. */
+function heightInTriangle(a: Vector3, b: Vector3, c: Vector3, p: Vector3): number | null {
+  const d = (b.z - c.z) * (a.x - c.x) + (c.x - b.x) * (a.z - c.z);
+  if (Math.abs(d) < 1e-12) return null;
+  const l1 = ((b.z - c.z) * (p.x - c.x) + (c.x - b.x) * (p.z - c.z)) / d;
+  const l2 = ((c.z - a.z) * (p.x - c.x) + (a.x - c.x) * (p.z - c.z)) / d;
+  const l3 = 1 - l1 - l2;
+  const isIn = l1 >= -1e-9 && l2 >= -1e-9 && l3 >= -1e-9;
+  return isIn ? l1 * a.y + l2 * b.y + l3 * c.y : null;
+}
+
+/**
+ * The stretches of an end wall across `lo..hi` and each one's top (R1-1b A2): cut every
+ * OPEN_SAMPLE_M, the top at each cut is the lower of `top` and the underside (road − SLAB) of the
+ * lowest other deck over the wall's foot there, both at the end face and PARAPET_WIDTH in, of the decks
+ * whose road is over this one's (more than MERGE_MAX_DZ: within it a deck is this one's surface, the
+ * merge's). A cut whose top comes to this road or under has no box (`top` null). Cuts with the same
+ * top are one stretch, and with nothing over the end the one stretch lo..hi is the wall as before.
+ * Why not smooth the tops from cut to cut: where the underside slopes, a gap would open under it.
+ */
+function capsOf(
+  ring: DeckRing,
+  end: "start" | "end",
+  lo: number,
+  hi: number,
+  top: number,
+  bank: boolean,
+  over: readonly DeckOver[],
+): Array<{ lo: number; hi: number; top: number | null }> {
+  const plain = [{ lo, hi, top }];
+  if (over.length === 0) return plain;
+  const back = end === "start" ? 1 : -1;
+  const cuts: Array<{ lo: number; hi: number; top: number | null }> = [];
+  const n = Math.ceil((hi - lo) / OPEN_SAMPLE_M - 1e-9);
+  for (let i = 0; i < n; i++) {
+    const from = lo + i * OPEN_SAMPLE_M;
+    const to = Math.min(hi, from + OPEN_SAMPLE_M);
+    const u = (from + to) / 2;
+    const road = ringPoint(ring, u, liftAt(ring, u, bank)).y;
+    let cap = top;
+    for (const d of [0, PARAPET_WIDTH.value]) {
+      const p = ringPoint(ring, u, 0).addScaledVector(ring.t, back * d);
+      for (const deck of over) {
+        const y = surfaceOver(deck, p);
+        const isOver = y !== null && y > road + MERGE_MAX_DZ;
+        if (isOver) cap = Math.min(cap, y! - SLAB);
+      }
+    }
+    const isNone = cap <= road;
+    const cut = { lo: from, hi: to, top: isNone ? null : cap };
+    const last = cuts[cuts.length - 1];
+    const isSame = last !== undefined && last.top === cut.top;
+    if (isSame) last.hi = to;
+    else cuts.push(cut);
+  }
+  const isUnchanged = cuts.every((c) => c.top === top);
+  return isUnchanged ? plain : cuts;
 }
 
 /**
@@ -2364,7 +2550,15 @@ export class ExpresswayDecks {
             minGapM: Math.round(x.minGapM * 1000) / 1000,
           });
         for (const x of result.endWalls)
-          log("expressway_end_wall_built", { chunk: c.id, end: x.end, widthM: x.widthM, heightM: x.heightM });
+          log("expressway_end_wall_built", {
+            chunk: c.id,
+            end: x.end,
+            widthM: x.widthM,
+            heightM: x.heightM,
+            loweredM: x.loweredM,
+            noneM: x.noneM,
+            boxes: x.boxes.length,
+          });
         for (const x of result.endSkips)
           log("expressway_end_wall_skipped", { chunk: c.id, end: x.end, reason: x.reason });
         for (const x of result.walls)

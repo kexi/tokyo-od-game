@@ -123,7 +123,10 @@ function missesAt(world: RAPIER.World, b: Built, side: "start" | "end", lo: numb
   const dir = ring.t.clone().multiplyScalar(out);
   const misses: string[] = [];
   let rays = 0;
-  for (let u = lo + STEP / 2; u < hi; u += STEP) {
+  // About STEP apart, one at least (a box under another deck may be OPEN_SAMPLE_M wide).
+  const n = Math.max(1, Math.round((hi - lo) / STEP));
+  for (let i = 0; i < n; i++) {
+    const u = lo + ((i + 0.5) * (hi - lo)) / n;
     const road = ringPoint(ring, u, liftAt(ring, u, false));
     const past = road
       .clone()
@@ -340,6 +343,70 @@ describe("端の節点で道が別の run として続く所（R1-1b 3.3）", ()
   });
 });
 
+describe("上を別の run の床版が通る端の壁（R1-1b 追記 1 A2・追記 2）", () => {
+  // A east to x 200 (its end open); B another run alongside, its centre 6 m to A's left, so its slab
+  // (edge 4.75 m) lies over A's left 1.25..4.25 m at A's end, its road `dz` over A's.
+  const a = chunkAlong("A:0", (s) => [100 + s, 0], 100);
+  const over = (dz: number, extra: Partial<XwChunk> = {}) => {
+    const b = chunkAlong("B:0", (s) => [150 + s, 6], 100, extra);
+    for (let i = ST.z; i < b.st.length; i += STATION_STRIDE) b.st[i] += dz;
+    return b;
+  };
+  const runs = [summary("A", end("ground"), end("open")), summary("B", end("ground"), end("ground"))];
+  const wallOf = (chunk: XwChunk, others: XwChunk[]) => {
+    const b = buildOf(chunk, indexOf(runs, [chunk, ...others]));
+    const ring = b.rings[b.rings.length - 1];
+    const wall = b.endWalls.find((w) => w.end === "end")!;
+    // Each box's top over A's road at its middle.
+    const tops = wall.boxes.map((x) => {
+      const u = (x.lo + x.hi) / 2;
+      return { lo: x.lo, hi: x.hi, over: x.top - ringPoint(ring, u, liftAt(ring, u, false)).y };
+    });
+    return { b, wall, tops };
+  };
+
+  it("keeps a wall with nothing over it as before, and one with a deck under it (2 m lower) too", () => {
+    const alone = wallOf(a, []);
+    expect(alone.wall.boxes).toHaveLength(1);
+    const under = wallOf(a, [over(-2)]);
+    expect([...under.b.collider.position]).toEqual([...alone.b.collider.position]);
+    expect(under.wall.boxes).toHaveLength(1);
+  });
+
+  it("stops the wall at the underside of a deck 0.7 m over the end where it covers, at 1.1 m elsewhere", () => {
+    const { wall, tops } = wallOf(a, [over(0.7)]);
+    expect(wall.loweredM).toBeGreaterThan(2.5);
+    for (const t of tops) {
+      const isCovered = t.lo >= 1.3;
+      const isOpen = t.hi <= 1.2;
+      if (isCovered) expect(t.over, `u ${t.lo}`).toBeLessThanOrEqual(0.7 - SLAB + 1e-3);
+      if (isOpen) expect(t.over, `u ${t.lo}`).toBeCloseTo(PARAPET_HEIGHT.value, 3);
+    }
+  });
+
+  it("builds no box where the deck over the end is 0.3 m up (its underside under this road)", () => {
+    const { wall, tops } = wallOf(a, [over(0.3)]);
+    expect(wall.noneM).toBeGreaterThan(2.8);
+    expect(tops.filter((t) => t.hi > 1.3)).toEqual([]);
+  });
+
+  it("gives an embankment's end the same stretches and tops over its road as a viaduct's", () => {
+    const viaduct = wallOf(a, [over(0.7)]).tops;
+    const bank = { ...a, structure: "embankment" as const };
+    const embankment = wallOf(bank, [over(0.7)]).tops;
+    const round = (xs: typeof viaduct) => xs.map((t) => [t.lo, t.hi, Math.round(t.over * 1000) / 1000]);
+    expect(round(embankment)).toEqual(round(viaduct));
+  });
+
+  it("takes a deck within MERGE_MAX_DZ of this road for this road (0.14 m up: as before), one past it as over (0.16 m: no box)", () => {
+    const alone = wallOf(a, []);
+    const level = wallOf(a, [over(0.14)]);
+    expect([...level.b.collider.position]).toEqual([...alone.b.collider.position]);
+    const above = wallOf(a, [over(0.16)]);
+    expect(above.wall.noneM).toBeGreaterThan(2.8);
+  });
+});
+
 describe("口（R1-1b 3.5、書かれた run に書かれない run がぶら下がる所）", () => {
   it("keeps the parent's 壁高欄 on the child's side and its edge line when the child is not loaded", () => {
     // P east; Q a ramp hung on P's left at s 50 (its start), Q's chunks not read.
@@ -434,12 +501,21 @@ describe.skipIf(Boolean(process.env.XW_DATA_DIR))("既定のデータの先の�
       const { builds, world } = near(chunk.st[o + ST.lon], chunk.st[o + ST.lat]);
       const b = builds.get(chunk.id)!;
       const wall = b.endWalls.find((w) => w.end === side)!;
-      const { lo, hi } = innerOf(b, side);
-      const { road } = topsAt(world, b, side, 0);
-      const r = missesAt(world, b, side, lo, hi, road - SLAB + wall.heightM);
-      expect(r.rays).toBeGreaterThan(100);
-      expect(r.misses).toEqual([]);
-      for (let u = lo + STEP / 2; u < hi; u += STEP) {
+      // Each box up to its own top (under another run's deck it stops at that deck's underside, A2).
+      let rays = 0;
+      for (const box of wall.boxes) {
+        const r = missesAt(world, b, side, box.lo, box.hi, box.top);
+        rays += r.rays;
+        expect(r.misses, `box ${box.lo.toFixed(2)}..${box.hi.toFixed(2)}`).toEqual([]);
+      }
+      expect(rays).toBeGreaterThan(70);
+      // Where nothing is over it, the top is PARAPET_HEIGHT over the road or more.
+      const ring = side === "start" ? b.rings[0] : b.rings[b.rings.length - 1];
+      for (const box of wall.boxes) {
+        const u = (box.lo + box.hi) / 2;
+        const over = box.top - ringPoint(ring, u, liftAt(ring, u, false)).y;
+        const isLowered = over < PARAPET_HEIGHT.value - 1e-3;
+        if (isLowered) continue;
         const t = topsAt(world, b, side, u);
         expect(t.top! - t.road, `u ${u}`).toBeGreaterThanOrEqual(PARAPET_HEIGHT.value - 1e-3);
       }
@@ -459,13 +535,14 @@ describe.skipIf(Boolean(process.env.XW_DATA_DIR))("既定のデータの先の�
       const sd = side === "start" ? b.sides[0] : b.sides[b.sides.length - 1];
       const lo = -(sd.right.wall ? sd.right.wall.inner : sd.right.reach);
       const hi = sd.left.wall ? sd.left.wall.inner : sd.left.reach;
-      const { road } = topsAt(world, b, side, 0);
-      const top = road + PARAPET_HEIGHT.value;
-      expect(missesAt(world, b, side, lo, hi, top).misses, chunk.id).toEqual([]);
-      // One column of rays 1 cm inside each seam.
+      const wall = b.endWalls.find((w) => w.end === side)!;
+      for (const box of wall.boxes)
+        expect(missesAt(world, b, side, box.lo, box.hi, box.top).misses, chunk.id).toEqual([]);
+      // One column of rays 1 cm inside each seam, up to the top of the box there.
+      const topAt = (u: number) => wall.boxes.find((x) => x.lo <= u && u <= x.hi)!.top;
       for (const u of [lo + 0.01, hi - 0.01])
         expect(
-          missesAt(world, b, side, u - STEP / 2, u + STEP / 2, top).misses,
+          missesAt(world, b, side, u - STEP / 2, u + STEP / 2, topAt(u)).misses,
           `${chunk.id} u ${u}`,
         ).toEqual([]);
     }

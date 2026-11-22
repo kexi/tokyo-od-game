@@ -540,6 +540,10 @@ export const LOG_EVENTS = {
     end: z.enum(["start", "end"]),
     widthM: z.number().nonnegative(),
     heightM: z.number().nonnegative(),
+    /** The width whose top another run's deck over it lowered, and the width left without a box (A2). */
+    loweredM: z.number().nonnegative(),
+    noneM: z.number().nonnegative(),
+    boxes: count,
   }),
   /**
    * Such an end left without a wall (R1-1b 3.4): `tunnel` (a tunnel's section, none in the data) or
@@ -549,7 +553,7 @@ export const LOG_EVENTS = {
   expressway_end_wall_skipped: info({
     chunk: z.string(),
     end: z.enum(["start", "end"]),
-    reason: z.enum(["tunnel", "hidden"]),
+    reason: z.enum(["tunnel", "hidden", "covered"]),
   }),
   expressway_divider_built: info({
     chunk: z.string(),
@@ -1257,6 +1261,10 @@ export const LOG_EVENTS = {
     out: z.string(),
     walls: count,
     wallMisses: count,
+    /** Walls whose box top stands over another deck's underside over them, those lowered, ends left without one (A3). */
+    poking: count,
+    lowered: count,
+    covered: count,
     hidden: count,
     tunnel: count,
     hiddenMisses: count,
