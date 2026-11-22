@@ -33,6 +33,8 @@ export type BuildFlags = {
   isRunBordersCut?: boolean;
   /** --below-junctions compile (S7-3: the below runs met at a junction or a loop's seam compiled). */
   isBelowJoinsCompile?: boolean;
+  /** --portal-approach cut (S7-2: the runs at grade before a tunnel's portal lowered as cuts). */
+  isPortalApproachCut?: boolean;
 };
 
 const MEASURE = "give --out (just measure-expressway-area)";
@@ -88,6 +90,9 @@ export function shippedFolderRefusal(f: BuildFlags): string | null {
   // cannot draw yet (S7-4); S7-6 makes them the default with a rebuild of its own.
   if (f.isBelowJoinsCompile)
     return `--below-junctions compile is for measuring until S7-6 makes it the default: ${MEASURE}`;
+  // S7-2: lowering the approaches moves the decks over them; S7-6 makes it the default.
+  if (f.isPortalApproachCut)
+    return `--portal-approach cut is for measuring until S7-6 makes it the default: ${MEASURE}`;
   // S6 PR 7c: the network's flags are the default; the values before them are for comparing.
   if (f.isTags) return `--structures tags is for comparing with the structures by height: ${MEASURE}`;
   if (f.isGroundSkip) return `--ground skip is for comparing with the runs at grade compiled: ${MEASURE}`;
@@ -116,5 +121,20 @@ export function belowJoinsRefusal(
   if (structures !== "height") return "--below-junctions compile needs --structures height";
   if (ground !== "compile") return "--below-junctions compile needs --ground compile";
   if (partition !== "components") return "--below-junctions compile needs --partition components";
+  return null;
+}
+
+/**
+ * The reason `--portal-approach` cannot be taken, or null (S7-2 3.1): off or cut, and cut only with
+ * `--below-junctions compile`. Why only with it: the measurements and the moved runs S7-2 is judged by
+ * (S7-3's types A–C) exist only on that ground, and a lowered approach before a junction under the
+ * ground needs S7-3's portals beyond an end.
+ */
+export function portalApproachRefusal(mode: string, belowJoins: string): string | null {
+  const isKnown = mode === "off" || mode === "cut";
+  if (!isKnown) return `unknown --portal-approach ${mode} (off, cut)`;
+  const isOff = mode === "off";
+  if (isOff) return null;
+  if (belowJoins !== "compile") return "--portal-approach cut needs --below-junctions compile";
   return null;
 }

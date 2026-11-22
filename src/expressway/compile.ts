@@ -471,6 +471,12 @@ export type Plan = {
    */
   belowJoins?: "compile";
   /**
+   * `--portal-approach cut` (S7-2): the runs at grade before a tunnel's portal (portalApproachEnds,
+   * where the below run beyond is planned and holds a tunnel) are lowered as cuts, and the tunnel's
+   * portal is read at the lowered stretch's start (below.ts BelowLinkRun.portalAt). Absent: off.
+   */
+  portalApproach?: "cut";
+  /**
    * S6 PR 7c: the stretches a decision made viaducts where their height made embankments (run, run
    * distances), for the scorecard. Absent when none was.
    */
@@ -1015,6 +1021,8 @@ export type PlanOptions = {
   structureDecisions?: readonly StructureDecision[];
   /** `--below-junctions` (S7-3, Plan.belowJoins); `defer` by default. */
   belowJoins?: "defer" | "compile";
+  /** `--portal-approach` (S7-2, Plan.portalApproach); `off` by default. */
+  portalApproach?: "off" | "cut";
   /** `--run-borders` (R1-1a, Plan.runBorders); `keep` (by structure alone) by default. */
   runBorders?: "keep" | "cut";
 };
@@ -1203,6 +1211,7 @@ export function planNetwork(
     ...(options.structureDecisions ? { structureDecisions: options.structureDecisions } : {}),
     ...(isBorderCut ? { runBorders: "cut" as const } : {}),
     ...(options.belowJoins === "compile" ? { belowJoins: "compile" as const } : {}),
+    ...(options.portalApproach === "cut" ? { portalApproach: "cut" as const } : {}),
     ...(options.structures === "height" ? { structures: "height" as const } : {}),
     ...(isGroundMode ? { ground: "compile" as const } : {}),
     ...(options.touchdown === "all" ? { touchdown: "all" as const } : {}),

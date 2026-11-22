@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { portalApproachRefusal, shippedFolderRefusal } from "../scripts/expresswayGuards";
 import {
   type BelowLinkRun,
   ceilingAt,
@@ -84,5 +85,23 @@ describe("E. 坑口の高さの定義（S7-2 3.3）", () => {
     const [start] = portalReaches(links, "70");
     expect(start).toContainEqual({ offset: 300 + 215, z: 4, V: 60 });
     expect(start).toContainEqual({ offset: 500, z: 3, V: 60 });
+  });
+});
+
+describe("I. 番人（S7-2 3.1）", () => {
+  const plain = { isBelowAll: false, isBlocks: false, isV1: false, v2Flags: [] };
+  it("cut stops without --out and is taken with it", () => {
+    expect(shippedFolderRefusal({ ...plain, hasOut: false, isPortalApproachCut: true })).toMatch(
+      /portal-approach/,
+    );
+    expect(shippedFolderRefusal({ ...plain, hasOut: true, isPortalApproachCut: true })).toBeNull();
+  });
+
+  it("cut needs --below-junctions compile; off takes either; an unknown value stops", () => {
+    expect(portalApproachRefusal("cut", "compile")).toBeNull();
+    expect(portalApproachRefusal("cut", "defer")).toMatch(/below-junctions compile/);
+    expect(portalApproachRefusal("off", "defer")).toBeNull();
+    expect(portalApproachRefusal("off", "compile")).toBeNull();
+    expect(portalApproachRefusal("down", "compile")).toMatch(/unknown/);
   });
 });
