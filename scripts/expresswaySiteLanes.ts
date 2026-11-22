@@ -7,7 +7,7 @@ import type { Vector3 } from "three";
 /**
  * Shorter than MIN_LENGTH_M within the slab is a street's end at the site's edge, not a lane over it;
  * places of one run and street width closer than JOIN_GAP_M along the run are one place (m). The
- * game's same-road test (expresswayRoads.ts sameRoadStretches, P2.7 R1-2b) uses the same two.
+ * game's same-road test (expresswayRoads.ts sameRoadJudgements, P2.7 R1-2b) uses the same two.
  */
 import { JOIN_GAP_M, MIN_LENGTH_M } from "../src/world/expresswayRoads.ts";
 export { JOIN_GAP_M, MIN_LENGTH_M };

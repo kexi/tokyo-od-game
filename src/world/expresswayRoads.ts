@@ -1271,17 +1271,6 @@ export function sameRoadJudgements(
   return out;
 }
 
-/** The stretches the same-road rule takes out: those of the lines judged alpha (sameRoadJudgements). */
-export function sameRoadStretches(
-  streets: readonly RoadLine[],
-  sites: readonly XwSite[],
-  xy: (lon: number, lat: number) => [number, number],
-): SameRoadStretch[] {
-  return sameRoadJudgements(streets, sites, xy)
-    .filter((j) => j.verdict === "alpha")
-    .flatMap((j) => j.stretches);
-}
-
 /**
  * The GSI streets less the ramps they draw (P2.7 R1-2b M1): what sameRoadGaps takes out of each
  * alpha line (its stretches with SITE_CLEARANCE_M either side, carried on into the band but not past

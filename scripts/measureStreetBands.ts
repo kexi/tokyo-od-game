@@ -35,8 +35,7 @@ import { AreaIndex, type AreaFile } from "../src/geo/areas.ts";
 import { LocalFrame } from "../src/geo/frame.ts";
 import { tileXToLon, tileYToLat } from "../src/geo/tiles.ts";
 import { log } from "../src/log.ts";
-import { expresswayRoadInput, sameRoadStretches } from "../src/world/expresswayRoads.ts";
-import { planeAt } from "../src/expressway/geo.ts";
+import { expresswayRoadInput, sameRoadGaps, streetsAtSites } from "../src/world/expresswayRoads.ts";
 import { laneCentreOffset, laneWidth, STREET, streetRoom } from "../src/world/laneChange.ts";
 import { polygonsOf, WARD_TILES, type PavementPolygon } from "../src/world/pavements.ts";
 import { isExpressway, sourceOf } from "../src/world/roadClass.ts";
@@ -404,15 +403,17 @@ for (const [key, focus] of groups) {
   };
   const xwInput = expresswayRoadInput(near, runs, (_la, _lo, h) => h);
   const { graph, applied } = gameStreetGraph(streets, xwInput, frame, regs);
-  // 手順 0c の 1: the streets the game now takes out as the ramp itself (M1, α), from the streets
-  // as read (joinExpressway's plane: its first chunk line's start).
-  const firstLine = xwInput.lines[0];
-  if (firstLine) {
-    const plane = planeAt(firstLine.coords[0], firstLine.coords[1]);
-    for (const st of sameRoadStretches(streets, xwInput.sites ?? [], plane.toXY)) {
+  // 手順 0c の 1: the streets the game now takes out as the ramp itself (M1, α), judged on the lines
+  // as joinExpressway hands them to the rule (GSI 高速道路 replaced, crossings cut), not the tiles as
+  // read: a GSI ramp line the game drops is no street.
+  const hasChunks = xwInput.lines.length > 0;
+  if (hasChunks) {
+    const { cut, xy } = streetsAtSites(streets, xwInput, () => {});
+    for (const taken of sameRoadGaps(cut, xwInput.sites ?? [], xy)) {
+      const st = taken.judgement.stretches[0];
       const k = st.at.map((v) => v.toFixed(5)).join(",");
       if (alphas.has(k)) continue;
-      const street = streets[st.street];
+      const street = cut[st.street];
       // JARTIC 車両通行帯 matched onto it as applyRegulations matches them (within the larger of 6 m
       // and half its 幅員 + 2 m, parallel within 25°): 2 or more is a lane count no ramp's foot carries.
       const p = local(st.at[1], st.at[0]);
@@ -439,11 +440,20 @@ for (const [key, focus] of groups) {
           return best;
         }),
       );
+      let lineM = 0;
+      for (let i = 2; i + 1 < street.coords.length; i += 2) {
+        const [ax, ay] = xy(street.coords[i - 2], street.coords[i - 1]);
+        const [bx, by] = xy(street.coords[i], street.coords[i + 1]);
+        lineM += Math.hypot(bx - ax, by - ay);
+      }
       alphas.set(k, {
         at: st.at,
         chunk: st.chunk,
         widthM: street.width,
-        lengthM: Math.round(st.l1 - st.l0 + 2),
+        // What the game takes out: the gaps, carried on into the band (追記 4 K2), on the line.
+        lengthM: Math.round(
+          taken.gaps.reduce((n, [g0, g1]) => n + Math.max(0, Math.min(g1, lineM) - Math.max(0, g0)), 0),
+        ),
         jarticLanes,
       });
     }

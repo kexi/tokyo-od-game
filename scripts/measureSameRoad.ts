@@ -1,5 +1,5 @@
 // P2.7 R1-2b PR 1 (M1, α): one row a GSI street line that the same-road rule
-// (src/world/expresswayRoads.ts sameRoadStretches) would take out, to judge what the rule removes
+// (src/world/expresswayRoads.ts sameRoadGaps) takes out, to judge what the rule removes
 // before it is fixed (r1-2b-pr1-review0.md 3 節). Read only. For every group of site chunks whose
 // middles share a z16 tile, the streets of the 3 × 3 tiles round it as read, and per line with a
 // stretch: its fragments and the gaps between them; how long it runs along the same connected site
@@ -7,7 +7,9 @@
 // band, its centre line inside the band); the centre line's distance from the site's and the angle;
 // how its stretch along the site starts and ends (the line's end, the site's end, the street turning
 // off to the left or right of the site); where the line goes on at its ends; whether taking out the
-// whole stretch along the site leaves its two sides joined by other streets (through traffic); and,
+// line leaves its two sides joined by other streets (through traffic) and what joinExpressway takes
+// out and leaves of it (the gaps, carried on into the band, and the pieces left against the band),
+// both on joinExpressway's own output; and,
 // from the other build's lists (--before <dir>: the lanes and hole probes' --cases, the feet probe's
 // --joins, a sections dump, each from a checkout without the rule), the probe cases, the feet and
 // the lanes as they were. One JSON log line (street_same_road_measured) and --out <file>.
@@ -23,7 +25,10 @@ import { tileXToLon, tileYToLat } from "../src/geo/tiles.ts";
 import { log } from "../src/log.ts";
 import {
   expresswayRoadInput,
+  joinExpressway,
+  sameRoadGaps,
   sameRoadJudgements,
+  siteBand,
   streetsAtSites,
   type XwSite,
 } from "../src/world/expresswayRoads.ts";
@@ -164,6 +169,14 @@ type Row = {
   lanes: string[];
   /** Whether the rule's own stretches match the fragments sampled here (the check the table rests on). */
   fragmentsMatch: boolean;
+  /** What the rule takes out (arc lengths along the line, m): its stretches ± SITE_CLEARANCE_M, and carried on into the band (追記 4 K2). */
+  gapsRule: Array<[number, number]>;
+  gapsTaken: Array<[number, number]>;
+  /** How far the band carried the gaps on (m), and the length the game takes out (m). */
+  extendedM: number;
+  takenM: number;
+  /** The pieces joinExpressway leaves of the line (追記 4 K4 1–2). */
+  piecesLeft: PieceLeft[];
   /** The rule's own counts of the line's samples: along the site, inside, at the foot (15 m). */
   rule: { along: number; inside: number; atFoot: number };
   /** A side of the taken-out stretch left on streets no longer joined to the rest (an island). */
@@ -173,6 +186,89 @@ type Row = {
 };
 const rows = new Map<string, Row>();
 /** The lines the old rule took (any samples inside) that this one keeps: its verdict and counts. */
+/** A line's arc length at each of its points, in the plane. */
+function arcOf(street: RoadLine, xy: (lon: number, lat: number) => [number, number]): number[] {
+  const along = [0];
+  for (let i = 2; i + 1 < street.coords.length; i += 2) {
+    const [ax, ay] = xy(street.coords[i - 2], street.coords[i - 1]);
+    const [bx, by] = xy(street.coords[i], street.coords[i + 1]);
+    along.push(along[along.length - 1] + Math.hypot(bx - ax, by - ay));
+  }
+  return along;
+}
+
+/** The point at arc length l along a line (lon, lat). */
+function pointOn(street: RoadLine, along: readonly number[], l: number): [number, number] {
+  let i = 0;
+  while (i + 2 < along.length && along[i + 1] < l) i++;
+  const span = along[i + 1] - along[i];
+  const t = span > 0 ? Math.min(1, Math.max(0, (l - along[i]) / span)) : 0;
+  const k = i * 2;
+  return [
+    street.coords[k] + (street.coords[k + 2] - street.coords[k]) * t,
+    street.coords[k + 1] + (street.coords[k + 3] - street.coords[k + 1]) * t,
+  ];
+}
+
+/** A piece joinExpressway leaves of an alpha line, and where its metre samples (ends included) stand to the band. */
+type PieceLeft = {
+  from: string;
+  to: string;
+  lengthM: number;
+  samples: number;
+  inBand: number;
+  atFoot: number;
+  inBandNotFoot: number;
+};
+
+/**
+ * The pieces of `line` in `joined` (lines of its width whose every point lies on it within 0.05 m),
+ * each sampled every metre and at both ends against the connected site's band (siteBand).
+ */
+function piecesLeftOf(
+  line: RoadLine,
+  joined: readonly RoadLine[],
+  band: ReturnType<typeof siteBand>,
+  xy: (lon: number, lat: number) => [number, number],
+): PieceLeft[] {
+  const pts: Array<[number, number]> = [];
+  for (let i = 0; i + 1 < line.coords.length; i += 2) pts.push(xy(line.coords[i], line.coords[i + 1]));
+  const isOnLine = (x: number, y: number) => {
+    for (let q = 0; q + 1 < pts.length; q++) {
+      const [ax, ay] = pts[q];
+      const [ex, ey] = [pts[q + 1][0] - ax, pts[q + 1][1] - ay];
+      const len2 = ex * ex + ey * ey || 1;
+      const t = Math.min(1, Math.max(0, ((x - ax) * ex + (y - ay) * ey) / len2));
+      const isNear = Math.hypot(ax + ex * t - x, ay + ey * t - y) < 0.05;
+      if (isNear) return true;
+    }
+    return false;
+  };
+  const isPiece = (l: RoadLine) => {
+    const isOther = l.width !== line.width || l.coords.length < 4;
+    if (isOther) return false;
+    for (let i = 0; i + 1 < l.coords.length; i += 2)
+      if (!isOnLine(...xy(l.coords[i], l.coords[i + 1]))) return false;
+    return true;
+  };
+  return joined.filter(isPiece).map((piece) => {
+    const along = arcOf(piece, xy);
+    const total = along.at(-1)!;
+    const ls = [...Array.from({ length: Math.floor(total) + 1 }, (_, i) => i), total];
+    const places = ls.map((l) => band(...xy(...pointOn(piece, along, l))));
+    const c = piece.coords;
+    return {
+      from: `${c[1].toFixed(6)},${c[0].toFixed(6)}`,
+      to: `${c.at(-1)!.toFixed(6)},${c.at(-2)!.toFixed(6)}`,
+      lengthM: Math.round(total * 100) / 100,
+      samples: places.length,
+      inBand: places.filter((b) => b.isInside).length,
+      atFoot: places.filter((b) => b.isInside && b.isAtFoot).length,
+      inBandNotFoot: places.filter((b) => b.isInside && !b.isAtFoot).length,
+    };
+  });
+}
+
 const kept = new Map<
   string,
   {
@@ -216,7 +312,7 @@ for (const [key] of groups) {
   const first = xw.lines[0];
   if (!first) continue;
   // The lines as joinExpressway hands them to the rule (GSI 高速道路 replaced, crossings cut), not the
-  // raw tiles: the strands test reads the network the game has (a GSI ramp line it drops is not a street).
+  // raw tiles: a GSI ramp line the game drops is no street, and the rule must not be judged on it.
   const { cut: streets, xy } = streetsAtSites(tiles, xw, () => {});
   const sites: XwSite[] = xw.sites ?? [];
   const judgements = sameRoadJudgements(streets, sites, xy);
@@ -239,6 +335,9 @@ for (const [key] of groups) {
       });
   }
   const judgementOf = new Map(judgements.filter((j) => j.verdict === "alpha").map((j) => [j.street, j]));
+  // What joinExpressway takes out of each alpha line (its stretches carried on into the band).
+  const takenOf = new Map(sameRoadGaps(streets, sites, xy).map((t) => [t.judgement.street, t]));
+  const joinedHere = joinExpressway(tiles, xw, () => {});
   const stretches = judgements.filter((j) => j.verdict === "alpha").flatMap((j) => j.stretches);
   if (stretches.length === 0) continue;
   const siteXY = sites.map((s) => {
@@ -246,7 +345,6 @@ for (const [key] of groups) {
     for (let i = 0; i + 1 < s.coords.length; i += 2) pts.push(xy(s.coords[i], s.coords[i + 1]));
     return pts;
   });
-  const cosMin = Math.cos((ALONG_DEG * Math.PI) / 180);
   /** A street line sampled each metre against the sites of one connected site (null: any). */
   const sampleLine = (street: RoadLine, site: string | null): Sample[] => {
     const pts: Array<[number, number]> = [];
@@ -295,7 +393,6 @@ for (const [key] of groups) {
             angle,
             chunk: sites[k].chunk,
           };
-          void cosMin;
         }
       }
       out.push(best);
@@ -326,54 +423,27 @@ for (const [key] of groups) {
     cutRanges.set(index, [a, b]);
   }
   const frame = new LocalFrame(lat, lon, 0);
-  const cutLines: RoadLine[] = [];
-  const sideNodes = new Map<number, [Vector3 | null, Vector3 | null]>();
-  // The streets of the wider window, each alpha line (and its doubles) cut where the rule cuts it.
+  // The wider window as the game builds it (joinExpressway: the rule's own cuts, the feet joined), so
+  // the through and island columns read the network the game has, not cuts of the tool's own.
   const wideTiles: RoadLine[] = [];
   for (let dy = -THROUGH_REACH_TILES; dy <= THROUGH_REACH_TILES; dy++)
     for (let dx = -THROUGH_REACH_TILES; dx <= THROUGH_REACH_TILES; dx++)
       wideTiles.push(...((await streetsOf(cx + dx, cy + dy)) ?? []));
-  // As the game has them (the same step as the 3 x 3 lines, so an alpha piece's key matches).
-  const wide = streetsAtSites(wideTiles, xw, () => {}).cut;
-  const alphaIndexOf = new Map([...cutRanges.keys()].map((i) => [lineKey(streets[i]), i]));
-  for (const street of wide) {
-    const index = alphaIndexOf.get(lineKey(street));
-    const range = index === undefined ? undefined : cutRanges.get(index);
-    if (!range) {
-      cutLines.push(street);
-      continue;
-    }
-    // Pieces before and after the range, along the line's own points.
-    const pts: Array<[number, number]> = [];
-    for (let i = 0; i + 1 < street.coords.length; i += 2) pts.push([street.coords[i], street.coords[i + 1]]);
-    const along = [0];
-    for (let q = 1; q < pts.length; q++) {
-      const [ax, ay] = xy(...pts[q - 1]);
-      const [bx, by] = xy(...pts[q]);
-      along.push(along[q - 1] + Math.hypot(bx - ax, by - ay));
-    }
-    const pointAt = (l: number): [number, number] => {
-      let i = 0;
-      while (i + 2 < pts.length && along[i + 1] < l) i++;
-      const t = (l - along[i]) / (along[i + 1] - along[i] || 1);
-      return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t];
-    };
-    const [a, b] = range;
+  const cutLines = joinExpressway(wideTiles, xw, () => {});
+  // Each side of what the rule takes out: the point where the piece left there starts (null where it
+  // takes the line out to that end).
+  const sideNodes = new Map<number, [Vector3 | null, Vector3 | null]>();
+  for (const [index, t] of takenOf) {
+    const street = streets[index];
+    const along = arcOf(street, xy);
     const total = along.at(-1)!;
-    const pieces: Array<[number, number]> = [];
-    if (a - CLEARANCE_M > 1) pieces.push([0, a - CLEARANCE_M]);
-    if (b + CLEARANCE_M < total - 1) pieces.push([b + CLEARANCE_M, total]);
-    const ends: [Vector3 | null, Vector3 | null] = [null, null];
-    for (const [p0, p1] of pieces) {
-      const coords = [...pointAt(p0)];
-      for (let i = 0; i < along.length; i++) if (along[i] > p0 && along[i] < p1) coords.push(...pts[i]);
-      coords.push(...pointAt(p1));
-      cutLines.push({ ...street, coords });
-      const isBefore = p0 === 0;
-      const [lo, la] = isBefore ? pointAt(p1) : pointAt(p0);
-      ends[isBefore ? 0 : 1] = frame.toLocal(la, lo, 0).setY(0);
-    }
-    if (index !== undefined && !sideNodes.has(index)) sideNodes.set(index, ends);
+    const g0 = Math.min(...t.gaps.map((g) => g[0]));
+    const g1 = Math.max(...t.gaps.map((g) => g[1]));
+    const toLocal = (l: number) => {
+      const [plon, plat] = pointOn(street, along, l);
+      return frame.toLocal(plat, plon, 0).setY(0);
+    };
+    sideNodes.set(index, [g0 > 0 ? toLocal(g0) : null, g1 < total ? toLocal(g1) : null]);
   }
   const graph = new RoadGraph(cutLines, frame, () => {});
   let [minX, maxX, minZ, maxZ] = [Infinity, -Infinity, Infinity, -Infinity];
@@ -611,6 +681,22 @@ for (const [key] of groups) {
       })(),
       island: isIsland,
       islandSide,
+      ...(() => {
+        const t = takenOf.get(index)!;
+        const lineTotal = arcOf(street, xy).at(-1)!;
+        const clip = (gap: [number, number]) =>
+          Math.max(0, Math.min(lineTotal, gap[1]) - Math.max(0, gap[0]));
+        const ruleM = t.rule.reduce((n, gap) => n + clip(gap), 0);
+        const takenM = t.gaps.reduce((n, gap) => n + clip(gap), 0);
+        const group = sites.filter((site2) => t.judgement.chunks.includes(site2.chunk));
+        return {
+          gapsRule: t.rule.map(([g0, g1]) => [round(g0), round(g1)] as [number, number]),
+          gapsTaken: t.gaps.map(([g0, g1]) => [round(g0), round(g1)] as [number, number]),
+          extendedM: round(takenM - ruleM),
+          takenM: round(takenM),
+          piecesLeft: piecesLeftOf(street, joinedHere, siteBand(group, xy), xy),
+        };
+      })(),
     });
   }
 }
@@ -624,7 +710,11 @@ const tally = (pick: (r: Row) => string) => {
 const summary = {
   dir: target,
   lines: list.length,
-  alphaM: Math.round(list.reduce((n, r) => n + r.fragments.reduce((m, f) => m + f, 0), 0)),
+  alphaM: Math.round(list.reduce((n, r) => n + r.takenM, 0)),
+  extendedM: round(list.reduce((n, r) => n + r.extendedM, 0)),
+  piecesLeft: list.reduce((n, r) => n + r.piecesLeft.length, 0),
+  leftInBandNotFoot: list.reduce((n, r) => n + r.piecesLeft.reduce((m, q) => m + q.inBandNotFoot, 0), 0),
+  leftAtFoot: list.filter((r) => r.piecesLeft.some((q) => q.atFoot > 0)).length,
   byClass: tally((r) => String(r.widthClass)),
   byThrough: tally((r) => r.through),
   byEnds: tally((r) => r.ends.join("/")),
