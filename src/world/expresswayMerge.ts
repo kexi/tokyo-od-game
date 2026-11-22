@@ -750,6 +750,7 @@ export class DeckMerge {
       tipBreaks: { band: 0, otherEnd: 0, otherLine: 0, ownLine: 0 },
       overlap: { rings: 0, maxFromStretchM: 0, apart: 0 },
       dividerRings: 0,
+      apartOverlap: 0,
     };
     this.boreOpenings.set(chunk, fresh);
     return fresh;
@@ -832,8 +833,17 @@ export class DeckMerge {
       const isInside = (isInStretch || isOverlap) && isBesideHere;
       const isTip = isOnFromStretch && !isOverlap;
       if (!isInside && !isTip) continue;
-      // Addendum 2: a tip whose two roads are more than MERGE_MAX_DZ apart has a 分離壁 halfway.
-      const isDivider = isTip && isApart;
+      // Addenda 2 and 5: wherever the two roads are more than MERGE_MAX_DZ apart, on the stretch too (the
+      // data's stretch is where the other comes inside the wall band in plan, not one surface), a
+      // 分離壁 halfway between the two carriageways. Where they overlap there is no room for it: both
+      // keep their walls, as on main (two boxes of different heights over one another in plan, which
+      // the runtime cannot draw: counted for the compiler).
+      const isOverlapping = near < own.hw;
+      if (isApart && isOverlapping) {
+        if (record) record.apartOverlap++;
+        continue;
+      }
+      const isDivider = isApart;
       if (isDivider && record) record.dividerRings++;
       const isOwnCut = outranksAsMaster(this.index, own.chunk.run, o.with);
       const isCutHere = isOwnCut && side.seam !== null && side.seamOf?.run === o.with;
@@ -848,7 +858,12 @@ export class DeckMerge {
       // stops at the middle. Why not halfway for both, as before: each side computed where the other
       // would stop and the two lines did not meet (28127106:0 s 114.43, 4849055:1 s 92.61).
       const tipReach = Math.max(stretchReach, near + STEP_TUCK, own.hw);
-      const reach = isDivider ? Math.max(middle, own.hw) : isTip ? tipReach : stretchReach;
+      // Addendum 5: an opened side floors its wall band too, at road height, out to its slab edge (a
+      // groove under the removed wall where the other's floor did not reach), unless it ends on a seam.
+      const bandReach = isCutHere ? 0 : own.edge;
+      const reach = isDivider
+        ? Math.max(middle, own.hw)
+        : Math.max(isTip ? tipReach : stretchReach, bandReach);
       const keepsSeam = isCutHere && reach <= side.reach + 1e-9;
       out[key] = {
         ...side,
@@ -857,7 +872,7 @@ export class DeckMerge {
         seam: keepsSeam ? side.seam : null,
         seamOf: keepsSeam ? side.seamOf : null,
         seamWeight: keepsSeam ? side.seamWeight : 1,
-        opening: { with: o.with, isTip, ...(isDivider ? { isDivider: true } : {}) },
+        opening: { with: o.with, isTip: isTip && !isInside, ...(isDivider ? { isDivider: true } : {}) },
       };
       if (record) addStretch(record.opened, o, s);
       // The other side of a deck cut at the other's edge, where its slab edge lies on the other's
@@ -1311,8 +1326,10 @@ export type BoreOpeningRecord = {
   tipBreaks: Record<TipBreak, number>;
   /** Rings past a stretch where the two carriageways still overlap (rule A), how far past it at most, and those more than MERGE_MAX_DZ apart. */
   overlap: { rings: number; maxFromStretchM: number; apart: number };
-  /** Rings with a 分離壁 at a tip (addendum 2). */
+  /** Rings with a 分離壁 (addenda 2 and 5). */
   dividerRings: number;
+  /** Rings the two roads are more than MERGE_MAX_DZ apart with their carriageways overlapping: both walled (addendum 5). */
+  apartOverlap: number;
 };
 
 /**
