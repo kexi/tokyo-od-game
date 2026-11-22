@@ -7,6 +7,7 @@ import {
 } from "../law/roadStandards";
 import { CUT_WALL, TUNNEL_EQUIPMENT_ROOM, TUNNEL_ROOF } from "./assumptions";
 import type { XwPortal, XwStructure } from "./format";
+import { roundTo } from "./geo";
 import type { Chain, Network, Run } from "./network";
 
 /**
@@ -77,6 +78,20 @@ export function descentWithin(V: DesignSpeed, d: number): number {
 }
 
 /**
+ * S7-2 3.2 (`--portal-approach cut`): the length a portal's approach at grade is lowered over, the
+ * first multiple of `step` (the compiler's grid) at which descentWithin reaches a tunnel's depth and
+ * the margin a ceiling is imposed by. Then the tunnel's first station keeps its ceiling, measured from
+ * the lowered stretch's start. Why from TUNNEL_DEPTH_M and the margin and not a table of lengths: the
+ * depth is an assumption a later change may replace (S7-3c), and the length must follow it.
+ */
+export function portalApproachLength(V: DesignSpeed, step: number): number {
+  const need = TUNNEL_DEPTH_M + REACH_MARGIN_M;
+  let k = 1;
+  while (descentWithin(V, k * step) < need) k++;
+  return k * step;
+}
+
+/**
  * Whether a ceiling `top` (T.P. m) at distances d0 and d1 from the run's two portals (elevations
  * z0, z1) is within the descent from both.
  */
@@ -134,6 +149,11 @@ export type BelowLinkRun = {
   portalAt?: [PortalAt | null, PortalAt | null];
 };
 export type BelowLinkEnd = { kind: string; parent?: string; parentS?: number };
+
+/** Rounds a PortalAt as the run summary writes it (XwEnd.portalAt): the way as parentS, the ground as a station's. */
+export function roundPortalAt(p: PortalAt): PortalAt {
+  return { offsetM: roundTo(p.offsetM, 2), z: roundTo(p.z, 2), V: p.V };
+}
 /** A portal beyond a below run's end (BelowLinkRun.portalAt): `offsetM` m on, its ground `z`, the speed `V` over the way. */
 export type PortalAt = { offsetM: number; z: number; V: DesignSpeed };
 

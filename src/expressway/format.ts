@@ -275,6 +275,14 @@ export type XwEnd = {
   bank?: number;
   /** For a ground or portal end: the ground elevation there (T.P. m). */
   ground?: number;
+  /**
+   * S7-2 (`--portal-approach cut`), a below run's end seamed onto a lowered approach at grade: its
+   * portal stands at the lowered stretch's start, `offsetM` m beyond the end (the stretch's length), at
+   * the ground there (`z`, T.P. m), over the way at `V` (the faster planV of the two runs). T12 reads
+   * its ceilings from it as the compiler did (compile.ts belowLinksOf, below.ts portalReaches). Absent
+   * elsewhere (every file without the flag).
+   */
+  portalAt?: { offsetM: number; z: number; V: number };
 };
 
 export type XwRunSummary = {

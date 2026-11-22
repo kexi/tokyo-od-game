@@ -16,7 +16,7 @@ import {
   checkSeamHeading,
 } from "./checks";
 import { ST, STATION_STRIDE, type XwChunk, type XwDiagnostic, type XwRunSummary } from "./format";
-import { type BelowLinkRun, hasPortalsBeyond, portalReaches } from "./below";
+import { type BelowLinkRun, hasPortalsBeyond, type PortalAt, portalReaches } from "./below";
 import type { DesignSpeed } from "../law/roadStandards";
 import { checkHeightStructures } from "./heightStructures";
 
@@ -65,7 +65,11 @@ export function violationsOf(
     const a = list[0].st;
     const b = list[list.length - 1].st;
     const at = isHeight ? ST.ground : ST.z;
+    // S7-2 3.3: a portal beyond an end on a lowered approach, from the below run's own summary (the
+    // numbers the compiler used), never interpolated from the approach's stations.
+    const portalAt = portalAtOfSummary(r);
     links.set(r.id, {
+      ...(portalAt ? { portalAt } : {}),
       id: r.id,
       lengthM: r.lengthM,
       planV: r.planV as DesignSpeed,
@@ -153,6 +157,15 @@ export function violationsOf(
   return Object.fromEntries(
     PROPERTIES.map((p) => [p, { count: found[p].length, first: found[p].slice(0, FIRST) }]),
   ) as Violations;
+}
+
+/** A run summary's portals on lowered approaches (XwEnd.portalAt) as below.ts reads them, or null where it has none. */
+export function portalAtOfSummary(r: XwRunSummary): [PortalAt | null, PortalAt | null] | null {
+  const read = (e: XwRunSummary["start"]): PortalAt | null =>
+    e.portalAt ? { offsetM: e.portalAt.offsetM, z: e.portalAt.z, V: e.portalAt.V as DesignSpeed } : null;
+  const ends: [PortalAt | null, PortalAt | null] = [read(r.start), read(r.end)];
+  const hasAny = ends.some((p) => p !== null);
+  return hasAny ? ends : null;
 }
 
 /**

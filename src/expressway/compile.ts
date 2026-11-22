@@ -53,8 +53,11 @@ import {
   belowDeferralOf,
   ceilingFrom,
   hasPortalsBeyond,
+  type PortalAt,
   type PortalReach,
+  portalApproachLength,
   portalReaches,
+  roundPortalAt,
   belowStructure,
   ceilingAt,
   depthFor,
@@ -581,6 +584,120 @@ export function portalApproachEnds(plan: Plan): Array<{ run: string; end: "start
     }
   }
   return out;
+}
+
+/**
+ * S7-2 (`--portal-approach cut`): an approach at grade lowered as a cut towards the tunnel beyond its
+ * end (3.1–3.2). `run` is the run at grade and `atStart` its end at the portal; `below` the below run
+ * seamed onto that end and `belowAtStart` which of its ends. `L` is 3.2's length (descentWithin at V,
+ * the faster planV of the two, on the grid; at most the run's length); `sStart` the stretch's start on
+ * the run, a grid station (on the end's side the grid station at or before S − L, addendum 2 A), and
+ * `lengthM` the stretch's length from it to the end (L, or L′ in [L, L + GRID_M) on the end's side).
+ */
+export type LoweredApproach = {
+  run: string;
+  atStart: boolean;
+  below: string;
+  belowAtStart: boolean;
+  V: DesignSpeed;
+  L: number;
+  sStart: number;
+  lengthM: number;
+};
+
+/** An end portalApproachEnds gives that S7-2 leaves at grade, and why (the scorecard's list). */
+export type ApproachSkip = { run: string; atStart: boolean; below: string; reason: "both-portals" };
+
+export type LoweredApproaches = {
+  /** By run at grade: its lowered start and end (null where not lowered). */
+  byRun: Map<string, [LoweredApproach | null, LoweredApproach | null]>;
+  /** By below run: the lowered approach its start and its end are seamed onto. */
+  byBelow: Map<string, [LoweredApproach | null, LoweredApproach | null]>;
+  skipped: ApproachSkip[];
+};
+
+const NO_APPROACHES: LoweredApproaches = { byRun: new Map(), byBelow: new Map(), skipped: [] };
+const loweredCache = new WeakMap<Plan, LoweredApproaches>();
+
+/**
+ * S7-2 3.1–3.2 (`--portal-approach cut`): the approaches at grade lowered towards their tunnels, from
+ * the plan alone (no DEM, range or solve: the same in every range, T8; a below run that fails to solve
+ * leaves its approach lowered, addendum 2). Of portalApproachEnds' ends, those whose run at grade is
+ * open there and has a below run seamed onto it there (endPlan) that holds a tunnel. A run at grade
+ * with both ends so whose two stretches of L overlap (L0 + L1 > its length, addendum 1 judgement 1) is
+ * lowered at neither (`skipped`, "both-portals"). Asked once the plan's runs are settled (after
+ * pruneBelow: markSharedTouchdowns is the first). Empty without the flag.
+ * Why the below run by endPlan and not by the next way's tags: a below run beside the end but not
+ * seamed onto it has no ceiling for the stretch to serve.
+ */
+export function loweredApproaches(plan: Plan): LoweredApproaches {
+  const isCut = plan.portalApproach === "cut";
+  if (!isCut) return NO_APPROACHES;
+  const cached = loweredCache.get(plan);
+  if (cached) return cached;
+  const out: LoweredApproaches = { byRun: new Map(), byBelow: new Map(), skipped: [] };
+  const found = new Map<string, Array<Omit<LoweredApproach, "sStart" | "lengthM">>>();
+  for (const { run: id, end } of portalApproachEnds(plan)) {
+    const rp = plan.runs.get(id)!;
+    const atStart = end === "start";
+    const isOpen = endPlan(plan, rp, atStart).kind === "open";
+    if (!isOpen) continue;
+    const beyond = seamedBelowAt(plan, rp, atStart ? 0 : rp.length);
+    if (beyond === null) continue;
+    const hasTunnel = beyond.rp.tunnelAt.includes(1);
+    if (!hasTunnel) continue;
+    const V = Math.max(rp.planV, beyond.rp.planV) as DesignSpeed;
+    const L = Math.min(rp.length, portalApproachLength(V, GRID_M));
+    const list = found.get(id) ?? [];
+    list.push({ run: id, atStart, below: beyond.rp.run.id, belowAtStart: beyond.atStart, V, L });
+    found.set(id, list);
+  }
+  for (const [id, list] of [...found.entries()].toSorted(([a], [b]) => (a < b ? -1 : 1))) {
+    const S = plan.runs.get(id)!.length;
+    const isOverlapping = list.length === 2 && list[0].L + list[1].L > S;
+    if (isOverlapping) {
+      for (const a of list)
+        out.skipped.push({ run: id, atStart: a.atStart, below: a.below, reason: "both-portals" });
+      continue;
+    }
+    const ends: [LoweredApproach | null, LoweredApproach | null] = [null, null];
+    for (const a of list) {
+      // The end's side starts on the grid station at or before S − L (addendum 2 A): the grid runs from
+      // s 0 whatever the range. Why not a station added at S − L: the run's grid and its rows would move.
+      const isWhole = a.L >= S;
+      const endStart = isWhole ? 0 : Math.max(0, Math.floor((S - a.L) / GRID_M + 1e-9) * GRID_M);
+      const sStart = a.atStart ? a.L : endStart;
+      const lowered: LoweredApproach = { ...a, sStart, lengthM: a.atStart ? sStart : S - sStart };
+      ends[a.atStart ? 0 : 1] = lowered;
+      const belowEnds = out.byBelow.get(a.below) ?? [null, null];
+      belowEnds[a.belowAtStart ? 0 : 1] = lowered;
+      out.byBelow.set(a.below, belowEnds);
+    }
+    out.byRun.set(id, ends);
+  }
+  loweredCache.set(plan, out);
+  return out;
+}
+
+/** The below run seamed onto run `rp` at its run distance `here` (an end of it), and which of its ends; else null. */
+function seamedBelowAt(plan: Plan, rp: RunPlan, here: number): { rp: RunPlan; atStart: boolean } | null {
+  for (const other of [...plan.runs.values()].toSorted((a, b) => (a.run.id < b.run.id ? -1 : 1))) {
+    if (!other.below || other === rp) continue;
+    for (const atStart of [true, false]) {
+      const e = endPlan(plan, other, atStart);
+      const isSeamedHere =
+        e.kind === "seam" && e.parent === rp.run.id && Math.abs(nodeS(rp, e.parentNodeIndex) - here) <= 0.5;
+      if (isSeamedHere) return { rp: other, atStart };
+    }
+  }
+  return null;
+}
+
+/** Whether run distance s of run `id` lies in a lowered stretch (S7-2), its start included. */
+function isInLoweredStretch(plan: Plan, id: string, s: number): boolean {
+  const ends = loweredApproaches(plan).byRun.get(id);
+  if (!ends) return false;
+  return ends.some((a) => a !== null && (a.atStart ? s <= a.sStart + 1e-6 : s >= a.sStart - 1e-6));
 }
 
 /** The class over most of a run's ways' length (majorityClass's order on a tie). */
@@ -2119,6 +2236,10 @@ function markSharedTouchdowns(plan: Plan): void {
   for (const p of plan.pairs) {
     const isLevelApart = p.relation !== "same";
     if (!isLevelApart) continue;
+    // S7-2 3.5: a lowered approach (`--portal-approach cut`) touches down nowhere in its stretch, so a pair
+    // with a station of it there stays tied (the level row held), whichever run touches down near it.
+    const isOverLowered = isInLoweredStretch(plan, p.a, p.sa) || isInLoweredStretch(plan, p.b, p.sb);
+    if (isOverLowered) continue;
     const ra = plan.runs.get(p.a)!;
     const rb = plan.runs.get(p.b)!;
     const isMainPair = ra.cls === "expressway" && rb.cls === "expressway";
@@ -2841,10 +2962,10 @@ export type CompileResult = {
   /** How the runs were split and solved (components or blocks), for the scorecard; not written. */
   partition: PartitionResult;
   /**
-   * The written runs at grade's targets at their grid stations (groundTargetOf, S6 PR 7a), for the
+   * The written runs at grade's targets at their grid stations (approachTargetOf: S6 PR 7a's line, S7-2's lowered target), for the
    * scorecard (the band's centre); not written.
    */
-  groundTargets: Map<string, { stations: Float64Array; ground: Float64Array; target: Float64Array }>;
+  groundTargets: Map<string, GroundLines>;
   /** A height build's tally of the PR 7a rules (structuresByHeight); not written. */
   heightRules?: HeightRuleTally;
 };
@@ -3283,7 +3404,7 @@ function setupGround(
 ): RunSetup {
   const n = stations.length;
   const reach = objective.kind === "v2" ? objective.reachM.viaduct : DESIGN_GROUND_REACH.value.viaduct;
-  const { target } = groundTargetOf(plan, rp, ground, reach);
+  const { line, target } = approachTargetOf(plan, rp, ground, reach, objective);
   const band = plan.groundBandM ?? HEIGHT_STRUCTURES.value.ground.bandM;
   // A ground end's grade from the target line's first or last 20 m, not the DEM's two points 40 m
   // either side (terrainAt): a 3 m bump 5–45 m from the end tilted that by 2.5 % and the road by
@@ -3291,8 +3412,8 @@ function setupGround(
   const along = Math.min(n - 1, Math.round(20 / GRID_M));
   const lineGrade = (side: number) =>
     side === 0
-      ? (target[along] - target[0]) / Math.max(1e-6, stations[along] - stations[0])
-      : (target[n - 1] - target[n - 1 - along]) / Math.max(1e-6, stations[n - 1] - stations[n - 1 - along]);
+      ? (line[along] - line[0]) / Math.max(1e-6, stations[along] - stations[0])
+      : (line[n - 1] - line[n - 1 - along]) / Math.max(1e-6, stations[n - 1] - stations[n - 1 - along]);
   const ownFixed = fixed.map((f, side) => {
     const isGraded = ends[side].kind === "ground" && f.grade !== undefined;
     if (!isGraded) return f;
@@ -3333,8 +3454,13 @@ function setupGround(
     cross: [],
     crossInfo: [],
     blocked,
-    bandLo: target.map((t) => t - band),
-    bandHi: target.map((t) => t + band),
+    bandLo: loweredBandLo(
+      plan,
+      rp,
+      stations,
+      line.map((t) => t - band),
+    ),
+    bandHi: line.map((t) => t + band),
     ...objectiveWeights(objective),
     // N2 (S6 PR 7a): the target weight of the runs at grade alone, k times (HEIGHT_STRUCTURES.ground
     // .targetScale, or the sweep's `--ground-target-scale`). Why not a narrower band instead: the band
@@ -3372,7 +3498,7 @@ type CeilingRule = (structure: "tunnel" | "cut", ground: number, s: number) => n
  * (NaN where it is not read: below.ts ceilingFrom stops on a way that reaches one).
  */
 const belowLinksCache = new WeakMap<Plan, WeakMap<GroundSampler, Map<string, BelowLinkRun>>>();
-function belowLinksOf(plan: Plan, ground: GroundSampler): Map<string, BelowLinkRun> {
+export function belowLinksOf(plan: Plan, ground: GroundSampler): Map<string, BelowLinkRun> {
   const byGround = belowLinksCache.get(plan) ?? new WeakMap<GroundSampler, Map<string, BelowLinkRun>>();
   belowLinksCache.set(plan, byGround);
   const cached = byGround.get(ground);
@@ -3394,6 +3520,7 @@ function belowLinksOf(plan: Plan, ground: GroundSampler): Map<string, BelowLinkR
     const isRead = rp.below && needed.has(id);
     const p0 = poseAt(rp, 0);
     const p1 = poseAt(rp, rp.length);
+    const portalAt = portalAtOf(plan, id, isRead ? ground : null);
     out.set(id, {
       id,
       lengthM: rp.length,
@@ -3401,10 +3528,33 @@ function belowLinksOf(plan: Plan, ground: GroundSampler): Map<string, BelowLinkR
       below: rp.below,
       ends: [endOf(true), endOf(false)],
       ground: isRead ? [ground(p0.lon, p0.lat), ground(p1.lon, p1.lat)] : [Number.NaN, Number.NaN],
+      ...(portalAt ? { portalAt } : {}),
     });
   }
   byGround.set(ground, out);
   return out;
+}
+
+/**
+ * S7-2 3.3 (`--portal-approach cut`): where a below run's portals stand beyond its ends on lowered
+ * approaches (below.ts BelowLinkRun.portalAt): the stretch's length L′ and the ground at its start,
+ * rounded as the run summary writes them (XwEnd.portalAt, roundPortalAt), so the compiler and T12 read
+ * the same numbers. The ground only where it may be read (`ground` null: NaN, belowLinksOf's rule).
+ * Null for a run with none (every run without the flag).
+ */
+function portalAtOf(
+  plan: Plan,
+  id: string,
+  ground: GroundSampler | null,
+): [PortalAt | null, PortalAt | null] | null {
+  const ends = loweredApproaches(plan).byBelow.get(id);
+  if (!ends) return null;
+  return ends.map((a) => {
+    if (a === null) return null;
+    const q = poseAt(plan.runs.get(a.run)!, a.sStart);
+    const z = ground === null ? Number.NaN : ground(q.lon, q.lat);
+    return roundPortalAt({ offsetM: a.lengthM, z, V: a.V });
+  }) as [PortalAt | null, PortalAt | null];
 }
 
 /** The portals a below run's ceilings are measured from where an end goes on under the ground, else null. */
@@ -3417,6 +3567,144 @@ function belowReachesOf(
   const id = rp.run.id;
   if (!hasPortalsBeyond(links, id)) return null;
   return portalReaches(links, id);
+}
+
+/** A below run's lowest ground across the box and half a grid step along, per station: the roof must stay under it. */
+function belowGroundLow(
+  rp: RunPlan,
+  stations: Float64Array,
+  groundAt: Float64Array,
+  ground: GroundSampler,
+): Float64Array {
+  const S = rp.length;
+  return stations.map((sv, k) => {
+    let low = groundAt[k];
+    for (const d of [-GRID_M / 2, GRID_M / 2]) {
+      const q = poseAt(rp, Math.min(S, Math.max(0, sv + d)));
+      low = Math.min(low, ground(q.lon, q.lat));
+    }
+    return low;
+  });
+}
+
+/**
+ * A below run's target per station (setupBelow; S7-2 3.4 reads its end's for a lowered approach's seam).
+ * A run with a tunnel aims at the tunnel's depth all along (its cut goes down towards the box); a cut
+ * alone at the clearance under a street bridged over it (4.5 m + girder), as real 掘割 are dug. v2:
+ * under the lower envelope of the ground across the box, never above it, so the ceiling (the lowest
+ * ground − the depth) no longer pushes the road down under every hollow.
+ */
+function belowTargetOf(
+  rp: RunPlan,
+  stations: Float64Array,
+  groundAt: Float64Array,
+  groundLow: Float64Array,
+  objective: Objective,
+): Float64Array {
+  const n = stations.length;
+  const hasTunnel = rp.tunnelAt.includes(1);
+  const targetDepth = hasTunnel ? depthFor("tunnel") : ROAD_CLEAR;
+  const isV2 = objective.kind === "v2";
+  return isV2
+    ? envelope(groundLow, objective.reachM.below, "lower", GRID_M).map((e) => e - targetDepth)
+    : stations.map((_, k) => {
+        let sum = 0;
+        let cnt = 0;
+        for (let j = Math.max(0, k - 12); j <= Math.min(n - 1, k + 12); j++) {
+          sum += groundAt[j];
+          cnt++;
+        }
+        return sum / cnt - targetDepth;
+      });
+}
+
+/** The target of a lowered approach's below run at its end on the seam (S7-2 3.4), as setupBelow sets it. */
+function belowEndTarget(plan: Plan, a: LoweredApproach, ground: GroundSampler, objective: Objective): number {
+  const rp = plan.runs.get(a.below)!;
+  const stations = gridStations(rp.length);
+  const groundAt = stations.map((s) => {
+    const p = poseAt(rp, s);
+    return ground(p.lon, p.lat);
+  });
+  const target = belowTargetOf(
+    rp,
+    stations,
+    groundAt,
+    belowGroundLow(rp, stations, groundAt, ground),
+    objective,
+  );
+  return a.belowAtStart ? target[0] : target[target.length - 1];
+}
+
+/** A run at grade's grid stations, their ground, its design ground line and its target (approachTargetOf). */
+export type GroundLines = {
+  stations: Float64Array;
+  ground: Float64Array;
+  line: Float64Array;
+  target: Float64Array;
+};
+
+/**
+ * A run at grade's lines at its grid stations (S7-2 3.4, addendum 2 C): `line`, the design ground line
+ * (groundTargetOf), and `target`, the line the QP and the scorecard aim at. Over a lowered approach's
+ * stretch (`--portal-approach cut`) the target goes straight from the line's value at the stretch's
+ * start to the below run's target at the seam; elsewhere it is the line. Without a lowered approach
+ * `target` is `line` itself (the same array, nothing computed). The band and a ground end's grade take
+ * `line` (setupGround). Why not the band about the lowered target too: 3.4 keeps the band's upper side,
+ * and a band 1.5 m about a target the short approaches cannot reach would push their road down.
+ */
+export function approachTargetOf(
+  plan: Plan,
+  rp: RunPlan,
+  ground: GroundSampler,
+  reach: number,
+  objective: Objective,
+): GroundLines {
+  const base = groundTargetOf(plan, rp, ground, reach);
+  const ends = loweredApproaches(plan).byRun.get(rp.run.id);
+  if (!ends) return { ...base, line: base.target };
+  const { stations } = base;
+  const n = stations.length;
+  const target = Float64Array.from(base.target);
+  for (const a of ends) {
+    if (a === null) continue;
+    const kStart = nearestStation(stations, a.sStart);
+    const kEnd = a.atStart ? 0 : n - 1;
+    const z0 = base.target[kStart];
+    const z1 = belowEndTarget(plan, a, ground, objective);
+    const span = stations[kEnd] - stations[kStart];
+    const [lo, hi] = a.atStart ? [kEnd, kStart] : [kStart, kEnd];
+    for (let k = lo; k <= hi; k++) {
+      const t = span === 0 ? 1 : (stations[k] - stations[kStart]) / span;
+      target[k] = z0 + (z1 - z0) * t;
+    }
+  }
+  return { ...base, line: base.target, target };
+}
+
+/** The index of the station nearest run distance s. */
+function nearestStation(stations: ArrayLike<number>, s: number): number {
+  let best = 0;
+  for (let k = 1; k < stations.length; k++)
+    if (Math.abs(stations[k] - s) < Math.abs(stations[best] - s)) best = k;
+  return best;
+}
+
+/**
+ * A run at grade's band's lower side (S7-2 3.4): open (−∞) over a lowered stretch but at its start's
+ * station, which keeps both sides (the stretch starts at grade; the run before it, a viaduct on a short
+ * approach, stays in the band). `lo` itself where the run has no lowered approach.
+ */
+function loweredBandLo(plan: Plan, rp: RunPlan, stations: Float64Array, lo: Float64Array): Float64Array {
+  const ends = loweredApproaches(plan).byRun.get(rp.run.id);
+  if (!ends) return lo;
+  const kStarts = ends.filter((a) => a !== null).map((a) => nearestStation(stations, a.sStart));
+  for (let k = 0; k < stations.length; k++) {
+    const isStart = kStarts.includes(k);
+    const isInside = isInLoweredStretch(plan, rp.run.id, stations[k]);
+    if (isInside && !isStart) lo[k] = -Infinity;
+  }
+  return lo;
 }
 
 function setupBelow(
@@ -3439,15 +3727,7 @@ function setupBelow(
 ): RunSetup {
   const S = rp.length;
   const n = stations.length;
-  // The lowest ground across the box and half a grid step along: the roof must stay under it.
-  const groundLow = stations.map((sv, k) => {
-    let low = groundAt[k];
-    for (const d of [-GRID_M / 2, GRID_M / 2]) {
-      const q = poseAt(rp, Math.min(S, Math.max(0, sv + d)));
-      low = Math.min(low, ground(q.lon, q.lat));
-    }
-    return low;
-  });
+  const groundLow = belowGroundLow(rp, stations, groundAt, ground);
   const portalZ = [groundAt[0], groundAt[n - 1]];
   const upper = new Float64Array(n).fill(Infinity);
   let short = 0;
@@ -3487,24 +3767,7 @@ function setupBelow(
       detail: `${short} stations at ${shortFrom.toFixed(0)}–${shortTo.toFixed(0)} m cannot reach the box and cover from a portal at the 第20条 grade`,
       allowed: false,
     });
-  // A run with a tunnel aims at the tunnel's depth all along (its cut goes down towards the box); a
-  // cut alone at the clearance under a street bridged over it (4.5 m + girder), as real 掘割 are dug.
-  const hasTunnel = rp.tunnelAt.includes(1);
-  const targetDepth = hasTunnel ? depthFor("tunnel") : ROAD_CLEAR;
-  // v2: under the lower envelope of the ground across the box, never above it, so the ceiling
-  // (the lowest ground − the depth) no longer pushes the road down under every hollow.
-  const isV2 = objective.kind === "v2";
-  const target = isV2
-    ? envelope(groundLow, objective.reachM.below, "lower", GRID_M).map((e) => e - targetDepth)
-    : stations.map((_, k) => {
-        let sum = 0;
-        let cnt = 0;
-        for (let j = Math.max(0, k - 12); j <= Math.min(n - 1, k + 12); j++) {
-          sum += groundAt[j];
-          cnt++;
-        }
-        return sum / cnt - targetDepth;
-      });
+  const target = belowTargetOf(rp, stations, groundAt, groundLow, objective);
   const none = new Float64Array(n).fill(-Infinity);
   if (isHeight) {
     const at = thresholdStations(rp, stations, upper, ground, ceilingOf, isTooShort);
@@ -5287,8 +5550,7 @@ export function solvePlan(
       maxShiftM: roundTo(s.rp.align.maxShiftM, 3),
       ...rampShiftOf(plan, s.rp),
       steps: s.steps,
-      start: s.start,
-      end: s.end,
+      ...endsWithPortals(plan, id, s.start, s.end, ground),
       chunks: runChunks.map((c) => c.id),
       structure,
       // A height build says which runs are below runs by their tags (review W5: a viaduct-tagged run
@@ -5317,15 +5579,12 @@ export function solvePlan(
   // The runs at grade's targets (S6 PR 7a: what the scorecard's openEnds and inner measure from).
   const objectiveOf = options.objective ?? OBJECTIVE_V1;
   const reachOf = objectiveOf.kind === "v2" ? objectiveOf.reachM.viaduct : DESIGN_GROUND_REACH.value.viaduct;
-  const groundTargets = new Map<
-    string,
-    { stations: Float64Array; ground: Float64Array; target: Float64Array }
-  >();
+  const groundTargets = new Map<string, GroundLines>();
   for (const r of runs) {
     const rp = plan.runs.get(r.id);
     const isAtGrade = rp?.ground === true;
     if (!isAtGrade) continue;
-    const line = groundTargetOf(plan, rp, ground, reachOf);
+    const line = approachTargetOf(plan, rp, ground, reachOf, objectiveOf);
     groundTargets.set(r.id, line);
     // The fit the ledger's ground-stretch judges (S6 PR 7a, 4.3), on the run's summary.
     const s = solved.get(r.id);
@@ -5666,6 +5925,25 @@ export function solveRoutes(
 }
 
 /** A run's end as written: a piece's end moved back onto the runs (the parent's run, run distance). */
+/**
+ * A written run's start and end for its summary, a below run's end on a lowered approach (S7-2 3.7)
+ * carrying `portalAt` as belowLinksOf made it (the same rounded numbers). The ends as solved elsewhere.
+ */
+function endsWithPortals(
+  plan: Plan,
+  id: string,
+  start: XwEnd,
+  end: XwEnd,
+  ground: GroundSampler,
+): { start: XwEnd; end: XwEnd } {
+  const isLoweredBeyond = loweredApproaches(plan).byBelow.has(id);
+  if (!isLoweredBeyond) return { start, end };
+  const portalAt = belowLinksOf(plan, ground).get(id)?.portalAt;
+  if (!portalAt) return { start, end };
+  const withPortal = (e: XwEnd, p: PortalAt | null): XwEnd => (p === null ? e : { ...e, portalAt: { ...p } });
+  return { start: withPortal(start, portalAt[0]), end: withPortal(end, portalAt[1]) };
+}
+
 function runEnd(plan: Plan, rp: RunPlan, atStart: boolean, end: XwEnd): XwEnd {
   const isJoined = end.parent !== undefined;
   if (!isJoined) return end;
@@ -7126,7 +7404,11 @@ export function groundFitOf(
 function groundApproaches(plan: Plan, rp: RunPlan): [number, number] {
   const runs = splitRuns(plan.net, rp.chain, splitOf(plan));
   const k = runs.findIndex((r) => r.id === rp.run.id);
+  const lowered = loweredApproaches(plan).byRun.get(rp.run.id);
   const ofEnd = (atStart: boolean): number => {
+    // S7-2 3.7: a lowered approach's end, its stretch L′ (the road leaves the line over it by design).
+    const stretch = lowered?.[atStart ? 0 : 1] ?? null;
+    if (stretch !== null) return stretch.lengthM;
     const next = runs[atStart ? k - 1 : k + 1];
     const e = endPlan(plan, rp, atStart);
     const isClimb = e.kind === "seam" || next?.elevated === true;
