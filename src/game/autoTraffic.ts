@@ -87,19 +87,92 @@ const REACTION = 0.75; // s
 const FOLLOW_DECEL = 4; // m/s², a firm stop
 const PASS_SPEED = 4.5; // m/s while beside the obstacle (16 km/h: 側方間隔 is small)
 
+/** Lined up with the path or the street: the heading's dot with its direction over this. */
+export const LINED_UP = 0.5;
+/** Slower than this (m/s) the car stands: for passing() and for the slant of the front's band. */
+export const STANDING_SPEED = 0.3;
+/** How far back along the path the nose's drift across it is measured from (m). */
+export const DRIFT_SPAN_M = 8;
+/** The least run along the path a drift is taken over (m); shorter, the last value holds. */
+export const DRIFT_MIN_M = 0.5;
+
 /**
- * How far the car moves across its path per metre along it (left +), from its heading and the
- * path's direction at the nose: 0 in a pass (its 1.95 m band counts on the nose being out already)
- * and when the car is not lined up with the path (0.5 or under, as traffic()'s isAligned), when it
- * turns across the street or manoeuvres and a slope along the path says nothing.
+ * How far the heading points across the path per metre along it (left +), from the heading and
+ * the path's direction at the nose: 0 in a pass (its 1.95 m band counts on the nose being out
+ * already) and when the car is not lined up with the path (LINED_UP or under, as traffic()'s
+ * isAligned), when it turns across the street or manoeuvres and a slope along the path says nothing.
  */
 export function slantOnPath(heading: Vector3, pathDir: Vector3, isPassing: boolean): number {
   const alongPath = heading.x * pathDir.x + heading.z * pathDir.z;
-  const isLinedUp = alongPath > 0.5;
+  const isLinedUp = alongPath > LINED_UP;
   if (isPassing || !isLinedUp) return 0;
   // Left of travel (dx, dz) is (dz, −dx), as placeOnRoute's lateral.
   const acrossPath = heading.x * pathDir.z - heading.z * pathDir.x;
   return acrossPath / alongPath;
+}
+
+/**
+ * The slant the front's band sweeps by (D4 v2): the smaller of the heading's slant (slantOnPath)
+ * and the nose's drift across the path (NoseDrift), when both point the same way; 0 when they
+ * point apart, either is 0, or the car stands. Why not the heading alone (#125): a car following a
+ * bend of its path heads off the path's tangent though its nose stays on the line, and the band
+ * took in cars beside the turn (37 of 131 ordinary turns stood for good). Why not the drift alone:
+ * after the car is back on its line the drift of the 8 m behind lingers, and when slow a sway of
+ * the nose is a large drift. Why 0 while standing and not the last slant: standing, neither
+ * changes, and a car taken in by them could not be let go.
+ */
+export function frontSlant(headingSlant: number, drift: number, isStanding: boolean): number {
+  if (isStanding) return 0;
+  const isSameWay = headingSlant * drift > 0;
+  if (!isSameWay) return 0;
+  return Math.abs(headingSlant) < Math.abs(drift) ? headingSlant : drift;
+}
+
+/**
+ * The nose's drift across the path per metre along it (left +), over the last DRIFT_SPAN_M: from
+ * the newest place noted that far back or more (the oldest while the car has not come that far),
+ * held at its last value over runs under DRIFT_MIN_M, 0 after a reset. A place more than
+ * DRIFT_MIN_M back along the path from the last starts afresh. The driver resets it while standing,
+ * on a new route or place, and when its look did not run the update before.
+ */
+export class NoseDrift {
+  private readonly at: number[] = [];
+  private readonly lateral: number[] = [];
+  private drift = 0;
+
+  get value(): number {
+    return this.drift;
+  }
+
+  reset(): void {
+    this.at.length = 0;
+    this.lateral.length = 0;
+    this.drift = 0;
+  }
+
+  /** Notes the nose `at` m along the path and `lateral` m across it; returns the drift. */
+  note(at: number, lateral: number): number {
+    const last = this.at.length - 1;
+    const isBack = last >= 0 && at < this.at[last] - DRIFT_MIN_M;
+    if (isBack) this.reset();
+    // Drop the places older than the newest one DRIFT_SPAN_M back or more.
+    let drop = 0;
+    while (drop + 1 < this.at.length && this.at[drop + 1] <= at - DRIFT_SPAN_M) drop++;
+    if (drop > 0) {
+      this.at.splice(0, drop);
+      this.lateral.splice(0, drop);
+    }
+    const run = this.at.length > 0 ? at - this.at[0] : 0;
+    const isFarEnough = run >= DRIFT_MIN_M;
+    if (isFarEnough) this.drift = (lateral - this.lateral[0]) / run;
+    const newest = this.at.length - 1;
+    const hasMoved = newest < 0 || at > this.at[newest] + 1e-4;
+    if (hasMoved) {
+      this.at.push(at);
+      this.lateral.push(lateral);
+    }
+    return this.drift;
+  }
 }
 
 /**
@@ -110,6 +183,8 @@ export function slantOnPath(heading: Vector3, pathDir: Vector3, isPassing: boole
  * lose one near its lateral now. Why not the two bands alone: far on they part, and the car passes
  * through the gap between them. Why across the path and not straight along the heading: round a
  * bend the heading leaves the street, the path does not (it would take in parked and oncoming cars).
+ * The same holds for the slant itself: it is frontSlant's (the heading's slant alone, #125, also
+ * swept across the street in turns and bends). It is the test before D4 only with no slant.
  */
 export function isInFrontBand(
   lateral: number,
