@@ -336,7 +336,19 @@ for (const [key] of groups) {
   }
   const judgementOf = new Map(judgements.filter((j) => j.verdict === "alpha").map((j) => [j.street, j]));
   // What joinExpressway takes out of each alpha line (its stretches carried on into the band).
-  const takenOf = new Map(sameRoadGaps(streets, sites, xy).map((t) => [t.judgement.street, t]));
+  // A line judged against two connected sites has two entries; what it loses is their union.
+  const takenOf = new Map<
+    number,
+    { rule: Array<[number, number]>; gaps: Array<[number, number]>; chunks: string[] }
+  >();
+  for (const t of sameRoadGaps(streets, sites, xy)) {
+    const had = takenOf.get(t.judgement.street) ?? { rule: [], gaps: [], chunks: [] };
+    takenOf.set(t.judgement.street, {
+      rule: [...had.rule, ...t.rule],
+      gaps: [...had.gaps, ...t.gaps],
+      chunks: [...had.chunks, ...t.judgement.chunks],
+    });
+  }
   const joinedHere = joinExpressway(tiles, xw, () => {});
   const stretches = judgements.filter((j) => j.verdict === "alpha").flatMap((j) => j.stretches);
   if (stretches.length === 0) continue;
@@ -686,9 +698,20 @@ for (const [key] of groups) {
         const lineTotal = arcOf(street, xy).at(-1)!;
         const clip = (gap: [number, number]) =>
           Math.max(0, Math.min(lineTotal, gap[1]) - Math.max(0, gap[0]));
-        const ruleM = t.rule.reduce((n, gap) => n + clip(gap), 0);
-        const takenM = t.gaps.reduce((n, gap) => n + clip(gap), 0);
-        const group = sites.filter((site2) => t.judgement.chunks.includes(site2.chunk));
+        // The union of the gaps (two connected sites' gaps may overlap), clipped to the line.
+        const unionM = (gaps: Array<[number, number]>) => {
+          let n = 0;
+          let reach = -Infinity;
+          for (const [a, b] of gaps.toSorted((x, y) => x[0] - y[0])) {
+            const from = Math.max(a, reach);
+            if (b > from) n += clip([from, b]);
+            reach = Math.max(reach, b);
+          }
+          return n;
+        };
+        const ruleM = unionM(t.rule);
+        const takenM = unionM(t.gaps);
+        const group = sites.filter((site2) => t.chunks.includes(site2.chunk));
         return {
           gapsRule: t.rule.map(([g0, g1]) => [round(g0), round(g1)] as [number, number]),
           gapsTaken: t.gaps.map(([g0, g1]) => [round(g0), round(g1)] as [number, number]),

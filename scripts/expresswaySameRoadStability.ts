@@ -1,6 +1,6 @@
 // P2.7 R1-2b PR 1 (追記 3 方針 1, 追記 4 K4 6): whether the same-road rule (M1, α) gives every GSI
 // street line the same answer in every window the game builds round the car. Read only. The windows:
-// the car at 9 places in each tile (a tenth, a half and nine tenths of the way across, each way) of
+// the car at 9 places in each tile (a hundredth, a half and 99 hundredths of the way across, each way) of
 // every tile holding a point of an at-grade chunk and the tiles round them; for each, the 3 × 3 z16
 // road tiles round the car's tile (RoadTiles.around) and the chunks within GRAPH_RADIUS_M of the car
 // (ExpresswayDeck.roadInput), windows with the same tiles and chunks counted once. In each window the
@@ -33,8 +33,13 @@ import { gsiTileReader } from "./gameStreets.ts";
 /** src/world/expresswayDeck.ts GRAPH_RADIUS_M; and expresswayRoads.ts EXTENT_MARGIN_M (not exported). */
 const GRAPH_RADIUS_M = 1300;
 const EDGE_M = 60;
-/** Where in a tile the car stands (fractions of the tile, each way). */
-const CAR_AT = [0.1, 0.5, 0.9];
+/**
+ * Where in a tile the car stands (fractions of the tile, each way). Why so near the corners: from a
+ * tenth in, every point outside the edge band lies within about 1,250 m of the car, short of
+ * GRAPH_RADIUS_M, so every site beside a line there is always read and the check could not fail;
+ * from a hundredth in, the far corner is about 1,320 m off (re-review A3).
+ */
+const CAR_AT = [0.01, 0.5, 0.99];
 
 const ROOT = join(import.meta.dirname, "..");
 const args = process.argv.slice(2);
