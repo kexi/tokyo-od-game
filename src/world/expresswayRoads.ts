@@ -387,16 +387,23 @@ function project(
 /**
  * The streets as the same-road rule meets them in joinExpressway, and the plane it works in: GSI
  * 高速道路 lines within REPLACE_REACH_M of a chunk dropped, crossings cut at the sites (cutAtSites).
- * Exported so a measuring tool judges the lines the game judges, not the raw tiles.
+ * Exported so a measuring tool judges the lines the game judges, not the raw tiles. The plane is
+ * at the first chunk line's first point; with no chunk lines there is no plane and nothing to cut,
+ * so the streets come back as they are (`plane` null).
  */
 export function streetsAtSites(
   streets: readonly RoadLine[],
   xw: XwRoadInput,
   report: (diagnostic: RoadDiagnostic) => void,
-): { cut: RoadLine[]; xy: (lon: number, lat: number) => [number, number] } {
-  const lat0 = xw.lines[0].coords[1];
-  const lon0 = xw.lines[0].coords[0];
-  const plane = planeAt(lon0, lat0);
+): {
+  cut: RoadLine[];
+  xy: (lon: number, lat: number) => [number, number];
+  plane: ReturnType<typeof planeAt> | null;
+} {
+  const first = xw.lines[0];
+  const hasNoChunks = first === undefined;
+  if (hasNoChunks) return { cut: [...streets], xy: () => [0, 0], plane: null };
+  const plane = planeAt(first.coords[0], first.coords[1]);
   const xy = plane.toXY;
   // Chunk points by 40 m cell, for the replacement test.
   const CELL = REPLACE_REACH_M;
@@ -428,7 +435,7 @@ export function streetsAtSites(
     xy,
     report,
   );
-  return { cut, xy };
+  return { cut, xy, plane };
 }
 
 /**
@@ -444,8 +451,8 @@ export function joinExpressway(
 ): RoadLine[] {
   const hasChunks = xw.lines.length > 0;
   if (!hasChunks) return [...streets];
-  const { cut, xy } = streetsAtSites(streets, xw, report);
-  const plane = planeAt(xw.lines[0].coords[0], xw.lines[0].coords[1]);
+  const { cut, xy, plane: chunkPlane } = streetsAtSites(streets, xw, report);
+  const plane = chunkPlane!;
   const out = dropSameRoad(cut, xw.sites ?? [], xy, report);
   const gsiExpressway = streets.filter((l) => isExpressway(l) && sourceOf(l) === "gsi");
   const streetKeys = new Set<string>();
@@ -1030,7 +1037,7 @@ function cutAtSites(
   return out;
 }
 
-/** A stretch of a GSI street taken out as the ramp itself (sameRoadStretches). */
+/** A stretch of a GSI street along a site, inside its band, of a line the same-road rule judges (sameRoadJudgements). */
 export type SameRoadStretch = {
   street: number;
   /** The street's arc length (m) where the stretch begins and ends. */
@@ -1078,6 +1085,20 @@ function connectedSites(sites: readonly XwSite[]): number[] {
   return sites.map((_, k) => find(k));
 }
 
+/** The same-road verdict from its four tests, in the order they are read (the first that holds names it). */
+function verdictOf(t: {
+  isClass0: boolean;
+  isPartial: boolean;
+  isShort: boolean;
+  isAllAtFoot: boolean;
+}): SameRoadJudgement["verdict"] {
+  if (t.isClass0) return "class-0";
+  if (t.isPartial) return "partial";
+  if (t.isShort) return "short";
+  if (t.isAllAtFoot) return "at-foot";
+  return "alpha";
+}
+
 /**
  * The same-road rule (P2.7 R1-2b M1, α; memo 4.1 as rewritten, r1-2b-pr1-review0.md 追記 1 B2),
  * judged a line and a connected site at a time over samples each metre: the line is the ramp itself
@@ -1092,14 +1113,18 @@ function connectedSites(sites: readonly XwSite[]): number[] {
  * Why the given half width for along and the class's least for inside: lanes are laid at the given
  * width, so a sample whose given width reaches the band and whose narrowest does not leave lanes in
  * it; the strict reading of both. Why not class 0 (under 3 m): its least is 0, so only the centre
- * line would be judged, which a lane's width either side of a slab's edge passes or fails.
+ * line would be judged, which a lane's width either side of a slab's edge passes or fails. Why not
+ * by what the line joins (keep a line whose taking out strands a street, 追記 2 D2): the runtime
+ * network is rebuilt in a window round the car, and a rule that follows the network gave one line
+ * different answers in different windows (追記 3); the line and its connected site alone do not.
  */
 export function sameRoadJudgements(
   streets: readonly RoadLine[],
   sites: readonly XwSite[],
   xy: (lon: number, lat: number) => [number, number],
 ): SameRoadJudgement[] {
-  if (sites.length === 0) return [];
+  const hasNoSites = sites.length === 0;
+  if (hasNoSites) return [];
   const groupOf = connectedSites(sites);
   const siteXY = sites.map((site) => {
     const pts: Array<[number, number]> = [];
@@ -1146,7 +1171,8 @@ export function sameRoadJudgements(
       const [ax, ay] = pts[piece];
       const [bx, by] = pts[piece + 1];
       const len = Math.hypot(bx - ax, by - ay);
-      if (len < 1e-9) continue;
+      const isDegenerate = len < 1e-9;
+      if (isDegenerate) continue;
       const t = (l - along[piece]) / len;
       const px = ax + (bx - ax) * t;
       const py = ay + (by - ay) * t;
@@ -1168,13 +1194,15 @@ export function sameRoadJudgements(
         const ex = sbx - sax;
         const ey = sby - say;
         const elen = Math.hypot(ex, ey);
-        if (elen < 1e-9) continue;
+        const isPointSegment = elen < 1e-9;
+        if (isPointSegment) continue;
         const cos = Math.abs(tx * ex + ty * ey) / elen;
         const isAlongWay = cos > cosMin;
         if (!isAlongWay) continue;
         // p + u n = sa + v e
         const det = -nx * ey + ny * ex;
-        if (Math.abs(det) < 1e-9) continue;
+        const isParallel = Math.abs(det) < 1e-9;
+        if (isParallel) continue;
         const rx = sax - px;
         const ry = say - py;
         const u = (rx * -ey + ry * ex) / det;
@@ -1216,15 +1244,7 @@ export function sameRoadJudgements(
       const isPartial = inside < hits.length;
       const isShort = inside < MIN_LENGTH_M;
       const isAllAtFoot = atFoot === hits.length;
-      const verdict: SameRoadJudgement["verdict"] = isClass0
-        ? "class-0"
-        : isPartial
-          ? "partial"
-          : isShort
-            ? "short"
-            : isAllAtFoot
-              ? "at-foot"
-              : "alpha";
+      const verdict = verdictOf({ isClass0, isPartial, isShort, isAllAtFoot });
       // The runs of samples along it (gaps of JOIN_GAP_M closed), each taken out whole.
       const runs: Hit[][] = [];
       for (const h of hits) {
@@ -1263,8 +1283,9 @@ export function sameRoadStretches(
 }
 
 /**
- * The GSI streets less the ramps they draw (P2.7 R1-2b M1): each sameRoadStretches stretch taken
- * out with SITE_CLEARANCE_M either side (piecesOutside), the pieces left as dead ends as cutAtSites
+ * The GSI streets less the ramps they draw (P2.7 R1-2b M1): what sameRoadGaps takes out of each
+ * alpha line (its stretches with SITE_CLEARANCE_M either side, carried on into the band but not past
+ * the foot) cut away (piecesOutside), the pieces left as dead ends as cutAtSites
  * leaves them, each reported (`street_cut_at_expressway`, kind same-road). Why take it out and not
  * move it: a street whose whole width lies in the site cannot be another road beside it; GSI drew
  * the ramp's at-grade part as a street, as its 高速道路 lines are replaced by the chunks
@@ -1276,11 +1297,13 @@ function dropSameRoad(
   xy: (lon: number, lat: number) => [number, number],
   report: (diagnostic: RoadDiagnostic) => void,
 ): RoadLine[] {
-  const stretches = sameRoadJudgements(streets, sites, xy)
-    .filter((j) => j.verdict === "alpha")
-    .flatMap((j) => j.stretches);
-  if (stretches.length === 0) return streets;
-  const gapsOf = gapsOfStretches(stretches);
+  const taken = sameRoadGaps(streets, sites, xy);
+  const stretches = taken.flatMap((t) => t.judgement.stretches);
+  const hasNone = stretches.length === 0;
+  if (hasNone) return streets;
+  const gapsOf = new Map<number, Array<[number, number]>>();
+  for (const t of taken)
+    gapsOf.set(t.judgement.street, [...(gapsOf.get(t.judgement.street) ?? []), ...t.gaps]);
   for (const st of stretches)
     report({
       event: "street_cut_at_expressway",
@@ -1306,6 +1329,126 @@ function dropSameRoad(
     out.push(...piecesOutside(streets[index], arcOfLine(streets[index], xy), gaps));
   }
   return out;
+}
+
+/** An alpha line and what the same-road rule takes out of it: its stretches ± SITE_CLEARANCE_M (`rule`), carried on into the band (`gaps`, intoBand). Arc lengths along the line, m. */
+export type SameRoadGaps = {
+  judgement: SameRoadJudgement;
+  rule: Array<[number, number]>;
+  gaps: Array<[number, number]>;
+};
+
+/** What dropSameRoad takes out, line by line (exported for the measuring tools, so they cut as the game does). */
+export function sameRoadGaps(
+  streets: readonly RoadLine[],
+  sites: readonly XwSite[],
+  xy: (lon: number, lat: number) => [number, number],
+): SameRoadGaps[] {
+  return sameRoadJudgements(streets, sites, xy)
+    .filter((j) => j.verdict === "alpha")
+    .map((judgement) => {
+      const group = sites.filter((site) => judgement.chunks.includes(site.chunk));
+      const band = siteBand(group, xy);
+      const street = streets[judgement.street];
+      const along = arcOfLine(street, xy);
+      const rule = gapsOfStretches(judgement.stretches).get(judgement.street) ?? [];
+      return { judgement, rule, gaps: rule.map((gap) => intoBand(street, along, gap, band, xy)) };
+    });
+}
+
+/** Where a point stands to a connected site's band: inside it, at its foot, how far from the centre line. */
+export type BandPlace = { isInside: boolean; isAtFoot: boolean; distanceM: number };
+
+/**
+ * A connected site's band as a test on points (P2.7 R1-2b 追記 4 K2): a point is inside when its
+ * nearest point on the site's centre line (the chunks' polylines) lies within that chunk's slab half
+ * width + SITE_CLEARANCE_M and is not one of the chain's two ends (the cap beyond an end is no band);
+ * at the foot when that nearest point's run distance is within SITE_END_REACH_M of one of the
+ * chunk's ends (siteCrossings' `end`). Why the shortest distance and not the along test's
+ * halfWidth / cos: that is a normal laid on a line under 30°, and it runs to infinity at 90°. Why not
+ * "the foot of the perpendicular falls on a segment": outside a bend's vertex or at a joint between
+ * chunks no segment takes it, and a point inside the band would read as outside.
+ */
+export function siteBand(
+  group: readonly XwSite[],
+  xy: (lon: number, lat: number) => [number, number],
+): (x: number, y: number) => BandPlace {
+  const inGroup = new Set(group.map((site) => site.chunk));
+  const polylines = group.map((site) => {
+    const pts: Array<[number, number]> = [];
+    for (let i = 0; i + 1 < site.coords.length; i += 2) pts.push(xy(site.coords[i], site.coords[i + 1]));
+    const isChainStart = site.prev === null || site.prev === undefined || !inGroup.has(site.prev);
+    const isChainEnd = site.next === null || site.next === undefined || !inGroup.has(site.next);
+    return { site, pts, isChainStart, isChainEnd };
+  });
+  return (x, y) => {
+    let best = { d: Infinity, isCap: false, site: group[0], s: 0 };
+    for (const { site, pts, isChainStart, isChainEnd } of polylines)
+      for (let j = 0; j + 1 < pts.length; j++) {
+        const [ax, ay] = pts[j];
+        const [bx, by] = pts[j + 1];
+        const ex = bx - ax;
+        const ey = by - ay;
+        const len2 = ex * ex + ey * ey;
+        const isPoint = len2 < 1e-12;
+        const t = isPoint ? 0 : Math.min(1, Math.max(0, ((x - ax) * ex + (y - ay) * ey) / len2));
+        const d = Math.hypot(ax + ex * t - x, ay + ey * t - y);
+        const isCloser = d < best.d;
+        if (!isCloser) continue;
+        const isCap = (isChainStart && j === 0 && t === 0) || (isChainEnd && j === pts.length - 2 && t === 1);
+        best = { d, isCap, site, s: site.s[j] + (site.s[j + 1] - site.s[j]) * t };
+      }
+    const isWithin = best.d <= best.site.halfWidth + SITE_CLEARANCE_M;
+    const isAtFoot = best.site.ends.some((e) => Math.abs(e - best.s) <= SITE_END_REACH_M);
+    return { isInside: isWithin && !best.isCap, isAtFoot, distanceM: best.d };
+  };
+}
+
+/**
+ * An alpha line's gap carried on, a metre sample at a time, while the samples beyond it are inside
+ * the band and not at its foot (追記 4 K2): the part of the line that bends off the site inside the
+ * band (over 30°, so no sample along it) goes with the rest, and the first sample outside, or at the
+ * foot, stays. Reaching the line's end takes it out to the end. No SITE_CLEARANCE_M is added again at
+ * the new end: the band holds it already. Why not past the foot: siteCrossings keeps a crossing
+ * within SITE_END_REACH_M of an end as the ramp's own street, and there a street running into the
+ * ramp's mouth is the right shape (what the foot joins to).
+ */
+function intoBand(
+  street: RoadLine,
+  along: readonly number[],
+  [g0, g1]: [number, number],
+  band: (x: number, y: number) => BandPlace,
+  xy: (lon: number, lat: number) => [number, number],
+): [number, number] {
+  const total = along[along.length - 1];
+  const isTaken = (l: number) => {
+    const [lon, lat] = pointAlong(street, along, l);
+    const place = band(...xy(lon, lat));
+    return place.isInside && !place.isAtFoot;
+  };
+  let lo = g0;
+  const isAfterStart = lo > 0;
+  if (isAfterStart) for (let l = Math.ceil(lo) - 1; l >= 0 && isTaken(l); l--) lo = l;
+  let hi = g1;
+  const isBeforeEnd = hi < total;
+  if (isBeforeEnd) for (let l = Math.floor(hi) + 1; l <= total && isTaken(l); l++) hi = l;
+  // The last part under a metre past the last whole sample: out with it when the line's end is inside.
+  const isNearEnd = isBeforeEnd && hi > total - 1 && isTaken(total);
+  if (isNearEnd) hi = total;
+  return [lo, hi];
+}
+
+/** The point at arc length l along a line (lon, lat). */
+function pointAlong(street: RoadLine, along: readonly number[], l: number): [number, number] {
+  let i = 0;
+  while (i + 2 < along.length && along[i + 1] < l) i++;
+  const span = along[i + 1] - along[i];
+  const t = span > 0 ? Math.min(1, Math.max(0, (l - along[i]) / span)) : 0;
+  const k = i * 2;
+  return [
+    street.coords[k] + (street.coords[k + 2] - street.coords[k]) * t,
+    street.coords[k + 1] + (street.coords[k + 3] - street.coords[k + 1]) * t,
+  ];
 }
 
 /** The stretches as each street's gaps, SITE_CLEARANCE_M either side (as cutAtSites takes a crossing out). */
