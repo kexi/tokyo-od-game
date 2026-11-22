@@ -16,7 +16,7 @@ import {
   checkSeamHeading,
 } from "./checks";
 import { ST, STATION_STRIDE, type XwChunk, type XwDiagnostic, type XwRunSummary } from "./format";
-import { type BelowLinkRun, isEndUnder, portalReaches } from "./below";
+import { type BelowLinkRun, hasPortalsBeyond, portalReaches } from "./below";
 import type { DesignSpeed } from "../law/roadStandards";
 import { checkHeightStructures } from "./heightStructures";
 
@@ -136,8 +136,9 @@ export function violationsOf(
       : { z0: first[3], z1: last[last.length - STATION_STRIDE + 3] };
     // S7-3 3.4: an end going on under the ground is measured from the portals beyond it, as setupBelow
     // does (the same below.ts functions, read from the files' ends and end stations).
-    const isUnder = isEndUnder(links, r.id, 0) || isEndUnder(links, r.id, 1);
-    const ends = isUnder ? { ...plainEnds, reaches: portalReaches(links, r.id) } : plainEnds;
+    const ends = hasPortalsBeyond(links, r.id)
+      ? { ...plainEnds, reaches: portalReaches(links, r.id) }
+      : plainEnds;
     const isTunnelFree = isHeight && isTunnelFreeRun(list, r, ends);
     // A run at grade's cuts are T13's (its road is within a band of the ground, no ceiling). A viaduct
     // -tagged run's cuts keep T12 (review W10): they are deeper than the dead band by what they are.

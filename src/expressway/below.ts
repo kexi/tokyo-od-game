@@ -125,8 +125,17 @@ export type BelowLinkRun = {
   below: boolean;
   ends: [BelowLinkEnd, BelowLinkEnd];
   ground: [number, number];
+  /**
+   * S7-2 3.3 (`--portal-approach cut`): where an end's portal stands beyond the end, on the lowered
+   * approach (the run at grade the end seams onto): the way to it (the lowered stretch's length) and
+   * its ground there, and the speed over the stretch. Left out (or null for an end) where the portal is
+   * the end itself, at its own ground.
+   */
+  portalAt?: [PortalAt | null, PortalAt | null];
 };
 export type BelowLinkEnd = { kind: string; parent?: string; parentS?: number };
+/** A portal beyond a below run's end (BelowLinkRun.portalAt): `offsetM` m on, its ground `z`, the speed `V` over the way. */
+export type PortalAt = { offsetM: number; z: number; V: DesignSpeed };
 
 /** A portal a ceiling is measured from: `offset` m beyond the run's end, its ground, the speed over the way. */
 export type PortalReach = { offset: number; z: number; V: DesignSpeed };
@@ -141,6 +150,28 @@ const AT_END_M = 0.5;
  */
 export function isEndUnder(runs: ReadonlyMap<string, BelowLinkRun>, id: string, side: 0 | 1): boolean {
   return nextUnder(runs, id, side) !== null;
+}
+
+/**
+ * Whether a below run's ceilings are measured from portals other than its own two ends at their ground
+ * (portalReaches, else ceilingAt as before): an end goes on under the ground (S7-3 3.4), or an end's
+ * portal stands beyond it on a lowered approach (S7-2 3.3). The compiler (compile.ts belowReachesOf)
+ * and T12 (violations.ts) both ask this, so both measure from the same portals.
+ */
+export function hasPortalsBeyond(runs: ReadonlyMap<string, BelowLinkRun>, id: string): boolean {
+  const r = runs.get(id);
+  if (r === undefined) return false;
+  const isUnder = isEndUnder(runs, id, 0) || isEndUnder(runs, id, 1);
+  const isLowered = (r.portalAt ?? []).some((p) => p !== null);
+  return isUnder || isLowered;
+}
+
+/** The portal at a below run's end that does not go on under the ground: on its lowered approach, or the end. */
+function portalAtEnd(q: BelowLinkRun, side: 0 | 1, dist: number, V: DesignSpeed): PortalReach {
+  const beyond = q.portalAt?.[side] ?? null;
+  const isOwn = beyond === null;
+  if (isOwn) return { offset: dist, z: q.ground[side], V };
+  return { offset: dist + beyond.offsetM, z: beyond.z, V: Math.max(V, beyond.V) as DesignSpeed };
 }
 
 /** The below run an end goes on into, and where on it, or null where the end is a portal. */
@@ -184,6 +215,8 @@ function nextUnder(
  * ends that go on too, a loop followed once round (an end met twice is not followed again). The speed
  * is the highest planV along the way (the gentlest grade: a ceiling is imposed only where even it
  * reaches). An end whose way meets no portal (a closed underground loop) is read as its own portal.
+ * A portal on a lowered approach (S7-2 3.3, BelowLinkRun.portalAt) adds its stretch's length to the way,
+ * at the stretch's start's ground, by the same sum: also when it is reached through the runs beyond.
  */
 export function portalReaches(
   runs: ReadonlyMap<string, BelowLinkRun>,
@@ -191,7 +224,7 @@ export function portalReaches(
 ): [PortalReach[], PortalReach[]] {
   const r = runs.get(id)!;
   const at = (side: 0 | 1): PortalReach[] => {
-    const own: PortalReach = { offset: 0, z: r.ground[side], V: r.planV };
+    const own = portalAtEnd(r, side, 0, r.planV);
     const start = nextUnder(runs, id, side);
     if (start === null) return [own];
     const out: PortalReach[] = [];
@@ -220,7 +253,7 @@ export function portalReaches(
         seen.add(key);
         const dist = acc + Math.abs(s - (fs === 0 ? 0 : q.lengthM));
         if (next === null) {
-          out.push({ offset: dist, z: q.ground[fs], V: speed });
+          out.push(portalAtEnd(q, fs, dist, speed));
           continue;
         }
         walk(next.run, next.s, next.side, q.id, dist, speed);

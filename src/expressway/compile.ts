@@ -52,7 +52,7 @@ import {
   type BelowLinkRun,
   belowDeferralOf,
   ceilingFrom,
-  isEndUnder,
+  hasPortalsBeyond,
   type PortalReach,
   portalReaches,
   belowStructure,
@@ -3406,8 +3406,7 @@ function belowReachesOf(
 ): [PortalReach[], PortalReach[]] | null {
   const links = belowLinksOf(plan, ground);
   const id = rp.run.id;
-  const isUnder = isEndUnder(links, id, 0) || isEndUnder(links, id, 1);
-  if (!isUnder) return null;
+  if (!hasPortalsBeyond(links, id)) return null;
   return portalReaches(links, id);
 }
 
