@@ -7,6 +7,9 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:check-convergence-expressway-tunnels-s7-4b, at: 2026-11-22T14:38:00Z }
+  - { by: process:vitest-s7-4b, at: 2026-11-22T13:40:00Z }
+  - { by: process:check-expressway-terrain-s7-4b, at: 2026-11-22T13:44:00Z }
   - { by: process:measure-expressway-area-s7-3-opening-side, at: 2026-11-22T14:20:00Z }
   - { by: process:measure-expressway-area-u13, at: 2026-11-22T13:47:00Z }
   - { by: process:make-expressway-data-u13, at: 2026-11-22T13:35:00Z }
@@ -3912,6 +3915,49 @@ S7（地下全面）の合否を数で決めるための土台。スコアカー
 - `tests/expresswayBelow.test.ts`: 格子の間の崖で T12 が拾う（下の既知の欠落）。
 
 [^p27s73]: 指示は scratchpad の p27/s7r/s7-3-instructions.md。判定は s7-3-review0.md・s7-3-review1.md（追記 1・2）・s7-3-review2.md（設計 Fable、2026-11-18〜22）。計測は `.cache/expressway-area/s73-*`・`.qa/expressway/s73-*.report.json`・`.qa/s73/`（probe*.mts・moved.mts・stopcheck2.mts・final.mts・seamchords.mts・t8keys.mts・生成のログ、ローカル、git 管理外）。
+
+# S7-4b 穴の縁の補間（実行時、既定のタイル不変、2026-11-22）
+
+トンネルの口の近くで、地形の穴（`expresswayBore.ts boreHoles`）の縁を、測点の上でなく測点の間に置く。前は縁が測点の上に乗り、直線のトンネルでは最大約 21 m おきだったので、路面が 7 cm 動くと縁が 20 m 跳んだ（P2.7-6 PR 7c の麻布台、737538573:2 の s 492.67）。[^p27s74b]
+
+## 規則
+
+- `isHoleAt` が切り替わる 2 つの測点の間で、`ground − z`（地表 − 路面）を測点の間で線形に取り、しきい値（`TUNNEL_INNER_HEIGHT_M + 頂版 + HEAD_OVER_GROUND_M` = 6.7 m）をまたぐ点に縁を置く（`holeShare`）。縁はその区間に直角、幅は今までどおり。
+- 掘割と盛土は全長が穴なので変わらない。深いトンネル（どの測点も穴でない）も変わらない。
+- 1 つだけしきい値を下回る測点は、前は穴を作らなかった（多角形が 2 点で面積 0）。今は、前後の 2 つのまたぐ点の間が穴になる（規則に測点の数が無いため）。
+- 継ぎ目の補正（`HOLE_SEAM_M`・`SEAM_AT_GROUND_M`）は今のまま。チャンクの端の測点は補間しない（隣のチャンクの最初の測点と同じ点）。
+- 採らなかった案:
+  - エルミートの路面で補間する: 地表は測点の値だけで、測点の間は線形しか無い。
+  - 縁を測点の上のまま、しきい値に余裕を持たせる: 新しい閾値になり、跳びは残る。
+
+## 計測（trust signal、2026-11-22、M2 Max、既定データ adc7f7c）
+
+- **麻布台 737538573 の穴**（`.qa/s74/azabudai.ts`）
+  - :2 の穴の始まりが s 492.67 → **490.84**（472.67〜492.67 の 0.909、地表 − 路面 7.197 → 6.650 m）。片側 1 頂点ずつ増えた（14 → 16）。面積は 1,473 → 1,499 m²。
+  - :0（掘割）は変わらない（28 頂点、1,099.1 m²）。:1 は穴が無いまま（s 134.47 の 6.821 m はしきい値より上）。
+  - テストの期待値は `[84, 922761830, 573913335]` → `[88, 215627151, 812888198]`（頂点の値の数・頂点のハッシュ・地形のマスクのハッシュ）。
+- **街路**（`.qa/s74/streetcuts.ts`、地理院の z16 の写し、0.05 m おきに穴の内の長さを測った）
+  - トンネルの穴に掛かる線は前後とも同じ 7 本（タイルと番号 16/58206/25810 の #66・#75・#76・#77・#80・#81・#84）。新しく切られる線は無い（地理院の線は id を持たないので、タイルと番号と始点で名指した）。
+  - 長くなったのは #80（prefectural、幅 40）と #81（highway、幅 4.3）の 2 本だけで、どちらも 17.48 → 19.33 m・17.50 → 19.35 m（+1.85 m）。2 本はトンネルに沿って走る線で、縁が s 492.67 → 490.84 へ 1.83 m 動いた分と合う。ほかの 5 本は 0.00 m。
+  - 穴から外れる長さは 0。
+- **地形の探り**（`just check-expressway-terrain`）: 前後で同じ（49 チャンク・80,576 点、terrainOut・drawnOut・colliderOut・streetOut 0、endTerrainOut 68、endStreetOut 0）。この探りは盛土と掘割だけを見て、トンネルの穴は見ない。
+- **建物・水**: 穴の多角形の中の建物は隠される（main.ts `addHiddenRings`）。建物の写しが手元に無いので数では見ていない。撮影で見た。
+- **撮影**（鍵を 1 本ずつ取って、vite :5347）
+  - `expressway` の `azabudai-hole-overhead`・`azabudai-hole-ground` を前後で（s74b-before 13:52〜13:54Z、s74b-after 14:24〜14:25Z、昼・夕・夜・雨の夜で 8 コマずつ、失敗 0）。前後で違うのは歩行者だけで、建物・街路・歩道・地形・水は同じ。
+  - `expressway-tunnels` の 2 周（round-01・02、14:26〜14:37Z、22 コマずつ、失敗 0）。指摘 0 が 2 周で `check-convergence` は converged。
+
+## テスト
+
+`tests/expresswayGradeStructures.test.ts`「掘割と土被りのあるトンネルの継ぎ目、既定データの穴」が、次を保証する。
+
+- 縁が、測点の間でしきい値をまたぐ点に来る（s 40〜50 の 1/4 で s 42.5。その点の地表 − 路面がしきい値）。
+- 路面を 7.1 cm 動かして、測点 1 つがしきい値をまたいでも、縁の動きは補間から出る量で、1.2 m 未満（麻布台の形）。
+- 1 つだけしきい値を下回る測点の穴は、前後のまたぐ点の間（s 45〜55）。どの測点も上なら穴は無い。
+- 掘割の穴は測点の上のまま（11 測点・22 頂点）。
+- 既定データの麻布台の穴は、しきい値を下回る測点の並びごとに 1 つで、頂点は測点とまたぐ点の 2 倍（継ぎ目の 2 を足す）。
+- 直した後のコードを origin/main の `expresswayBore.ts` に戻すと、この 5 つが落ちる（確かめた）。
+
+[^p27s74b]: 指示は scratchpad の p27/s7r/s7-4-instructions.md の 4 節。判定は s7-4-review0.md（b を先に出してよい）。探りのスクリプトと出力は `.qa/s74/`（azabudai.ts・streets.ts・streetcuts.ts・streetcuts.txt・terrain-before.txt・terrain-after.txt、撮影の views-before・views-after、ローカル、git 管理外）。
 
 # P2.7 R1-2-0 探りをゲームと同じ網で（2026-11-18）
 
