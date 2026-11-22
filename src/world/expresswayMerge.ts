@@ -860,7 +860,9 @@ export class DeckMerge {
       const tipReach = Math.max(stretchReach, near + STEP_TUCK, own.hw);
       // Addendum 5: an opened side floors its wall band too, at road height, out to its slab edge (a
       // groove under the removed wall where the other's floor did not reach), unless it ends on a seam.
-      const bandReach = isCutHere ? 0 : own.edge;
+      // Not on a seam's side: its reach is the seam's, which lies past this centre where the other covers
+      // it (negative), and a floor at 0 there dropped the seam (98848277:0 under 331922709).
+      const bandReach = isCutHere ? -Infinity : own.edge;
       const reach = isDivider
         ? Math.max(middle, own.hw)
         : Math.max(isTip ? tipReach : stretchReach, bandReach);

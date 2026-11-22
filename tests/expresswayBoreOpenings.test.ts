@@ -140,6 +140,8 @@ function pair(
     mStep?: number;
     /** How far past where the carriageways part (x) the data's stretch runs on (G: the stretch is the band, not one surface). */
     stretchExtra?: number;
+    /** Where C's same stretch with M ends (x), if not where M's does (H: C not cut on M's edge at the stretch's end). */
+    cSameEnd?: number;
   } = {},
 ) {
   const { structure, drift, mBreaks, mEnd } = shape;
@@ -190,7 +192,14 @@ function pair(
   const c = chunk("C:0", "C", cStructure, cStations, groundOf(cStructure), {
     h0: heading,
     h1: heading,
-    decks: [{ with: "M", relation: "same", s0: 0, s1: round2((apartX + 0.5 / drift - NOSE) * k) }],
+    decks: [
+      {
+        with: "M",
+        relation: "same",
+        s0: 0,
+        s1: round2(((options.cSameEnd ?? apartX + 0.5 / drift) - NOSE) * k),
+      },
+    ],
     ...(withOpenings && isCUnder ? { openings: [stretchC] } : {}),
   });
   const runs = [
@@ -849,16 +858,21 @@ describe("S7-4a 区間の内の高さの差と壁の帯の床（レビュー 1 �
     }
   });
 
-  // WIP (addendum 5): fails at C s 5 (near the nose) on this code and passes on the code before it;
-  // being looked into, skipped so the branch stays green.
-  it.skip("H: an opened side with no seam floors its wall band at road height (no groove under the removed wall)", () => {
-    const { m, c, runs } = pair(CUT);
+  it("H: an opened side with no seam floors its wall band at road height (no groove under the removed wall)", () => {
+    // C's same stretch with M ends 25 m short of the opening's: past its pad (20 m) C is no longer cut
+    // on M's edge and has no seam on the stretch's last metres, where its own floor must cover its band.
+    const apart = NOSE + (HW_M + HW_C) / 0.12;
+    const { m, c, runs } = pair(CUT, { cSameEnd: apart - 25 });
     const index = indexOf([...m, c], runs);
     // C's body alone (merged with M through the index): its own floor must cover its band, not M's.
     const { world, built: b } = worldOf([c], index);
     const kC = Math.hypot(1, 0.12);
     const isBandOpen = (sd: (typeof cAll)[number]["side"]) =>
-      Boolean(sd.opening) && !sd.opening!.isDivider && !sd.opening!.isCovered && sd.seam === null;
+      Boolean(sd.opening) &&
+      !sd.opening!.isDivider &&
+      !sd.opening!.isCovered &&
+      !sd.opening!.isTip &&
+      sd.seam === null;
     const cBuilt = b.get("C:0")!;
     // Rings where C's road shows (not closed under M: both ends not met).
     const cAll = openedRings(cBuilt, "right").filter(
