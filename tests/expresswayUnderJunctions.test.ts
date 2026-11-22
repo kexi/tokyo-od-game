@@ -272,6 +272,81 @@ describe("B. 地平のランプと掘割の分合流（7c0 の網を compile で
   });
 });
 
+/**
+ * A cut main line going east (x 500–1300 on y = 0) whose chain starts 4.2 km away to the north-west
+ * (a viaduct from (−3000, 3000) down to the origin, then at grade), and a cut ramp leaving it at x = 900
+ * (`merge`: joining there, coming from the west) on the north (`toLeft`) or the south. Each run's plane
+ * has its chain's first node for its origin, so the two runs' planes lie kilometres apart. `farNorth`
+ * false starts the chain 4.2 km to the south-west instead: one of the two places turns a side whose
+ * sign is taken from the two planes' raw x, y (before S7-4 判定 0) the wrong way, for each case.
+ */
+function cutWithFarChain(toLeft: boolean, merge: boolean, farNorth: boolean): Network {
+  const net: Network = { ways: new Map(), nodes: new Map() };
+  const add = (id: number, x: number, y: number) => {
+    const [lon, lat] = plane.toLonLat(x, y);
+    net.nodes.set(id, normalizeNode(id, lon, lat, {}));
+    return id;
+  };
+  const far: number[] = [];
+  const farY = farNorth ? 3000 : -3000;
+  for (let i = 0; i < 60; i++) far.push(add(900000 + i, -3000 + 50 * i, farY * (1 - i / 60)));
+  far.push(nodeAt(0));
+  const along = (x0: number, x1: number) => {
+    const ids: number[] = [];
+    for (let x = x0; x <= x1; x += 50) ids.push(add(nodeAt(x), x, 0));
+    return ids;
+  };
+  net.ways.set(91, normalizeWay(91, far, bridge));
+  net.ways.set(92, normalizeWay(92, along(0, 500), atGrade));
+  net.ways.set(93, normalizeWay(93, along(500, 1300), cut));
+  net.ways.set(94, normalizeWay(94, along(1300, 1600), atGrade));
+  net.ways.set(95, normalizeWay(95, along(1600, 2100), bridge));
+  const side = toLeft ? 1 : -1;
+  const offsets = [15, 40, 80, 130, 190, 260, 340, 430];
+  const pts = offsets.map((dy, i) => [merge ? 900 - 50 * (i + 1) : 900 + 50 * (i + 1), side * dy] as const);
+  const ramp = pts.map(([x, y], i) => add(800001 + i, x, y));
+  const linkCut = { ...link, cutting: "yes", layer: "-1" };
+  const ids = merge ? [...ramp.toReversed(), nodeAt(900)] : [nodeAt(900), ...ramp];
+  const parts = merge
+    ? [ids.slice(0, 3), ids.slice(2, 5), ids.slice(4)]
+    : [ids.slice(0, 5), ids.slice(4, 7), ids.slice(6)];
+  const tags = merge ? [linkBridge, link, linkCut] : [linkCut, link, linkBridge];
+  parts.forEach((p, i) => net.ways.set(96 + i, normalizeWay(96 + i, p, tags[i])));
+  return net;
+}
+
+describe("B3. 開口の側（S7-4 判定 0: 鎖の平面が違う 2 本）", () => {
+  for (const merge of [false, true])
+    for (const toLeft of [true, false]) {
+      const name = `${merge ? "merging" : "diverging"} on the ${toLeft ? "left" : "right"}`;
+      it(`${name}: the main line's opening is on the ramp's side, and the ramp's on the other`, () => {
+        for (const farNorth of [true, false]) {
+          const plan = planNetwork(cutWithFarChain(toLeft, merge, farNorth), new Set(), null, [], on);
+          const res = solvePlan(plan, flat, []);
+          const rampId = merge ? "98" : "96";
+          const rampEnd = merge ? runsOf(res).get(rampId)!.end : runsOf(res).get(rampId)!.start;
+          expect(rampEnd).toMatchObject({ kind: "junction", parent: "93" });
+          const chunks = byRun(res.chunks);
+          const mainOpenings = chunks
+            .get("93")!
+            .flatMap((c) => c.openings ?? [])
+            .filter((o) => o.with === rampId);
+          const rampOpenings = chunks
+            .get(rampId)!
+            .flatMap((c) => c.openings ?? [])
+            .filter((o) => o.with === "93");
+          expect(mainOpenings.length).toBeGreaterThan(0);
+          expect(rampOpenings.length).toBeGreaterThan(0);
+          const mainSide = toLeft ? "left" : "right";
+          const rampSide = toLeft ? "right" : "left";
+          expect(new Set(mainOpenings.map((o) => o.side))).toEqual(new Set([mainSide]));
+          // Two roads going the same way see each other on opposite sides.
+          expect(new Set(rampOpenings.map((o) => o.side))).toEqual(new Set([rampSide]));
+        }
+      });
+    }
+});
+
 describe("B2. 屋根のあるトンネルの上の cross（S7-3 判定 1 の 2）", () => {
   /** The main line's tunnel under the 30 m hill (x 1100–2900), and a road crossing over it at x 2000. */
   const crossing = (middle: Record<string, string>, lower: Record<string, string> = tunnel) => {
