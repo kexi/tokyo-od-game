@@ -421,7 +421,8 @@ export const LOG_EVENTS = {
     angleDeg: z.number(),
     widthM: z.number(),
     overGroundM: z.number(),
-    kind: z.enum(["cut", "under"]),
+    /** cut / under: crosses the site; same-road: the street's whole width lies in it (the ramp itself, R1-2b M1). */
+    kind: z.enum(["cut", "under", "same-road"]),
     tunnel: z.boolean(),
   }),
   /**
@@ -525,6 +526,29 @@ export const LOG_EVENTS = {
     s0: z.number(),
     s1: z.number(),
     maxDzM: z.number(),
+  }),
+  /**
+   * A tunnel or cut chunk's openings as built (S7-4a, expresswayMerge.ts openBore): the stretches
+   * opened per other run and side (`tipM`: how far past the data's stretch, the other run's
+   * carriageway still inside the wall band), the other runs with no loaded chunk (N1: walls kept)
+   * and the stretches where the other run lies on the side opposite the data's (walls kept). One
+   * line per chunk that has any of them.
+   */
+  expressway_bore_opening: info({
+    chunk: z.string(),
+    opened: z.array(
+      z.object({
+        with: z.string(),
+        side: z.enum(["left", "right"]),
+        s0: z.number(),
+        s1: z.number(),
+        tipM: z.number(),
+      }),
+    ),
+    noPartner: z.array(z.string()),
+    sideMismatch: z.array(
+      z.object({ with: z.string(), side: z.enum(["left", "right"]), s0: z.number(), s1: z.number() }),
+    ),
   }),
   /**
    * A chunk's 分離壁 between it and a same-direction deck that has let go of one surface below it
@@ -814,7 +838,9 @@ export const LOG_EVENTS = {
    * The autopilot's car in front changed (`changed`, a fresh pick only), or the last pick at an
    * accident (`accident`; `staleTicks` driver updates since it was made: the offLane hold makes
    * none). The car: `pathOffM` from its driven path, `ownM` its nose across the path (+ left),
-   * the band (m) a vehicle has to be within of it. Each vehicle placed up to 60 m ahead: its log ref
+   * the band (m) a vehicle has to be within of it, and the slant it swept by (`slantPerM`, across per
+   * metre along, + left: the smaller of the heading's `headingSlantPerM` and the nose's drift over the
+   * last 8 m `driftPerM` when both point the same way, else 0; D4 v2). Each vehicle placed up to 60 m ahead: its log ref
    * (as accident's otherRef), who it is, along (`aheadM`) and across the path, across from the nose
    * (`fromOwnM`), straight-line distance, seconds stood. `dropped`: near ahead in a straight line
    * (to 60 m, 4 m across the heading) but left out of the look, and why (another level, off the path).
@@ -832,6 +858,9 @@ export const LOG_EVENTS = {
     pathOffM: z.number(),
     ownM: z.number(),
     bandM: z.number(),
+    slantPerM: z.number(),
+    headingSlantPerM: z.number(),
+    driftPerM: z.number(),
     pickedRef: count.nullable(),
     candidates: z.array(
       z.strictObject({
@@ -1619,6 +1648,61 @@ export const LOG_EVENTS = {
     byRun: z.array(z.strictObject({ run: z.string(), lanes: count, longestM: z.number().nonnegative() })),
   }),
   /**
+   * P2.7 R1-2b PR 1 (scripts/measureSameRoad.ts): the GSI street lines the same-road rule (M1, α)
+   * takes out, one a line, as joinExpressway cuts them: how many, how long, by width class, whether
+   * taking them out keeps through traffic, how their stretches end, how many run along the site for
+   * most of their length, and the pieces left of them inside the band and not at the foot (none is
+   * the rule's line, 追記 4 K4 2).
+   */
+  street_same_road_measured: info({
+    dir: z.string(),
+    skippedForMissingTiles: count,
+    lines: count,
+    alphaM: count,
+    extendedM: z.number().nonnegative(),
+    piecesLeft: count,
+    leftInBandNotFoot: count,
+    leftAtFoot: count,
+    byClass: counts,
+    byThrough: counts,
+    byEnds: counts,
+    wholeAlong: count,
+    partAlong: count,
+    fragmentsMismatch: count,
+    islands: count,
+    keptByVerdict: counts,
+  }),
+  /**
+   * P2.7 R1-2b PR 1 (scripts/expresswaySameRoadIslands.ts): the islands of the game's network round
+   * the sites (components other than the largest; cut by the window's edge, closed inside it, inside
+   * and of class 0 streets only), and those the same-road rule makes (count, length m, where).
+   */
+  street_same_road_islands_counted: info({
+    dir: z.string(),
+    missingTiles: count,
+    windows: count,
+    edge: z.strictObject({ count, lengthM: count }),
+    inside: z.strictObject({ count, lengthM: count }),
+    insideClass0Only: z.strictObject({ count, lengthM: count }),
+    madeByRule: z.strictObject({ count, lengthM: count }),
+    madeByRuleAt: z.array(z.string()),
+  }),
+  /**
+   * P2.7 R1-2b PR 1 (scripts/expresswaySameRoadStability.ts): the same-road rule's answers over every
+   * window the game builds round the car: how many windows and lines, and how many lines (alpha ones
+   * apart) get more than one answer outside the edge band (none is the rule's line) or only in it.
+   */
+  street_same_road_stability_measured: info({
+    dir: z.string(),
+    missingTiles: count,
+    windows: count,
+    lines: count,
+    alphaLines: count,
+    differOutsideBand: count,
+    alphaDifferOutsideBand: count,
+    differInBandOnly: count,
+  }),
+  /**
    * P2.7 R1-2 (scripts/measureStreetBands.ts): the street segments an expressway's site runs along,
    * by R1-2a's class (memo 改訂 1, 3.3: clear, A median, A' room cap, B1 / B2 / B3 / C not given), and the
    * jumps, pavements, feet, piers and two-segment nodes round them.
@@ -1694,6 +1778,19 @@ export const LOG_EVENTS = {
     statuses: z.strictObject({ new: count, accepted: count, open: count, wontfix: count, gone: count }),
     byRule: count,
     seamProbes: count,
+    /**
+     * The tunnels' and cuts' openings as built (S7-4a, expresswaySeams.ts BoreProbe): stretches
+     * opened (by chunk), named runs with no chunk (N1), stretches on the data's wrong side, and the
+     * level rays along the opened stretches where both rings round them are open (no 分離壁, not
+     * walled again) and those that met a wall of the chunk's own (0 expected).
+     */
+    boreOpenings: z.strictObject({
+      opened: count,
+      noPartner: count,
+      sideMismatch: count,
+      wallRays: count,
+      wallHits: count,
+    }),
     budget: z.boolean(),
     bytes: count,
     /** report.json diagnostics whose `allowed` the new ledger turned (the file rewritten when > 0). */

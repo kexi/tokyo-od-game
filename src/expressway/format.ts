@@ -46,11 +46,11 @@ export const XW_VERSION = 6;
 export const XW_FEATURES = ["below", "height-structures", "below-junctions"] as const;
 export type XwFeature = (typeof XW_FEATURES)[number];
 /**
- * The features the game reads (src/world/expresswayDeck.ts isSupportedMeta): the writer's list less
- * "below-junctions", whose openings the runtime does not cut yet (S7-4 adds it). Why apart from
- * XW_FEATURES: a reader that took the writer's list would read a file it cannot draw.
+ * The features the game reads (src/world/expresswayDeck.ts isSupportedMeta): since S7-4a all the
+ * writer names, "below-junctions" with its openings cut (expresswayMerge.ts openBore). Why apart from
+ * XW_FEATURES: a feature the writer adds before the reader draws it is refused until then (S7-3).
  */
-export const XW_READER_FEATURES: readonly XwFeature[] = ["below", "height-structures"];
+export const XW_READER_FEATURES: readonly XwFeature[] = ["below", "height-structures", "below-junctions"];
 /** Values per pier in `XwChunk.piers`: s, ground (T.P. m). */
 export const PIER_STRIDE = 2;
 /**

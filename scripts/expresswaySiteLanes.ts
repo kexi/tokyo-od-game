@@ -4,15 +4,18 @@
 // the ledger's key. Plane positions are three's Vector3 in a LocalFrame (x east, z south; y unused).
 import type { Vector3 } from "three";
 
-/** Shorter than this within the slab is a street's end at the site's edge, not a lane over it (m). */
-export const MIN_LENGTH_M = 3;
+/**
+ * Shorter than MIN_LENGTH_M within the slab is a street's end at the site's edge, not a lane over it;
+ * places of one run and street width closer than JOIN_GAP_M along the run are one place (m). The
+ * game's same-road test (expresswayRoads.ts sameRoadJudgements, P2.7 R1-2b) uses the same two.
+ */
+import { JOIN_GAP_M, MIN_LENGTH_M } from "../src/world/expresswayRoads.ts";
+export { JOIN_GAP_M, MIN_LENGTH_M };
 /**
  * Past the slab's first or last station by less than this, the nearest point on the centre line is its
  * end and the distance is to the end face, not to the slab beside the lane: not counted (m).
  */
 export const END_FACE_M = 0.5;
-/** Places of one run and street width closer than this along the run are one place (m). */
-export const JOIN_GAP_M = 1;
 
 /** An embankment's slab: its centre line (points and their run distances) and the edge's offset. */
 export type SiteLine = { centre: readonly Vector3[]; s: readonly number[]; edgeM: number };
