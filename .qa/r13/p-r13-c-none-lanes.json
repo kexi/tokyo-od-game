@@ -1,0 +1,772 @@
+[
+  {
+    "run": "1006338881",
+    "chunk": "1006338881:1",
+    "s0": 22.1,
+    "s1": 31.3,
+    "lengthM": 10,
+    "streetM": 22,
+    "nearestM": 0.14,
+    "lanes": 2
+  },
+  {
+    "run": "106909100",
+    "chunk": "106909100:1",
+    "s0": 28.4,
+    "s1": 47.8,
+    "lengthM": 23,
+    "streetM": 9,
+    "nearestM": 0,
+    "lanes": 2
+  },
+  {
+    "run": "106909100",
+    "chunk": "106909100:1",
+    "s0": 28.6,
+    "s1": 66.8,
+    "lengthM": 26,
+    "streetM": 30,
+    "nearestM": 0.87,
+    "lanes": 3
+  },
+  {
+    "run": "106911692",
+    "chunk": "106911692:0",
+    "s0": 7.2,
+    "s1": 41.5,
+    "lengthM": 26,
+    "streetM": 30,
+    "nearestM": 0.14,
+    "lanes": 3
+  },
+  {
+    "run": "106911692",
+    "chunk": "106911692:0",
+    "s0": 14.7,
+    "s1": 31.1,
+    "lengthM": 17,
+    "streetM": 9,
+    "nearestM": 1.09,
+    "lanes": 2
+  },
+  {
+    "run": "106911692",
+    "chunk": "106911692:0",
+    "s0": 30.6,
+    "s1": 32.3,
+    "lengthM": 3,
+    "streetM": 4.3,
+    "nearestM": 2.55,
+    "lanes": 2
+  },
+  {
+    "run": "1125559318",
+    "chunk": "1125559318:0",
+    "s0": 1.1,
+    "s1": 115.5,
+    "lengthM": 47,
+    "streetM": 42.5,
+    "nearestM": 0,
+    "lanes": 2
+  },
+  {
+    "run": "1126982258",
+    "chunk": "1126982258:0",
+    "s0": 25,
+    "s1": 34.9,
+    "lengthM": 11,
+    "streetM": 4.3,
+    "nearestM": 1.32,
+    "lanes": 1
+  },
+  {
+    "run": "1307261762",
+    "chunk": "1307261762:2",
+    "s0": 96,
+    "s1": 142.8,
+    "lengthM": 45,
+    "streetM": 42.5,
+    "nearestM": 0.34,
+    "lanes": 2
+  },
+  {
+    "run": "1520640475",
+    "chunk": "1520640475:0",
+    "s0": 9.5,
+    "s1": 67.9,
+    "lengthM": 43,
+    "streetM": 4.3,
+    "nearestM": 0.01,
+    "lanes": 1
+  },
+  {
+    "run": "1563717359",
+    "chunk": "1563717359:1",
+    "s0": 23.1,
+    "s1": 41.1,
+    "lengthM": 19,
+    "streetM": 25,
+    "nearestM": 2.69,
+    "lanes": 1
+  },
+  {
+    "run": "1563717359",
+    "chunk": "1563717359:1",
+    "s0": 23.3,
+    "s1": 26.3,
+    "lengthM": 4,
+    "streetM": 4.3,
+    "nearestM": 1.8,
+    "lanes": 1
+  },
+  {
+    "run": "172358470",
+    "chunk": "172358470:0",
+    "s0": 5.9,
+    "s1": 22.5,
+    "lengthM": 18,
+    "streetM": 4.3,
+    "nearestM": 0,
+    "lanes": 2
+  },
+  {
+    "run": "172358470",
+    "chunk": "172358470:0",
+    "s0": 8.6,
+    "s1": 22.6,
+    "lengthM": 13,
+    "streetM": 25,
+    "nearestM": 0.05,
+    "lanes": 3
+  },
+  {
+    "run": "172358487",
+    "chunk": "172358487:0",
+    "s0": 0.6,
+    "s1": 117.2,
+    "lengthM": 71,
+    "streetM": 25,
+    "nearestM": 0,
+    "lanes": 3
+  },
+  {
+    "run": "186583188",
+    "chunk": "186583188:1",
+    "s0": 12.2,
+    "s1": 38.9,
+    "lengthM": 25,
+    "streetM": 35,
+    "nearestM": 0.03,
+    "lanes": 2
+  },
+  {
+    "run": "202809278",
+    "chunk": "202809278:1",
+    "s0": 108.6,
+    "s1": 118.6,
+    "lengthM": 11,
+    "streetM": 40,
+    "nearestM": 0.72,
+    "lanes": 1
+  },
+  {
+    "run": "202809278",
+    "chunk": "202809278:1",
+    "s0": 119.7,
+    "s1": 187.4,
+    "lengthM": 51,
+    "streetM": 40,
+    "nearestM": 0,
+    "lanes": 2
+  },
+  {
+    "run": "202809279",
+    "chunk": "202809279:1",
+    "s0": 12.3,
+    "s1": 58,
+    "lengthM": 36,
+    "streetM": 40,
+    "nearestM": 0.01,
+    "lanes": 2
+  },
+  {
+    "run": "203832842",
+    "chunk": "203832842:0",
+    "s0": 9.7,
+    "s1": 23.2,
+    "lengthM": 9,
+    "streetM": 40,
+    "nearestM": 0.84,
+    "lanes": 1
+  },
+  {
+    "run": "203832842",
+    "chunk": "203832842:0",
+    "s0": 24.6,
+    "s1": 26.7,
+    "lengthM": 3,
+    "streetM": 40,
+    "nearestM": 0.89,
+    "lanes": 1
+  },
+  {
+    "run": "203832854",
+    "chunk": "203832854:0",
+    "s0": 1,
+    "s1": 38.3,
+    "lengthM": 28,
+    "streetM": 40,
+    "nearestM": 2.24,
+    "lanes": 1
+  },
+  {
+    "run": "203832854",
+    "chunk": "203832854:0",
+    "s0": 4.2,
+    "s1": 5.5,
+    "lengthM": 3,
+    "streetM": 2.5,
+    "nearestM": 0.66,
+    "lanes": 2
+  },
+  {
+    "run": "207535709",
+    "chunk": "207535709:0",
+    "s0": 6.3,
+    "s1": 9.6,
+    "lengthM": 5,
+    "streetM": 2.5,
+    "nearestM": 0.19,
+    "lanes": 2
+  },
+  {
+    "run": "207646123",
+    "chunk": "207646123:0",
+    "s0": 28.6,
+    "s1": 54.6,
+    "lengthM": 27,
+    "streetM": 25,
+    "nearestM": 1.32,
+    "lanes": 1
+  },
+  {
+    "run": "207646123",
+    "chunk": "207646123:0",
+    "s0": 36.5,
+    "s1": 54.8,
+    "lengthM": 20,
+    "streetM": 9,
+    "nearestM": 0.07,
+    "lanes": 2
+  },
+  {
+    "run": "207659109",
+    "chunk": "207659109:0",
+    "s0": 0.8,
+    "s1": 41.2,
+    "lengthM": 15,
+    "streetM": 37.5,
+    "nearestM": 0.03,
+    "lanes": 2
+  },
+  {
+    "run": "23273634",
+    "chunk": "23273634:0",
+    "s0": 0.9,
+    "s1": 52.4,
+    "lengthM": 20,
+    "streetM": 40,
+    "nearestM": 0.04,
+    "lanes": 2
+  },
+  {
+    "run": "24039713",
+    "chunk": "24039713:0",
+    "s0": 104.1,
+    "s1": 108.5,
+    "lengthM": 5,
+    "streetM": 16,
+    "nearestM": 0.41,
+    "lanes": 2
+  },
+  {
+    "run": "24039713",
+    "chunk": "24039713:0",
+    "s0": 104.9,
+    "s1": 110.2,
+    "lengthM": 6,
+    "streetM": 30,
+    "nearestM": 0.84,
+    "lanes": 2
+  },
+  {
+    "run": "24039713",
+    "chunk": "24039713:0",
+    "s0": 106.4,
+    "s1": 109.5,
+    "lengthM": 4,
+    "streetM": 35,
+    "nearestM": 1.19,
+    "lanes": 3
+  },
+  {
+    "run": "24039714",
+    "chunk": "24039714:1",
+    "s0": 27.1,
+    "s1": 30,
+    "lengthM": 4,
+    "streetM": 9,
+    "nearestM": 2.17,
+    "lanes": 1
+  },
+  {
+    "run": "24039714",
+    "chunk": "24039714:1",
+    "s0": 27.7,
+    "s1": 40.7,
+    "lengthM": 14,
+    "streetM": 25,
+    "nearestM": 1.47,
+    "lanes": 1
+  },
+  {
+    "run": "24402611",
+    "chunk": "24402611:0",
+    "s0": 28.2,
+    "s1": 29,
+    "lengthM": 3,
+    "streetM": 4.3,
+    "nearestM": 2.77,
+    "lanes": 1
+  },
+  {
+    "run": "24402611",
+    "chunk": "24402611:0",
+    "s0": 31.9,
+    "s1": 58.1,
+    "lengthM": 27,
+    "streetM": 50,
+    "nearestM": 0.68,
+    "lanes": 2
+  },
+  {
+    "run": "26956959",
+    "chunk": "26956959:1",
+    "s0": 143.5,
+    "s1": 172.7,
+    "lengthM": 13,
+    "streetM": 42.5,
+    "nearestM": 0.01,
+    "lanes": 2
+  },
+  {
+    "run": "27536961",
+    "chunk": "27536961:4",
+    "s0": 703.9,
+    "s1": 725,
+    "lengthM": 18,
+    "streetM": 35,
+    "nearestM": 0.92,
+    "lanes": 3
+  },
+  {
+    "run": "311740424",
+    "chunk": "311740424:0",
+    "s0": 0.6,
+    "s1": 22.7,
+    "lengthM": 23,
+    "streetM": 9,
+    "nearestM": 2.23,
+    "lanes": 1
+  },
+  {
+    "run": "311740425",
+    "chunk": "311740425:0",
+    "s0": 1.1,
+    "s1": 14.1,
+    "lengthM": 14,
+    "streetM": 9,
+    "nearestM": 0.16,
+    "lanes": 1
+  },
+  {
+    "run": "311740425",
+    "chunk": "311740425:0",
+    "s0": 37.4,
+    "s1": 39.4,
+    "lengthM": 3,
+    "streetM": 9,
+    "nearestM": 2.62,
+    "lanes": 1
+  },
+  {
+    "run": "36990038",
+    "chunk": "36990038:0",
+    "s0": 0.9,
+    "s1": 39.1,
+    "lengthM": 25,
+    "streetM": 35,
+    "nearestM": 0.02,
+    "lanes": 3
+  },
+  {
+    "run": "37793434",
+    "chunk": "37793434:2",
+    "s0": 174.4,
+    "s1": 184.6,
+    "lengthM": 4,
+    "streetM": 30,
+    "nearestM": 0.1,
+    "lanes": 4
+  },
+  {
+    "run": "378284472",
+    "chunk": "378284472:0",
+    "s0": 2.3,
+    "s1": 4.1,
+    "lengthM": 10,
+    "streetM": 4.3,
+    "nearestM": 0.37,
+    "lanes": 2
+  },
+  {
+    "run": "378284483",
+    "chunk": "378284483:1",
+    "s0": 112.7,
+    "s1": 114.5,
+    "lengthM": 10,
+    "streetM": 4.3,
+    "nearestM": 0.28,
+    "lanes": 2
+  },
+  {
+    "run": "40911760",
+    "chunk": "40911760:1",
+    "s0": 22.6,
+    "s1": 34.6,
+    "lengthM": 13,
+    "streetM": 16,
+    "nearestM": 0.45,
+    "lanes": 1
+  },
+  {
+    "run": "40911760",
+    "chunk": "40911760:1",
+    "s0": 34.9,
+    "s1": 51.8,
+    "lengthM": 18,
+    "streetM": 9,
+    "nearestM": 1.23,
+    "lanes": 1
+  },
+  {
+    "run": "41520088",
+    "chunk": "41520088:19",
+    "s0": 4223.5,
+    "s1": 4327.6,
+    "lengthM": 34,
+    "streetM": 16,
+    "nearestM": 4.07,
+    "lanes": 1
+  },
+  {
+    "run": "41520089",
+    "chunk": "41520089:0",
+    "s0": 1.4,
+    "s1": 70.5,
+    "lengthM": 37,
+    "streetM": 40,
+    "nearestM": 0.03,
+    "lanes": 2
+  },
+  {
+    "run": "41568401",
+    "chunk": "41568401:0",
+    "s0": 1.1,
+    "s1": 115.1,
+    "lengthM": 50,
+    "streetM": 42.5,
+    "nearestM": 0,
+    "lanes": 2
+  },
+  {
+    "run": "41568462",
+    "chunk": "41568462:0",
+    "s0": 0.8,
+    "s1": 50.4,
+    "lengthM": 20,
+    "streetM": 42.5,
+    "nearestM": 0.01,
+    "lanes": 2
+  },
+  {
+    "run": "41568462",
+    "chunk": "41568462:0",
+    "s0": 12.1,
+    "s1": 13.9,
+    "lengthM": 6,
+    "streetM": 4.3,
+    "nearestM": 0.1,
+    "lanes": 2
+  },
+  {
+    "run": "421488198",
+    "chunk": "421488198:0",
+    "s0": 32.6,
+    "s1": 49.5,
+    "lengthM": 18,
+    "streetM": 9,
+    "nearestM": 1.39,
+    "lanes": 1
+  },
+  {
+    "run": "422023166",
+    "chunk": "422023166:0",
+    "s0": 1,
+    "s1": 67.5,
+    "lengthM": 51,
+    "streetM": 40,
+    "nearestM": 0.27,
+    "lanes": 1
+  },
+  {
+    "run": "422023169",
+    "chunk": "422023169:0",
+    "s0": 5.4,
+    "s1": 46.8,
+    "lengthM": 42,
+    "streetM": 25,
+    "nearestM": 2.51,
+    "lanes": 1
+  },
+  {
+    "run": "45021976",
+    "chunk": "45021976:23",
+    "s0": 3412.7,
+    "s1": 3531.4,
+    "lengthM": 43,
+    "streetM": 40,
+    "nearestM": 0,
+    "lanes": 3
+  },
+  {
+    "run": "45021976",
+    "chunk": "45021976:23",
+    "s0": 3507.7,
+    "s1": 3508.3,
+    "lengthM": 3,
+    "streetM": 4.3,
+    "nearestM": 2.74,
+    "lanes": 1
+  },
+  {
+    "run": "45248411",
+    "chunk": "45248411:25",
+    "s0": 5916.9,
+    "s1": 5951.8,
+    "lengthM": 35,
+    "streetM": 35,
+    "nearestM": 2.1,
+    "lanes": 1
+  },
+  {
+    "run": "45248411",
+    "chunk": "45248411:25",
+    "s0": 5916.9,
+    "s1": 5954.2,
+    "lengthM": 38,
+    "streetM": 30,
+    "nearestM": 0.07,
+    "lanes": 4
+  },
+  {
+    "run": "47121414",
+    "chunk": "47121414:0",
+    "s0": 62.4,
+    "s1": 89.1,
+    "lengthM": 18,
+    "streetM": 9,
+    "nearestM": 0.02,
+    "lanes": 2
+  },
+  {
+    "run": "4848755",
+    "chunk": "4848755:0",
+    "s0": 1.2,
+    "s1": 61,
+    "lengthM": 37,
+    "streetM": 9,
+    "nearestM": 0,
+    "lanes": 2
+  },
+  {
+    "run": "5219298",
+    "chunk": "5219298:0",
+    "s0": 1.5,
+    "s1": 20.5,
+    "lengthM": 12,
+    "streetM": 37.5,
+    "nearestM": 0.06,
+    "lanes": 2
+  },
+  {
+    "run": "5219301",
+    "chunk": "5219301:2",
+    "s0": 241.3,
+    "s1": 298.5,
+    "lengthM": 58,
+    "streetM": 37.5,
+    "nearestM": 0.02,
+    "lanes": 2
+  },
+  {
+    "run": "5219302",
+    "chunk": "5219302:2",
+    "s0": 374.5,
+    "s1": 403.7,
+    "lengthM": 17,
+    "streetM": 37.5,
+    "nearestM": 0.78,
+    "lanes": 2
+  },
+  {
+    "run": "561915732",
+    "chunk": "561915732:1",
+    "s0": 74.5,
+    "s1": 117.7,
+    "lengthM": 35,
+    "streetM": 2.5,
+    "nearestM": 1.79,
+    "lanes": 1
+  },
+  {
+    "run": "760583394",
+    "chunk": "760583394:0",
+    "s0": 17.9,
+    "s1": 38,
+    "lengthM": 18,
+    "streetM": 9,
+    "nearestM": 0.14,
+    "lanes": 2
+  },
+  {
+    "run": "78334075",
+    "chunk": "78334075:2",
+    "s0": 176.7,
+    "s1": 180.6,
+    "lengthM": 5,
+    "streetM": 42.5,
+    "nearestM": 0.51,
+    "lanes": 2
+  },
+  {
+    "run": "78334075",
+    "chunk": "78334075:3",
+    "s0": 182.6,
+    "s1": 190,
+    "lengthM": 9,
+    "streetM": 42.5,
+    "nearestM": 0.19,
+    "lanes": 1
+  },
+  {
+    "run": "78334075",
+    "chunk": "78334075:3",
+    "s0": 240.7,
+    "s1": 244.5,
+    "lengthM": 5,
+    "streetM": 4.3,
+    "nearestM": 1.08,
+    "lanes": 1
+  },
+  {
+    "run": "820335271",
+    "chunk": "820335271:0",
+    "s0": 1.4,
+    "s1": 118,
+    "lengthM": 117,
+    "streetM": 2.5,
+    "nearestM": 1.15,
+    "lanes": 1
+  },
+  {
+    "run": "893332472",
+    "chunk": "893332472:1",
+    "s0": 183.7,
+    "s1": 300.8,
+    "lengthM": 50,
+    "streetM": 42.5,
+    "nearestM": 1.08,
+    "lanes": 2
+  },
+  {
+    "run": "895902565",
+    "chunk": "895902565:0",
+    "s0": 1.2,
+    "s1": 32.9,
+    "lengthM": 21,
+    "streetM": 40,
+    "nearestM": 3.35,
+    "lanes": 1
+  },
+  {
+    "run": "895902565",
+    "chunk": "895902565:1",
+    "s0": 72.9,
+    "s1": 88.4,
+    "lengthM": 14,
+    "streetM": 40,
+    "nearestM": 1.32,
+    "lanes": 3
+  },
+  {
+    "run": "895902565",
+    "chunk": "895902565:1",
+    "s0": 85.7,
+    "s1": 88.6,
+    "lengthM": 4,
+    "streetM": 16,
+    "nearestM": 1.4,
+    "lanes": 1
+  },
+  {
+    "run": "895902565",
+    "chunk": "895902565:7",
+    "s0": 876.8,
+    "s1": 882.8,
+    "lengthM": 7,
+    "streetM": 50,
+    "nearestM": 0.7,
+    "lanes": 2
+  },
+  {
+    "run": "895902565",
+    "chunk": "895902565:7",
+    "s0": 884,
+    "s1": 909.9,
+    "lengthM": 27,
+    "streetM": 50,
+    "nearestM": 1.74,
+    "lanes": 1
+  },
+  {
+    "run": "89832714",
+    "chunk": "89832714:0",
+    "s0": 11.9,
+    "s1": 15.8,
+    "lengthM": 6,
+    "streetM": 16,
+    "nearestM": 0.14,
+    "lanes": 2
+  },
+  {
+    "run": "89832714",
+    "chunk": "89832714:0",
+    "s0": 14.6,
+    "s1": 43.8,
+    "lengthM": 14,
+    "streetM": 40,
+    "nearestM": 0.91,
+    "lanes": 2
+  }
+]

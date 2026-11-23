@@ -1,0 +1,184 @@
+[
+  {
+    "run": "737538573",
+    "holeHalfM": 4.75,
+    "lanes": [
+      {
+        "street": 623,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 5,
+        "nearestM": 1.74
+      },
+      {
+        "street": 623,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 5,
+        "nearestM": 1.64
+      },
+      {
+        "street": 636,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 6,
+        "nearestM": 1.14
+      },
+      {
+        "street": 637,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 13,
+        "nearestM": 3.73
+      },
+      {
+        "street": 637,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 13,
+        "nearestM": 0.48
+      },
+      {
+        "street": 637,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 6,
+        "nearestM": 5.67
+      },
+      {
+        "street": 637,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 13,
+        "nearestM": 2.42
+      },
+      {
+        "street": 638,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 3,
+        "lengthM": 11,
+        "nearestM": 3.68
+      },
+      {
+        "street": 638,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 4,
+        "lengthM": 11,
+        "nearestM": 0.49
+      },
+      {
+        "street": 638,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 3,
+        "lengthM": 8,
+        "nearestM": 5.37
+      },
+      {
+        "street": 638,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 4,
+        "lengthM": 11,
+        "nearestM": 2.17
+      },
+      {
+        "street": 639,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 14,
+        "nearestM": 4.33
+      },
+      {
+        "street": 639,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 65,
+        "nearestM": 1.1
+      },
+      {
+        "street": 639,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 68,
+        "nearestM": 1.63
+      },
+      {
+        "street": 639,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 68,
+        "nearestM": 0.01
+      },
+      {
+        "street": 657,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 9,
+        "nearestM": 4.05
+      },
+      {
+        "street": 657,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 9,
+        "nearestM": 0.82
+      },
+      {
+        "street": 657,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 9,
+        "nearestM": 4.76
+      },
+      {
+        "street": 657,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 9,
+        "nearestM": 1.52
+      },
+      {
+        "street": 659,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 20,
+        "nearestM": 2.22
+      },
+      {
+        "street": 659,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 20,
+        "nearestM": 0.15
+      },
+      {
+        "street": 659,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 19,
+        "nearestM": 3.39
+      }
+    ]
+  }
+]

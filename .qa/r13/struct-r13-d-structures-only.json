@@ -1,0 +1,31 @@
+{
+  "base": "r13-d-all",
+  "label": "r13-d-structures-only",
+  "structureChanged": [
+    {
+      "run": "203832842",
+      "before": null,
+      "after": ["embankment 0.0–27.5", "cut 27.5–68.9"]
+    }
+  ],
+  "movedOver5cm": [
+    {
+      "run": "737538573",
+      "maxDzM": 0.343,
+      "s": 78.9,
+      "nearAnchor": false
+    },
+    {
+      "run": "45021976",
+      "maxDzM": 0.294,
+      "s": 3465,
+      "nearAnchor": false
+    },
+    {
+      "run": "24402611",
+      "maxDzM": 0.1,
+      "s": 1846,
+      "nearAnchor": false
+    }
+  ]
+}

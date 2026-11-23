@@ -1,0 +1,71 @@
+{
+  "base": "r13-c-all",
+  "label": "r13-c-none",
+  "structureChanged": [
+    {
+      "run": "45021976",
+      "before": ["embankment 0.0–117.5", "viaduct 117.5–3414.0", "embankment 3414.0–3532.0"],
+      "after": ["embankment 0.0–117.5", "viaduct 117.5–3410.6", "embankment 3410.6–3532.0"]
+    },
+    {
+      "run": "895902565",
+      "before": ["embankment 0.0–57.6", "viaduct 57.6–876.3", "embankment 876.3–943.2"],
+      "after": ["embankment 0.0–89.2", "viaduct 89.2–876.3", "embankment 876.3–943.2"]
+    },
+    {
+      "run": "203832842",
+      "before": null,
+      "after": ["embankment 0.0–27.5", "cut 27.5–68.9"]
+    }
+  ],
+  "movedOver5cm": [
+    {
+      "run": "737538573",
+      "maxDzM": 0.343,
+      "s": 78.9,
+      "nearAnchor": false
+    },
+    {
+      "run": "23273634",
+      "maxDzM": 0.32,
+      "s": 60.1,
+      "nearAnchor": false
+    },
+    {
+      "run": "45021976",
+      "maxDzM": 0.296,
+      "s": 3475.8,
+      "nearAnchor": false
+    },
+    {
+      "run": "45248411",
+      "maxDzM": 0.11,
+      "s": 200.3,
+      "nearAnchor": false
+    },
+    {
+      "run": "24402611",
+      "maxDzM": 0.1,
+      "s": 1846,
+      "nearAnchor": false
+    },
+    {
+      "run": "24039713",
+      "maxDzM": 0.093,
+      "s": 5823.3,
+      "nearAnchor": false
+    },
+    {
+      "run": "4853805",
+      "maxDzM": 0.092,
+      "s": 225.7,
+      "nearAnchor": false
+    },
+    {
+      "run": "4853804",
+      "maxDzM": 0.085,
+      "s": 121.1,
+      "nearAnchor": false
+    }
+  ]
+}

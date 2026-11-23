@@ -1,0 +1,2482 @@
+[
+  {
+    "run": "28126646",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 438,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 17,
+        "nearestM": 2.34
+      },
+      {
+        "street": 438,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 34,
+        "nearestM": 0.7
+      }
+    ]
+  },
+  {
+    "run": "201278187",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 916,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 11,
+        "nearestM": 1.56
+      },
+      {
+        "street": 919,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 9,
+        "nearestM": 2.19
+      }
+    ]
+  },
+  {
+    "run": "79449035",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 887,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 1.93
+      },
+      {
+        "street": 908,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 12,
+        "nearestM": 1.81
+      }
+    ]
+  },
+  {
+    "run": "25603803",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1245,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 9,
+        "nearestM": 2.9
+      },
+      {
+        "street": 1245,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 18,
+        "nearestM": 1.28
+      }
+    ]
+  },
+  {
+    "run": "28019825",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1253,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 1.97
+      },
+      {
+        "street": 1253,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 0.72
+      },
+      {
+        "street": 1260,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 40,
+        "nearestM": 0.01
+      },
+      {
+        "street": 1260,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 28,
+        "nearestM": 0.05
+      },
+      {
+        "street": 1268,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 1.29
+      },
+      {
+        "street": 1268,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 5,
+        "nearestM": 0.1
+      }
+    ]
+  },
+  {
+    "run": "387256794",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1317,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 48,
+        "nearestM": 0.93
+      }
+    ]
+  },
+  {
+    "run": "893332473",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1233,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 1.88
+      },
+      {
+        "street": 1247,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 55,
+        "nearestM": 0.03
+      },
+      {
+        "street": 1247,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 21,
+        "nearestM": 2.45
+      },
+      {
+        "street": 1251,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 6,
+        "nearestM": 3.48
+      },
+      {
+        "street": 1253,
+        "widthM": 2.5,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 1.91
+      },
+      {
+        "street": 1253,
+        "widthM": 2.5,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 1.64
+      }
+    ]
+  },
+  {
+    "run": "893332475",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1614,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 53,
+        "nearestM": 0.77
+      }
+    ]
+  },
+  {
+    "run": "1033419592",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1557,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 3.39
+      },
+      {
+        "street": 1558,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 9,
+        "nearestM": 1.09
+      },
+      {
+        "street": 1601,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 15,
+        "nearestM": 0.1
+      },
+      {
+        "street": 1601,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 17,
+        "nearestM": 0.14
+      },
+      {
+        "street": 2344,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 15,
+        "nearestM": 0.1
+      },
+      {
+        "street": 2344,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 17,
+        "nearestM": 0.14
+      }
+    ]
+  },
+  {
+    "run": "227213870",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1574,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 8,
+        "nearestM": 2.22
+      },
+      {
+        "street": 1574,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 19,
+        "nearestM": 0.08
+      }
+    ]
+  },
+  {
+    "run": "186583188",
+    "holeHalfM": 4.5,
+    "lanes": [
+      {
+        "street": 909,
+        "widthM": 35,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 19,
+        "nearestM": 2.6
+      },
+      {
+        "street": 909,
+        "widthM": 35,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 20,
+        "nearestM": 0.05
+      },
+      {
+        "street": 909,
+        "widthM": 35,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 18,
+        "nearestM": 2.78
+      },
+      {
+        "street": 917,
+        "widthM": 35,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 3,
+        "nearestM": 3.58
+      }
+    ]
+  },
+  {
+    "run": "26956959",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1543,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 1.19
+      },
+      {
+        "street": 1543,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 0.92
+      },
+      {
+        "street": 1548,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 3,
+        "lengthM": 18,
+        "nearestM": 2.89
+      },
+      {
+        "street": 1560,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 8,
+        "nearestM": 3.01
+      },
+      {
+        "street": 1560,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 19,
+        "nearestM": 0
+      },
+      {
+        "street": 1560,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 3,
+        "lengthM": 19,
+        "nearestM": 1.23
+      },
+      {
+        "street": 1561,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 3,
+        "lengthM": 4,
+        "nearestM": 2.48
+      },
+      {
+        "street": 1562,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 18,
+        "nearestM": 2.12
+      },
+      {
+        "street": 1562,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 3,
+        "lengthM": 35,
+        "nearestM": 0.04
+      },
+      {
+        "street": 1563,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 3.6
+      },
+      {
+        "street": 1563,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 30,
+        "nearestM": 0.36
+      },
+      {
+        "street": 1563,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 28,
+        "nearestM": 0.23
+      },
+      {
+        "street": 1563,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 3,
+        "lengthM": 4,
+        "nearestM": 3.46
+      }
+    ]
+  },
+  {
+    "run": "41568462",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1543,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 8,
+        "nearestM": 0.35
+      },
+      {
+        "street": 1543,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 8,
+        "nearestM": 0.35
+      },
+      {
+        "street": 1548,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 1.79
+      },
+      {
+        "street": 1548,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 4,
+        "nearestM": 1.47
+      },
+      {
+        "street": 1549,
+        "widthM": 42.5,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 9,
+        "nearestM": 2.83
+      },
+      {
+        "street": 1549,
+        "widthM": 42.5,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 27,
+        "nearestM": 0.03
+      },
+      {
+        "street": 1549,
+        "widthM": 42.5,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 27,
+        "nearestM": 0.83
+      }
+    ]
+  },
+  {
+    "run": "1256882296",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1179,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 9,
+        "nearestM": 0.2
+      },
+      {
+        "street": 1179,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 6,
+        "nearestM": 3.42
+      },
+      {
+        "street": 1182,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 10,
+        "nearestM": 0.04
+      },
+      {
+        "street": 1182,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 15,
+        "nearestM": 0.05
+      }
+    ]
+  },
+  {
+    "run": "227383685",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1258,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 16,
+        "nearestM": 1.41
+      },
+      {
+        "street": 1263,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 1.94
+      },
+      {
+        "street": 1263,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 1.87
+      },
+      {
+        "street": 1264,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 12,
+        "nearestM": 1.68
+      },
+      {
+        "street": 1264,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 16,
+        "nearestM": 0.04
+      }
+    ]
+  },
+  {
+    "run": "608895820",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1208,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 7,
+        "nearestM": 2.82
+      },
+      {
+        "street": 1208,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 22,
+        "nearestM": 0.05
+      },
+      {
+        "street": 1225,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 60,
+        "nearestM": 0.47
+      },
+      {
+        "street": 1225,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 43,
+        "nearestM": 2.12
+      }
+    ]
+  },
+  {
+    "run": "1006338881",
+    "holeHalfM": 4.5,
+    "lanes": [
+      {
+        "street": 1044,
+        "widthM": 22,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 15,
+        "nearestM": 0.16
+      },
+      {
+        "street": 1044,
+        "widthM": 22,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 12,
+        "nearestM": 1.94
+      },
+      {
+        "street": 1049,
+        "widthM": 22,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 20,
+        "nearestM": 1.04
+      },
+      {
+        "street": 1049,
+        "widthM": 22,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 21,
+        "nearestM": 0.82
+      },
+      {
+        "street": 1049,
+        "widthM": 22,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 13,
+        "nearestM": 4.17
+      }
+    ]
+  },
+  {
+    "run": "202809279",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 817,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 18,
+        "nearestM": 2.01
+      },
+      {
+        "street": 817,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 19,
+        "nearestM": 0.73
+      }
+    ]
+  },
+  {
+    "run": "203832854",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 817,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 17,
+        "nearestM": 3.07
+      }
+    ]
+  },
+  {
+    "run": "382210313",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 877,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 16,
+        "nearestM": 0.92
+      },
+      {
+        "street": 896,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 1.13
+      }
+    ]
+  },
+  {
+    "run": "756785283",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 752,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 6,
+        "nearestM": 3.08
+      },
+      {
+        "street": 758,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 2.77
+      },
+      {
+        "street": 760,
+        "widthM": 16,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 3.31
+      },
+      {
+        "street": 760,
+        "widthM": 16,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 5,
+        "nearestM": 0.11
+      },
+      {
+        "street": 762,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 2.65
+      }
+    ]
+  },
+  {
+    "run": "1563717359",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1167,
+        "widthM": 25,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 14,
+        "nearestM": 2.59
+      },
+      {
+        "street": 1169,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 17,
+        "nearestM": 0.23
+      },
+      {
+        "street": 1169,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 17,
+        "nearestM": 0.17
+      },
+      {
+        "street": 1185,
+        "widthM": 35,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 15,
+        "nearestM": 1.7
+      },
+      {
+        "street": 1185,
+        "widthM": 35,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 15,
+        "nearestM": 1.49
+      }
+    ]
+  },
+  {
+    "run": "207535709",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1167,
+        "widthM": 25,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 3.61
+      },
+      {
+        "street": 1168,
+        "widthM": 2.5,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 1.94
+      },
+      {
+        "street": 1170,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 0.35
+      },
+      {
+        "street": 1170,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 5,
+        "nearestM": 0.11
+      },
+      {
+        "street": 1185,
+        "widthM": 35,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 12,
+        "nearestM": 0.69
+      },
+      {
+        "street": 1185,
+        "widthM": 35,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 11,
+        "nearestM": 2.06
+      }
+    ]
+  },
+  {
+    "run": "106909100",
+    "holeHalfM": 4.75,
+    "lanes": [
+      {
+        "street": 513,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 11,
+        "nearestM": 2.96
+      },
+      {
+        "street": 513,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 11,
+        "nearestM": 0.03
+      },
+      {
+        "street": 514,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 4,
+        "nearestM": 2.82
+      },
+      {
+        "street": 514,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 4,
+        "nearestM": 0.3
+      },
+      {
+        "street": 515,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 6,
+        "nearestM": 4.2
+      },
+      {
+        "street": 515,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 7,
+        "nearestM": 0.98
+      },
+      {
+        "street": 518,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 4,
+        "nearestM": 4.5
+      },
+      {
+        "street": 518,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 5.25
+      },
+      {
+        "street": 518,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 6,
+        "nearestM": 2
+      },
+      {
+        "street": 518,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 6,
+        "nearestM": 1.25
+      },
+      {
+        "street": 544,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 7,
+        "nearestM": 4.96
+      },
+      {
+        "street": 544,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 7,
+        "nearestM": 4.4
+      },
+      {
+        "street": 544,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 7,
+        "nearestM": 1.16
+      },
+      {
+        "street": 544,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 7,
+        "nearestM": 1.72
+      },
+      {
+        "street": 1173,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 11,
+        "nearestM": 4.5
+      },
+      {
+        "street": 1173,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 11,
+        "nearestM": 4.96
+      },
+      {
+        "street": 1173,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 11,
+        "nearestM": 1.71
+      },
+      {
+        "street": 1173,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 11,
+        "nearestM": 1.25
+      },
+      {
+        "street": 1174,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 4,
+        "nearestM": 4.8
+      },
+      {
+        "street": 1174,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 4.81
+      },
+      {
+        "street": 1174,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 4,
+        "nearestM": 1.57
+      },
+      {
+        "street": 1174,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 4,
+        "nearestM": 1.55
+      },
+      {
+        "street": 1338,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 17,
+        "nearestM": 4.58
+      },
+      {
+        "street": 1338,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 19,
+        "nearestM": 1.34
+      },
+      {
+        "street": 1338,
+        "widthM": 30,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 19,
+        "nearestM": 0.97
+      }
+    ]
+  },
+  {
+    "run": "106911692",
+    "holeHalfM": 4.75,
+    "lanes": [
+      {
+        "street": 1357,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 11,
+        "nearestM": 2.62
+      },
+      {
+        "street": 1357,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 11,
+        "nearestM": 0.2
+      },
+      {
+        "street": 1357,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 11,
+        "nearestM": 3.45
+      },
+      {
+        "street": 1358,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 2.49
+      },
+      {
+        "street": 1358,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 4,
+        "nearestM": 0.64
+      },
+      {
+        "street": 1358,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 4,
+        "nearestM": 3.89
+      },
+      {
+        "street": 1359,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 4.85
+      },
+      {
+        "street": 1362,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 10,
+        "nearestM": 1.8
+      },
+      {
+        "street": 1362,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 10,
+        "nearestM": 1.3
+      },
+      {
+        "street": 1362,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 8,
+        "nearestM": 4.55
+      },
+      {
+        "street": 1388,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 7,
+        "nearestM": 1.05
+      },
+      {
+        "street": 1388,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 7,
+        "nearestM": 2.04
+      },
+      {
+        "street": 1388,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 7,
+        "nearestM": 5.29
+      },
+      {
+        "street": 2015,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 11,
+        "nearestM": 1.37
+      },
+      {
+        "street": 2015,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 11,
+        "nearestM": 1.45
+      },
+      {
+        "street": 2015,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 11,
+        "nearestM": 4.7
+      },
+      {
+        "street": 2016,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 1.24
+      },
+      {
+        "street": 2016,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 4,
+        "nearestM": 1.89
+      },
+      {
+        "street": 2016,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 4,
+        "nearestM": 5.14
+      },
+      {
+        "street": 2173,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 20,
+        "nearestM": 1.75
+      },
+      {
+        "street": 2173,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 20,
+        "nearestM": 1.28
+      },
+      {
+        "street": 2173,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 17,
+        "nearestM": 4.53
+      }
+    ]
+  },
+  {
+    "run": "207646123",
+    "holeHalfM": 3.125,
+    "lanes": [
+      {
+        "street": 1236,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 5,
+        "nearestM": 3.39
+      },
+      {
+        "street": 1237,
+        "widthM": 25,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 16,
+        "nearestM": 0.14
+      },
+      {
+        "street": 1237,
+        "widthM": 25,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 10,
+        "nearestM": 3.38
+      },
+      {
+        "street": 1239,
+        "widthM": 25,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 18,
+        "nearestM": 2.38
+      },
+      {
+        "street": 1240,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 10,
+        "nearestM": 2.23
+      },
+      {
+        "street": 1240,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 19,
+        "nearestM": 0.12
+      }
+    ]
+  },
+  {
+    "run": "24039714",
+    "holeHalfM": 3.125,
+    "lanes": [
+      {
+        "street": 1234,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 8,
+        "nearestM": 0.57
+      },
+      {
+        "street": 1236,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 24,
+        "nearestM": 0.01
+      },
+      {
+        "street": 1236,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 26,
+        "nearestM": 0.1
+      },
+      {
+        "street": 1237,
+        "widthM": 25,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 1.23
+      },
+      {
+        "street": 1237,
+        "widthM": 25,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 4,
+        "nearestM": 2.15
+      },
+      {
+        "street": 1239,
+        "widthM": 25,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 31,
+        "nearestM": 1.51
+      },
+      {
+        "street": 1240,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 10,
+        "nearestM": 2.15
+      }
+    ]
+  },
+  {
+    "run": "24402014",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 818,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 4,
+        "nearestM": 0.5
+      },
+      {
+        "street": 840,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 15,
+        "nearestM": 0.22
+      },
+      {
+        "street": 840,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 27,
+        "nearestM": 0.02
+      },
+      {
+        "street": 843,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 4,
+        "nearestM": 2.68
+      },
+      {
+        "street": 846,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 1.08
+      },
+      {
+        "street": 846,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 1.79
+      },
+      {
+        "street": 847,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 5,
+        "nearestM": 0.47
+      },
+      {
+        "street": 847,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 1.67
+      }
+    ]
+  },
+  {
+    "run": "737538573",
+    "holeHalfM": 4.75,
+    "lanes": [
+      {
+        "street": 624,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 5,
+        "nearestM": 1.74
+      },
+      {
+        "street": 624,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 5,
+        "nearestM": 1.64
+      },
+      {
+        "street": 637,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 6,
+        "nearestM": 1.14
+      },
+      {
+        "street": 638,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 13,
+        "nearestM": 3.73
+      },
+      {
+        "street": 638,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 13,
+        "nearestM": 0.48
+      },
+      {
+        "street": 638,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 6,
+        "nearestM": 5.67
+      },
+      {
+        "street": 638,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 13,
+        "nearestM": 2.42
+      },
+      {
+        "street": 639,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 3,
+        "lengthM": 11,
+        "nearestM": 3.68
+      },
+      {
+        "street": 639,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 4,
+        "lengthM": 11,
+        "nearestM": 0.49
+      },
+      {
+        "street": 639,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 3,
+        "lengthM": 8,
+        "nearestM": 5.37
+      },
+      {
+        "street": 639,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 4,
+        "lengthM": 11,
+        "nearestM": 2.17
+      },
+      {
+        "street": 640,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 14,
+        "nearestM": 4.33
+      },
+      {
+        "street": 640,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 65,
+        "nearestM": 1.1
+      },
+      {
+        "street": 640,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 68,
+        "nearestM": 1.63
+      },
+      {
+        "street": 640,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 68,
+        "nearestM": 0.01
+      },
+      {
+        "street": 658,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 9,
+        "nearestM": 4.05
+      },
+      {
+        "street": 658,
+        "widthM": 40,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 9,
+        "nearestM": 0.82
+      },
+      {
+        "street": 658,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 9,
+        "nearestM": 4.76
+      },
+      {
+        "street": 658,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 9,
+        "nearestM": 1.52
+      },
+      {
+        "street": 660,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 20,
+        "nearestM": 2.22
+      },
+      {
+        "street": 660,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 20,
+        "nearestM": 0.15
+      },
+      {
+        "street": 660,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 19,
+        "nearestM": 3.39
+      }
+    ]
+  },
+  {
+    "run": "931759044",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 876,
+        "widthM": 25,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 5,
+        "nearestM": 0.31
+      },
+      {
+        "street": 876,
+        "widthM": 25,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 4,
+        "nearestM": 0.66
+      },
+      {
+        "street": 876,
+        "widthM": 25,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 3,
+        "nearestM": 1.8
+      },
+      {
+        "street": 941,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 5,
+        "nearestM": 0
+      },
+      {
+        "street": 941,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 0.42
+      }
+    ]
+  },
+  {
+    "run": "1307261762",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 680,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 6,
+        "nearestM": 0.18
+      },
+      {
+        "street": 681,
+        "widthM": 42.5,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 35,
+        "nearestM": 3.08
+      },
+      {
+        "street": 681,
+        "widthM": 42.5,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 91,
+        "nearestM": 0
+      },
+      {
+        "street": 681,
+        "widthM": 42.5,
+        "dir": 1,
+        "lane": 3,
+        "lengthM": 92,
+        "nearestM": 0.37
+      },
+      {
+        "street": 681,
+        "widthM": 42.5,
+        "dir": 1,
+        "lane": 4,
+        "lengthM": 22,
+        "nearestM": 3.62
+      }
+    ]
+  },
+  {
+    "run": "1091280541",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 839,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 53,
+        "nearestM": 0.03
+      },
+      {
+        "street": 839,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 36,
+        "nearestM": 0.85
+      },
+      {
+        "street": 840,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 9,
+        "nearestM": 0.02
+      },
+      {
+        "street": 840,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 8,
+        "nearestM": 0.28
+      },
+      {
+        "street": 841,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 11,
+        "nearestM": 2.21
+      },
+      {
+        "street": 841,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 11,
+        "nearestM": 0.93
+      },
+      {
+        "street": 846,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 8,
+        "nearestM": 1.9
+      },
+      {
+        "street": 846,
+        "widthM": 30,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 8,
+        "nearestM": 1.04
+      }
+    ]
+  },
+  {
+    "run": "203035343",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1160,
+        "widthM": 25,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 3,
+        "nearestM": 3.56
+      },
+      {
+        "street": 1160,
+        "widthM": 25,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 14,
+        "nearestM": 0.78
+      },
+      {
+        "street": 1160,
+        "widthM": 25,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 6,
+        "nearestM": 2.36
+      },
+      {
+        "street": 1160,
+        "widthM": 25,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 13,
+        "nearestM": 0.12
+      },
+      {
+        "street": 1162,
+        "widthM": 25,
+        "dir": 1,
+        "lane": 2,
+        "lengthM": 4,
+        "nearestM": 3.22
+      },
+      {
+        "street": 1162,
+        "widthM": 25,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 11,
+        "nearestM": 1.95
+      },
+      {
+        "street": 1162,
+        "widthM": 25,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 18,
+        "nearestM": 0.06
+      },
+      {
+        "street": 1162,
+        "widthM": 25,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 18,
+        "nearestM": 0.45
+      },
+      {
+        "street": 1165,
+        "widthM": 25,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 30,
+        "nearestM": 0.02
+      },
+      {
+        "street": 1165,
+        "widthM": 25,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 16,
+        "nearestM": 0.94
+      }
+    ]
+  },
+  {
+    "run": "378126417",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 253,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 9,
+        "nearestM": 1.59
+      },
+      {
+        "street": 402,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 9,
+        "nearestM": 1.55
+      }
+    ]
+  },
+  {
+    "run": "378126419",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 410,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 6,
+        "nearestM": 1.17
+      },
+      {
+        "street": 410,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 7,
+        "nearestM": 0.98
+      },
+      {
+        "street": 419,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 16,
+        "nearestM": 0.09
+      },
+      {
+        "street": 419,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 6,
+        "nearestM": 1.9
+      }
+    ]
+  },
+  {
+    "run": "45683107",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 119,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 4,
+        "nearestM": 3.51
+      }
+    ]
+  },
+  {
+    "run": "5171347",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 433,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 3.54
+      },
+      {
+        "street": 433,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 14,
+        "nearestM": 0.36
+      },
+      {
+        "street": 435,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 6,
+        "nearestM": 2.56
+      }
+    ]
+  },
+  {
+    "run": "561915732",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 300,
+        "widthM": 2.5,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 16,
+        "nearestM": 0.05
+      }
+    ]
+  },
+  {
+    "run": "89832714",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 421,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 12,
+        "nearestM": 1.72
+      },
+      {
+        "street": 421,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 12,
+        "nearestM": 0.83
+      },
+      {
+        "street": 430,
+        "widthM": 33,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 3.22
+      },
+      {
+        "street": 430,
+        "widthM": 33,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 17,
+        "nearestM": 0.13
+      },
+      {
+        "street": 430,
+        "widthM": 33,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 21,
+        "nearestM": 0.12
+      },
+      {
+        "street": 431,
+        "widthM": 25,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 1.02
+      },
+      {
+        "street": 431,
+        "widthM": 25,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 3,
+        "nearestM": 1.2
+      },
+      {
+        "street": 466,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 4,
+        "nearestM": 2.42
+      },
+      {
+        "street": 466,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 4,
+        "nearestM": 0.75
+      },
+      {
+        "street": 467,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 12,
+        "nearestM": 2.04
+      },
+      {
+        "street": 467,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 12,
+        "nearestM": 0.74
+      },
+      {
+        "street": 1061,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 9,
+        "nearestM": 2.02
+      },
+      {
+        "street": 1061,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 9,
+        "nearestM": 0.83
+      },
+      {
+        "street": 1166,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 7,
+        "nearestM": 1.9
+      },
+      {
+        "street": 1166,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 7,
+        "nearestM": 1.15
+      },
+      {
+        "street": 1168,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 4,
+        "nearestM": 2.4
+      },
+      {
+        "street": 1168,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 4,
+        "nearestM": 0.83
+      },
+      {
+        "street": 1169,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 25,
+        "nearestM": 2.1
+      },
+      {
+        "street": 1169,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 1,
+        "lengthM": 52,
+        "nearestM": 0.01
+      },
+      {
+        "street": 1169,
+        "widthM": 40,
+        "dir": -1,
+        "lane": 2,
+        "lengthM": 43,
+        "nearestM": 0.85
+      }
+    ]
+  },
+  {
+    "run": "199311816",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1151,
+        "widthM": 16,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 12,
+        "nearestM": 1.59
+      }
+    ]
+  },
+  {
+    "run": "199311811",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1076,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 13,
+        "nearestM": 0.45
+      },
+      {
+        "street": 1076,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 8,
+        "nearestM": 1.99
+      }
+    ]
+  },
+  {
+    "run": "202801662",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 1408,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 3,
+        "nearestM": 2.83
+      },
+      {
+        "street": 1408,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 6,
+        "nearestM": 1.37
+      },
+      {
+        "street": 1409,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 10,
+        "nearestM": 0.03
+      },
+      {
+        "street": 1409,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 12,
+        "nearestM": 0.22
+      },
+      {
+        "street": 1418,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 6,
+        "nearestM": 3.73
+      },
+      {
+        "street": 1418,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 12,
+        "nearestM": 0.49
+      }
+    ]
+  },
+  {
+    "run": "40911760",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 250,
+        "widthM": 16,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 26,
+        "nearestM": 2.3
+      },
+      {
+        "street": 250,
+        "widthM": 16,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 29,
+        "nearestM": 0.01
+      }
+    ]
+  },
+  {
+    "run": "568584516",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 761,
+        "widthM": 9,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 7,
+        "nearestM": 3
+      }
+    ]
+  },
+  {
+    "run": "1520640475",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 164,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 9,
+        "nearestM": 0.1
+      },
+      {
+        "street": 165,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 11,
+        "nearestM": 0
+      }
+    ]
+  },
+  {
+    "run": "44882720",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 735,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 14,
+        "nearestM": 1.58
+      },
+      {
+        "street": 735,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 30,
+        "nearestM": 0.01
+      }
+    ]
+  },
+  {
+    "run": "4857046",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 661,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 6,
+        "nearestM": 3.21
+      },
+      {
+        "street": 661,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 24,
+        "nearestM": 0.04
+      }
+    ]
+  },
+  {
+    "run": "44129865",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 334,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 12,
+        "nearestM": 1.03
+      },
+      {
+        "street": 336,
+        "widthM": 9,
+        "dir": 1,
+        "lane": 1,
+        "lengthM": 5,
+        "nearestM": 2.8
+      }
+    ]
+  },
+  {
+    "run": "46876077",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 525,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 4,
+        "nearestM": 2.83
+      },
+      {
+        "street": 526,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 6,
+        "nearestM": 3.09
+      }
+    ]
+  },
+  {
+    "run": "46876338",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 535,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 18,
+        "nearestM": 1.33
+      }
+    ]
+  },
+  {
+    "run": "1126982258",
+    "holeHalfM": 2.875,
+    "lanes": [
+      {
+        "street": 754,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 11,
+        "nearestM": 1.29
+      },
+      {
+        "street": 754,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 12,
+        "nearestM": 0.04
+      },
+      {
+        "street": 761,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 10,
+        "nearestM": 0.34
+      },
+      {
+        "street": 761,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 10,
+        "nearestM": 0.36
+      }
+    ]
+  },
+  {
+    "run": "788208928",
+    "holeHalfM": 4.5,
+    "lanes": [
+      {
+        "street": 726,
+        "widthM": 4.3,
+        "dir": 1,
+        "lane": 0,
+        "lengthM": 21,
+        "nearestM": 0.01
+      },
+      {
+        "street": 726,
+        "widthM": 4.3,
+        "dir": -1,
+        "lane": 0,
+        "lengthM": 17,
+        "nearestM": 0.72
+      }
+    ]
+  }
+]
