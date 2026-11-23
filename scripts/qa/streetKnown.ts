@@ -39,7 +39,8 @@ export function knownCasesFrom(
   for (const p of site) {
     const chunk = (byRun.get(p.run) ?? []).find((c) => c.id === p.chunk);
     // Why throw: a list from another build names chunks this one has not, and its cases would be wrong.
-    if (!chunk) throw new Error(`lane-in-site ${p.run} s ${p.s0}: no chunk ${p.chunk} in the data`);
+    const isMissing = chunk === undefined;
+    if (isMissing) throw new Error(`lane-in-site ${p.run} s ${p.s0}: no chunk ${p.chunk} in the data`);
     out.push({
       key: `lane-in-site:${p.run}@${p.s0}-${p.s1}`,
       run: p.run,
@@ -51,7 +52,8 @@ export function knownCasesFrom(
   for (const h of hole) {
     const cuts = (byRun.get(h.run) ?? []).filter((c) => c.structure === "cut");
     const span = spanOf(cuts);
-    if (span === null) throw new Error(`street-lane-over-cut ${h.run}: no cut chunk in the data`);
+    const hasNoCut = span === null;
+    if (hasNoCut) throw new Error(`street-lane-over-cut ${h.run}: no cut chunk in the data`);
     out.push({
       key: `street-lane-over-cut:${h.run}`,
       run: h.run,
@@ -93,6 +95,7 @@ export function projectOnRun(byRun: ByRun, run: string, lat: number, lon: number
     const isNearer = best === null || d < best.d;
     if (isNearer) best = { d, s: a.s + (b.s - a.s) * t, t, i };
   }
+  // Why not a named condition: a const loses the null narrowing of `best` below.
   if (best === null) return null;
   const isPastStart = best.i === 0 && best.t === 0;
   const isPastEnd = best.i === pts.length - 2 && best.t === 1;

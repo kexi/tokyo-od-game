@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { servedMismatch } from "../scripts/qa/servedData";
+import { checkServedData, folderDigest, servedMismatch } from "../scripts/qa/servedData";
 import { servedDataDir, XW_DATA_ENDPOINT, xwDataMiddleware, xwDataServe } from "../scripts/xwDataServe";
 
 // The dev server's data/expressway from XW_DATA_DIR's folder (R1-5 PR A): without the variable, and
@@ -86,6 +86,7 @@ describe("xwDataServe (the dev server's expressway data from XW_DATA_DIR)", () =
     // Why 404 and not public/'s file: the folder's meta lists its own tiles.
     expect(request(dir, `${BASE}data/expressway/ledger.json`).status).toBe(404);
     expect(request(dir, `${BASE}data/expressway/..%2Fmeta.json`).status).toBe(404);
+    expect(request(dir, `${BASE}data/expressway/%E0`).status).toBe(404);
     expect(request(dir, `${BASE}data/expressway/sub`).status).toBe(404);
     expect(request(dir, `${BASE}data/roadlanes/x.json`).passed).toBe(true);
     expect(request(dir, `${BASE}src/main.ts`).passed).toBe(true);
@@ -99,9 +100,89 @@ describe("xwDataServe (the dev server's expressway data from XW_DATA_DIR)", () =
   });
 });
 
-describe("servedMismatch (the tools' check of the served data)", () => {
-  it("passes the same meta.json and names both when they differ", () => {
-    expect(servedMismatch("aa", { dir: "/d", metaSha256: "aa" })).toBeNull();
-    expect(servedMismatch("bb", { dir: "/d", metaSha256: "aa" })).toMatch(/bb.*\/d\/meta\.json.*aa/);
+it("never reads a file beside the folder (an escaped ../ to a file that is there)", () => {
+  const parent = mkdtempSync(join(tmpdir(), "xw-parent-"));
+  writeFileSync(join(parent, "outside.json"), "{}");
+  const dir = join(parent, "data");
+  mkdirSync(dir);
+  writeFileSync(join(dir, "meta.json"), "{}");
+  expect(request(dir, `${BASE}data/expressway/..%2Foutside.json`).status).toBe(404);
+  expect(request(dir, `${BASE}data/expressway/..%5Coutside.json`).status).toBe(404);
+});
+
+/** Two folders with the same meta.json over a tile that differs at the same size (s9/s10-base-default's shape). */
+function twins() {
+  const meta = JSON.stringify({ version: 6, tiles: ["14551-6452"], bytes: 9 });
+  const a = folder({ "meta.json": meta, "14551-6452.json": '{"z":1.5}' });
+  const b = folder({ "meta.json": meta, "14551-6452.json": '{"z":1.7}' });
+  return { a, b };
+}
+
+/** A fake dev server over a folder: what fetch answers, the HTML fallback where the path is not served. */
+function serverOf(dir: string, named: boolean) {
+  return async (url: string) => {
+    const path = url.slice("http://x/tokyo-od-game/".length);
+    const isEndpoint = path === XW_DATA_ENDPOINT;
+    if (isEndpoint)
+      return named
+        ? new Response(JSON.stringify({ dir, metaSha256: "" }), {
+            headers: { "content-type": "application/json" },
+          })
+        : new Response("<html></html>", { headers: { "content-type": "text/html" } });
+    try {
+      return new Response(readFileSync(join(dir, path.replace("data/expressway/", ""))));
+    } catch {
+      return new Response("", { status: 404 });
+    }
+  };
+}
+
+describe("checkServedData (the tools' check of the served data)", () => {
+  it("passes the same files, and names the served folder only when the server names it", async () => {
+    const { a } = twins();
+    const named = await checkServedData("http://x/tokyo-od-game/", serverOf(a, true), a);
+    expect(named.servedDir).toBe(a);
+    const fallback = await checkServedData("http://x/tokyo-od-game/", serverOf(a, false), a);
+    expect(fallback.servedDir).toBeNull();
+    expect(fallback.tilesSha256).toBe(named.tilesSha256);
+  });
+
+  it("refuses the same meta.json over other tiles (PR #132 review, M1)", async () => {
+    const { a, b } = twins();
+    expect(folderDigest(a).meta).toBe(folderDigest(b).meta);
+    await expect(checkServedData("http://x/tokyo-od-game/", serverOf(b, true), a)).rejects.toThrow(
+      /tile 14551-6452\.json/,
+    );
+  });
+
+  it("refuses another meta.json, and a server that does not answer it", async () => {
+    const { a } = twins();
+    const other = folder({ "meta.json": JSON.stringify({ version: 6, tiles: [] }) });
+    await expect(checkServedData("http://x/tokyo-od-game/", serverOf(other, true), a)).rejects.toThrow(
+      /meta\.json/,
+    );
+    const down = async () => new Response("", { status: 502 });
+    await expect(checkServedData("http://x/tokyo-od-game/", down, a)).rejects.toThrow(/HTTP 502/);
+  });
+
+  it("is what drive-deck.ts and street-drive.ts do before any drive", () => {
+    for (const tool of ["drive-deck.ts", "street-drive.ts"]) {
+      const code = readFileSync(join(import.meta.dirname, "..", "scripts", "qa", tool), "utf8");
+      const check = code.indexOf("await checkServedData(base)");
+      expect(check, tool).toBeGreaterThan(0);
+      expect(code.indexOf("launch(url"), tool).toBeGreaterThan(check);
+    }
+  });
+});
+
+describe("servedMismatch", () => {
+  it("passes the same digest and names the first file that differs", () => {
+    const want = { dir: "/d", meta: "aa", tiles: { "1-2": "t1", "3-4": "t2" } };
+    expect(servedMismatch({ meta: "aa", tiles: { "1-2": "t1", "3-4": "t2" } }, want)).toBeNull();
+    expect(servedMismatch({ meta: "bb", tiles: {} }, want)).toMatch(/bb.*\/d\/meta\.json.*aa/);
+    expect(servedMismatch({ meta: "aa", tiles: { "1-2": "t1", "3-4": "x" } }, want)).toMatch(
+      /3-4\.json \(sha256 x\)/,
+    );
+    expect(servedMismatch({ meta: "aa", tiles: { "1-2": "t1" } }, want)).toMatch(/missing/);
   });
 });

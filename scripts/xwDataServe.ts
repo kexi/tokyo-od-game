@@ -51,12 +51,19 @@ export function metaSha256(dir: string): string {
     .digest("hex");
 }
 
+/** The content types of the folder's files by extension (anything else is served as bytes). */
+const CONTENT_TYPES: Record<string, string> = { json: "application/json", txt: "text/plain; charset=utf-8" };
 const contentType = (name: string) =>
-  name.endsWith(".json")
-    ? "application/json"
-    : name.endsWith(".txt")
-      ? "text/plain; charset=utf-8"
-      : "application/octet-stream";
+  CONTENT_TYPES[name.split(".").at(-1) ?? ""] ?? "application/octet-stream";
+
+/** A path segment decoded, or null when its escapes are broken (`%E0`): a 404, not connect's 500. */
+function decoded(segment: string): string | null {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+}
 
 /** The middleware serving `dir` under `base` (see the module's comment). */
 export function xwDataMiddleware(dir: string, base: string) {
@@ -73,7 +80,7 @@ export function xwDataMiddleware(dir: string, base: string) {
     }
     const isData = path.startsWith(prefix);
     if (!isData) return next();
-    const name = decodeURIComponent(path.slice(prefix.length));
+    const name = decoded(path.slice(prefix.length)) ?? "";
     const file = join(dir, name);
     const isServable = FILE_NAME.test(name) && existsSync(file) && statSync(file).isFile();
     if (!isServable) {
@@ -93,7 +100,8 @@ export function xwDataServe(root: string, env: NodeJS.ProcessEnv = process.env):
     apply: "serve",
     configureServer(server) {
       const dir = servedDataDir(env, root);
-      if (dir === null) return;
+      const isDefault = dir === null;
+      if (isDefault) return;
       const hasMeta = existsSync(join(dir, "meta.json"));
       if (!hasMeta) throw new Error(`XW_DATA_DIR ${dir} has no meta.json`);
       server.middlewares.use(xwDataMiddleware(dir, server.config.base));

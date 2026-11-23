@@ -128,7 +128,8 @@ export function placeLatLon(
   const isPoint = "lat" in at;
   if (isPoint) return { lat: at.lat, lon: at.lon };
   const list = (byRun.get(at.run) ?? []).toSorted((a, b) => a.k - b.k);
-  if (list.length === 0) return null;
+  const isNoRun = list.length === 0;
+  if (isNoRun) return null;
   const st = list.flatMap((c) => {
     const rows: number[][] = [];
     for (let i = 0; i < c.st.length; i += STATION_STRIDE) rows.push(c.st.slice(i, i + STATION_STRIDE));
@@ -152,7 +153,8 @@ export function placeLatLon(
 
 /** The places named in `ids` (all without), or throws on an id the table does not have. */
 export function placesOf(places: readonly StreetPlace[], ids: readonly string[] | null): StreetPlace[] {
-  if (ids === null) return [...places];
+  const isAll = ids === null;
+  if (isAll) return [...places];
   const unknown = ids.filter((id) => !places.some((p) => p.id === id));
   const hasUnknown = unknown.length > 0;
   if (hasUnknown) throw new Error(`unknown street places: ${unknown.join(", ")}`);

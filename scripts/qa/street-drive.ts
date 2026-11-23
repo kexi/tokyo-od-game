@@ -3,28 +3,30 @@
 // nearest it (debug.expressway.placeOnStreet: the left half of a two-way street, the middle of a
 // one-way one), 40 m before it, and driven on the game's autopilot to 40 m past it, sampled every
 // 0.25 s of game time, and judged by streetDriveVerdict.ts (arrived, on the street's band, no fall,
-// no building, no stall, no respawn). A failure whose every fault point lies in a case of the probes'
-// lists (--site-lanes: check-expressway-lanes --cases, --hole-lanes: check-hole-lanes --cases) is
-// `known`, counted apart. A try with an accident, a citation or an arrest is invalid (driveInvalid.ts,
-// as drive-deck.ts) and driven again, up to --tries (3).
+// no building, no stall, no respawn). A drive whose every failure lies, point by point, in a case of
+// the probes' lists (--site-lanes: check-expressway-lanes --cases, --hole-lanes: check-hole-lanes
+// --cases) is `known`, counted apart. A try with an accident, a citation or an arrest is invalid
+// (driveInvalid.ts, as drive-deck.ts) and driven again, up to --tries (3).
 //
 // One JSON file per place in .qa/street-drive-<label>/<id>.json (or --out <dir>), and the run's
-// summary.json beside them. A place whose file is there is skipped (resume: delete the file to drive it
-// again). The data is the folder the dev server serves, checked first (servedData.ts): XW_DATA_DIR,
-// else public/data/expressway, for both.
+// summary.json beside them. A place whose file was driven against the same served data, case lists
+// and baseline (streetResults.ts) is skipped (resume); any other is driven again. An invalid result
+// is kept too: delete its file to drive it again. The data is the folder the dev server serves,
+// checked first (servedData.ts, meta.json and every tile): XW_DATA_DIR, else public/data/expressway,
+// for both.
 //
 //   just check-street-drive [label] [ids] [base] [flags]   (the dev server: just serve-dev)
 //   pnpm exec tsx scripts/qa/street-drive.ts [--label L] [--base URL] [--only a,b] [--out DIR]
 //     [--tries N] [--site-lanes FILE] [--hole-lanes FILE] [--baseline DIR]
 //
-// --baseline DIR: main's results of the same places on the same data (this tool's folder). A failure
-// where main failed too is `known-main` (streetDriveVerdict.ts againstMain): S7-6's line is "no
-// failure main does not have".
+// --baseline DIR: main's results (this tool's folder from main's checkout driven on main's data). A
+// failure is `known-main` when every kind of it is one main failed with at that place
+// (streetDriveVerdict.ts againstMain): S7-6's line is "no failure main's result does not have".
 //
-// Exit 1 when a place failed, 2 when none failed but one stayed invalid, 3 when the only failures are
-// known or known-main, else 0.
+// Exit 1 a place failed, 2 one stayed invalid, 5 a place of the table has no result of this run
+// (driven in parts, or other data), 3 a known failure, 4 only known-main ones, else 0.
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { HoleLanes } from "../expresswayCases.ts";
 import { readExpresswayFiles } from "../expresswayFiles.ts";
 import type { SiteLanes } from "../expresswaySiteLanes.ts";
@@ -34,17 +36,17 @@ import { invalidOf } from "./driveInvalid.ts";
 import { freePort } from "./ports.ts";
 import { checkServedData } from "./servedData.ts";
 import {
-  againstMain,
-  ARRIVE_M,
-  knownCasesOf,
+  exitCodeOf,
+  judgeStreetDrive,
+  type LatLon,
+  type MainDrive,
   RIDE_BAND,
   type StreetDriveRide,
-  streetDriveFailures,
-  type StreetFault,
-  streetVerdict,
+  type StreetDriveTry,
 } from "./streetDriveVerdict.ts";
 import { knownCasesFrom, projectOnRun } from "./streetKnown.ts";
 import { placeLatLon, placesOf, STREET_PLACES, type StreetPlace } from "./streetPlaces.ts";
+import { isReusable, type ResultKey, summarize } from "./streetResults.ts";
 
 const ROOT = join(import.meta.dirname, "..", "..");
 const argv = process.argv.slice(2);
@@ -57,10 +59,13 @@ const base = flag("base") ?? "http://localhost:5173/tokyo-od-game/";
 const only = flag("only");
 const outDir = flag("out") ?? join(ROOT, ".qa", `street-drive-${label}`);
 const tries = Number(flag("tries") ?? 3);
-/** main's results of the same places on the same data (a folder of this tool's <id>.json), or none. */
+const siteLanes = flag("site-lanes");
+const holeLanes = flag("hole-lanes");
+/** main's results (a folder of this tool's <id>.json from main's checkout on main's data), or none. */
 const baselineDir = flag("baseline");
 const readList = <T>(file: string | undefined): T[] =>
   file === undefined ? [] : (JSON.parse(readFileSync(file, "utf8")) as T[]);
+const absolute = (file: string | undefined) => (file === undefined ? null : resolve(file));
 
 /** How far before and past the place the drive starts and ends (m; 7c's street drive). */
 const LEAD_M = 40;
@@ -75,11 +80,15 @@ const STEP_S = 0.25;
 const files = readExpresswayFiles();
 /** The dev server serves the same data (servedData.ts): else nothing is driven. */
 const served = await checkServedData(base);
-const cases = knownCasesFrom(
-  readList<SiteLanes>(flag("site-lanes")),
-  readList<HoleLanes>(flag("hole-lanes")),
-  files.byRun,
-);
+const key: ResultKey = {
+  metaSha256: served.metaSha256,
+  tilesSha256: served.tilesSha256,
+  siteLanes: absolute(siteLanes),
+  holeLanes: absolute(holeLanes),
+  baseline: absolute(baselineDir),
+};
+const cases = knownCasesFrom(readList<SiteLanes>(siteLanes), readList<HoleLanes>(holeLanes), files.byRun);
+const project = (run: string, lat: number, lon: number) => projectOnRun(files.byRun, run, lat, lon);
 const places = placesOf(STREET_PLACES, only === undefined ? null : only.split(","));
 
 type Browser = Awaited<ReturnType<typeof launch>>;
@@ -96,11 +105,8 @@ const untilIn =
   };
 
 /** What one try saw (or why it could not drive). */
-type Try = {
-  invalid: string | null;
-  error?: string;
+type Try = StreetDriveTry & {
   placed?: unknown;
-  ride?: StreetDriveRide;
   over?: { min: number; max: number };
   /**
    * What the autopilot said of its drive (debug.expressway.stop): its own arrival (within the hook's
@@ -113,11 +119,17 @@ type Try = {
     seconds: number | null;
     distanceM: number | null;
   };
-  faults: StreetFault[];
   lawEvents?: Record<string, string[]>;
 };
 
-async function drive(p: StreetPlace, at: { lat: number; lon: number }): Promise<Try> {
+/** The lat/lon of each logged line (expressway_building_crossed, _car_stalled, car_respawned). */
+const pointsOf = (lines: readonly string[]): LatLon[] =>
+  lines.map((l) => {
+    const { lat, lon } = parseLogged<LatLon>(l);
+    return { lat, lon };
+  });
+
+async function drive(p: StreetPlace, at: LatLon): Promise<Try> {
   const start = `${at.lat.toFixed(5)},${at.lon.toFixed(5)}`;
   const url = `${base}?start=${start}&time=day&weather=clear&seed=20261110&expressway`;
   const b = await launch(url, { width: 960, height: 540, port: await freePort() });
@@ -138,8 +150,8 @@ async function drive(p: StreetPlace, at: { lat: number; lon: number }): Promise<
     const logsBefore = b.logs.length;
     const during = (e: string) => b.logs.slice(logsBefore).filter((l) => l.includes(`"event":"${e}"`));
     const wasBlocked = before !== null;
-    if (wasBlocked) return { invalid: invalidOf(before, null, during), faults: [] };
-    const placed = await b.evaluate<{ error?: string; to: { lat: number; lon: number } }>(`(() => {
+    if (wasBlocked) return { invalid: invalidOf(before, null, during) };
+    const placed = await b.evaluate<{ error?: string; to: LatLon }>(`(() => {
       const G = window.__game; const g = G.getRoadGraph(); const f = G.getFrame();
       const P = f.toLocal(${at.lat}, ${at.lon}, f.origin.h);
       const hit = g.nearest(P, ${NEAREST_M}, (s) => !s.line.xid);
@@ -150,24 +162,24 @@ async function drive(p: StreetPlace, at: { lat: number; lon: number }): Promise<
         const B = f.toGeodetic(P.clone().addScaledVector(d, ${LEAD_M} * sign));
         const put = G.debug.expressway.placeOnStreet({ lat: A.lat, lon: A.lon }, { lat: B.lat, lon: B.lon });
         if (put) {
-          window.__streetCheck = { minOver: Infinity, maxOver: -Infinity, n: 0, below: 0, above: 0, first: null };
+          window.__streetCheck = { minOver: Infinity, maxOver: -Infinity, n: 0, below: [], above: [] };
           return { ...put, kind: hit.seg.line.kind, to: { lat: B.lat, lon: B.lon } };
         }
       }
       return { error: "no lane to put the car in (one-way against both ways?)" };
     })()`);
     const isUnplaced = placed.error !== undefined;
-    if (isUnplaced) return { invalid: null, error: placed.error, placed, faults: [] };
+    if (isUnplaced) return { invalid: null, error: { kind: "unplaced", text: placed.error! }, placed };
     const started = await b.evaluate<boolean>(`__game.debug.expressway.route(${JSON.stringify(placed.to)})`);
     const steps = started ? MAX_STEPS : 0;
     for (let t = 0; t < steps; t++) {
       await b.evaluate(`__game.advance(${STEP_S})`);
-      // The first sample off the band, with where it was (the frame's now: it moves with the car).
+      // Every sample off the band, with where it was (the frame's now: it moves with the car).
       await b.evaluate(`(() => { const G = window.__game; const p = G.vehicle.position(); const o = p.y - G.groundY(p.x, p.z);
         const s = window.__streetCheck; s.minOver = Math.min(s.minOver, o); s.maxOver = Math.max(s.maxOver, o); s.n++;
         const isBelow = o < ${RIDE_BAND[0]}; const isAbove = o > ${RIDE_BAND[1]};
-        if (isBelow) s.below++; if (isAbove) s.above++;
-        if ((isBelow || isAbove) && s.first === null) { const g = G.getFrame().toGeodetic(p); s.first = { what: isBelow ? "under the band" : "over the band", lat: g.lat, lon: g.lon }; } })()`);
+        if (!isBelow && !isAbove) return;
+        const g = G.getFrame().toGeodetic(p); (isBelow ? s.below : s.above).push({ lat: g.lat, lon: g.lon }); })()`);
       const isDriving = await b.evaluate<boolean>("!!window.__game.getAutopilot()");
       const hasEnded = !isDriving && t > MIN_STEPS;
       if (hasEnded) break;
@@ -188,28 +200,21 @@ async function drive(p: StreetPlace, at: { lat: number; lon: number }): Promise<
       minOver: number;
       maxOver: number;
       n: number;
-      below: number;
-      above: number;
-      first: StreetFault | null;
+      below: LatLon[];
+      above: LatLon[];
     }>("window.__streetCheck");
-    const respawned = during("car_respawned");
     const ride: StreetDriveRide = {
       started,
-      endM: Math.round(end.endM * 10) / 10,
+      endM: end.endM,
       fell: summary?.fell === true,
-      over: { n: check.n, below: check.below, above: check.above },
-      crossed: during("expressway_building_crossed").length,
-      stalled: during("expressway_car_stalled").length,
-      respawned: respawned.length,
+      samples: check.n,
+      below: check.below,
+      above: check.above,
+      crossed: pointsOf(during("expressway_building_crossed")),
+      stalled: pointsOf(during("expressway_car_stalled")),
+      respawned: pointsOf(during("car_respawned")),
+      end: { lat: end.lat, lon: end.lon },
     };
-    const faults: StreetFault[] = [];
-    if (check.first) faults.push(check.first);
-    for (const l of respawned) {
-      const r = parseLogged<{ lat: number; lon: number; reason: string }>(l);
-      faults.push({ what: `respawned (${r.reason})`, lat: r.lat, lon: r.lon });
-    }
-    const isShort = ride.endM > ARRIVE_M;
-    if (isShort && started) faults.push({ what: "stopped short", lat: end.lat, lon: end.lon });
     return {
       invalid: invalidOf(null, summary?.invalid, during),
       placed,
@@ -221,7 +226,6 @@ async function drive(p: StreetPlace, at: { lat: number; lon: number }): Promise<
         seconds: summary?.seconds ?? null,
         distanceM: summary?.distanceM ?? null,
       },
-      faults,
       lawEvents: {
         accident: during("accident"),
         vehicleBump: during("vehicle_bump"),
@@ -233,87 +237,74 @@ async function drive(p: StreetPlace, at: { lat: number; lon: number }): Promise<
   }
 }
 
+/** A JSON file's content, or null when it is not there. */
+const readIfThere = <T>(file: string): T | null =>
+  existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as T) : null;
+
 mkdirSync(outDir, { recursive: true });
-let exit = 0;
 for (const p of places) {
   const file = join(outDir, `${p.id}.json`);
-  const isDone = existsSync(file);
+  const isDone = isReusable(readIfThere<{ key?: ResultKey }>(file), key);
   if (isDone) continue;
   const at = placeLatLon(files.byRun, p.at);
-  const attempts: Try[] = [];
   const isNowhere = at === null;
+  const attempts: Try[] = [];
   let last: Try = isNowhere
-    ? { invalid: null, error: `no run ${"run" in p.at ? p.at.run : "?"} in the data`, faults: [] }
-    : { invalid: "not driven", faults: [] };
+    ? {
+        invalid: null,
+        error: { kind: "no-run", text: `no run ${"run" in p.at ? p.at.run : "?"} in the data` },
+      }
+    : { invalid: "not driven" };
   const tryCount = isNowhere ? 0 : tries;
   for (let i = 0; i < tryCount; i++) {
     // A try that throws (the page never settles) does not count, as in drive-deck.ts.
-    last = await drive(p, at!).catch((error: unknown): Try => ({
-      invalid: `error: ${String(error)}`,
-      faults: [],
-    }));
+    last = await drive(p, at!).catch((error: unknown): Try => ({ invalid: `error: ${String(error)}` }));
     attempts.push(last);
     const counts = last.invalid === null;
     if (counts) break;
   }
-  const hasError = last.error !== undefined;
-  const failures = hasError ? [last.error!] : last.ride ? streetDriveFailures(last.ride) : [];
-  const known = knownCasesOf(last.faults, cases, (run, lat, lon) => projectOnRun(files.byRun, run, lat, lon));
-  const isInvalid = last.invalid !== null;
   const mainFile = baselineDir === undefined ? null : join(baselineDir, `${p.id}.json`);
-  const hasMain = mainFile !== null && existsSync(mainFile);
-  const main = hasMain
-    ? (JSON.parse(readFileSync(mainFile!, "utf8")) as { verdict: string; failures: string[] })
-    : null;
-  const verdict = isInvalid ? "invalid" : againstMain(streetVerdict(failures, known), main?.verdict ?? null);
+  const main =
+    mainFile === null ? null : readIfThere<MainDrive & { failures: unknown; served: unknown }>(mainFile);
+  const judged = judgeStreetDrive(last, cases, project, main);
   const out = {
     label,
+    key,
     served,
     place: p,
     at,
-    verdict,
-    failures,
-    known,
-    main: main === null ? null : { dir: baselineDir, verdict: main.verdict, failures: main.failures },
+    ...judged,
+    main:
+      main === null
+        ? null
+        : { dir: baselineDir, verdict: main.verdict, kinds: main.kinds, served: main.served },
     ...last,
     attempts: attempts.length,
     tries: attempts,
   };
   writeFileSync(file, `${JSON.stringify(out, null, 2)}\n`);
+  const endM = last.ride ? Math.round(last.ride.endM * 10) / 10 : null;
   process.stdout.write(
-    `${JSON.stringify({ label, place: p.id, verdict, failures, known, endM: last.ride?.endM, over: last.over, tries: attempts.length })}\n`,
+    `${JSON.stringify({ label, place: p.id, verdict: judged.verdict, kinds: judged.kinds, known: judged.known, endM, over: last.over, tries: attempts.length })}\n`,
   );
 }
 
-// The run's summary over every place's file in the folder (the ones driven before a resume too).
+// The run's summary over the folder's results of this run (the ones driven before a resume too).
 const results = readdirSync(outDir)
   .filter((f) => f.endsWith(".json") && f !== "summary.json")
-  .map(
-    (f) => JSON.parse(readFileSync(join(outDir, f), "utf8")) as { place: { id: string }; verdict: string },
-  );
-const ids = (v: string) =>
-  results
-    .filter((r) => r.verdict === v)
-    .map((r) => r.place.id)
-    .toSorted();
+  .map((f) => JSON.parse(readFileSync(join(outDir, f), "utf8")) as Parameters<typeof summarize>[0][number]);
 const summary = {
   label,
   served,
-  places: results.length,
-  pass: ids("pass"),
-  fail: ids("fail"),
-  known: ids("known"),
-  knownMain: ids("known-main"),
-  invalid: ids("invalid"),
+  key,
+  ...summarize(
+    results,
+    STREET_PLACES.map((p) => p.id),
+    key,
+  ),
 };
 writeFileSync(join(outDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
 process.stdout.write(`${JSON.stringify({ ...summary, pass: summary.pass.length })}\n`);
-const hasFail = summary.fail.length > 0;
-const hasInvalid = summary.invalid.length > 0;
-const hasKnown = summary.known.length + summary.knownMain.length > 0;
-if (hasFail) exit = 1;
-else if (hasInvalid) exit = 2;
-else if (hasKnown) exit = 3;
 // Ends here even if a child is still running (browser.mjs's reaper kills its Chromes at the exit), as
 // drive-deck.ts.
-process.exit(exit);
+process.exit(exitCodeOf(summary));
