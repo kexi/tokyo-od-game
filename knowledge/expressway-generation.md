@@ -7,6 +7,10 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:check-street-drive-r1-5a-a1, at: 2026-11-23T15:02:00Z }
+  - { by: process:check-deck-drive-r1-5a-a5, at: 2026-11-23T13:38:00Z }
+  - { by: process:vite-build-r1-5a-a4, at: 2026-11-23T13:20:00Z }
+  - { by: process:vitest-r1-5a, at: 2026-11-23T15:05:00Z }
   - { by: process:measure-expressway-area-s7-2-cut2, at: 2026-11-23T03:02:00Z }
   - { by: process:measure-expressway-area-s7-2-baselines, at: 2026-11-23T07:26:00Z }
   - { by: process:vitest-s7-2, at: 2026-11-23T07:32:00Z }
@@ -4712,10 +4716,27 @@ S6 PR 7c の街路の走行（`.qa/street-drive.mts`、git に無く古い workt
 
 - A4: `vite build` を変数あり（r1b-g3）・なしで 2 回、`dist` 全体が `diff -r` で一致、`dist/data/expressway` は `public/data/expressway` と一致。開発サーバー（変数なし）の既定のタイル 14551-6452.json と meta.json は public の物とバイト一致、`__xw-data` は `text/html`（Vite の HTML の代わり）。
 - A5: G3（r1b-g3）と S7 の形の central（`r1-cs-48dc699`、`--below-junctions compile --portal-approach cut --run-borders cut --districts central`）を配って、既定のデータに無い run 756785283 の経路 `onward-756785283-by-203832847` を `drive-deck.ts` で走らせた。どちらも車が 756785283:0 に置かれ、結果の `served` にそのフォルダが出た。G3 は合格。**central では不合格**（756785283:0 で目標から 41 km/h 落ち込み、17 m で止まる、drops 1）: 経路の不合格として R1-4・R1-7 へ渡す（直していない）。
-- A1: 下の表（既定のデータ、新しい道具と控えの両方、1 本ずつ鍵）。
+- A1: 下の表（既定のデータ、新しい道具と控えの両方、1 本ずつ鍵）。両方で同じ合否、7c とは 11 か所違う（理由は確かめていない）。
+- データテストを `XW_DATA_DIR`（r1-cs-48dc699）で走らせても `xw_data_served` は出ない（vitest の下で何もしない）。`tests/expresswayFormat.test.ts` の meta の欄の検査が `districts` で落ちるのは、地区のフォルダの meta の形で、この PR の前から（道具とは別）。全テスト 207 files・2,898 passed（変数なし）。
 - テスト: `tests/xwDataServe.test.ts`（変数なし・vitest の下で何も足さない、build・preview のフックが無い、配るファイル・404・`__xw-data`、meta の比べ）、`tests/streetDrive.test.ts`（7c の数、掘割に落ちて 10 m 以内に止まった・respawn した・測った数 0 の走行は不合格、known と外、known は合格でない、事例の届く幅、場所の表が既定のデータの run に解ける）。
 
-A1_TABLE_PLACEHOLDER
+### A1: 7c の 18 か所（既定のデータ 48dc699、2026-11-23 13:28〜15:02Z、新しい道具と控えを 9 か所ずつ 4 回、1 本ずつ鍵 R15）
+
+**両方の道具で、18 か所とも合否が同じ**（止まった距離・帯の外の数・respawn もほぼ同じ。ゲームの時間で進めるので、走りは決まっている）。合格は 5 か所（wall-24039751-left・wall-45068169-left・-right・kasumi-24402611-84・control-two-way）。**7c の記録（到着しないのは azabudai-north-portal-over と kasumi-24402611-75 の 2 か所だけ）と違う所が 11 か所あり、理由は確かめていない**（設計へ戻した。止める条件）。
+
+| 場所                                          | 今（両方の道具）                               | 7c の記録               | 理由の候補（確かめていない）                                                 |
+| --------------------------------------------- | ---------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------- |
+| azabudai-north-portal-over                    | 83.4 m で止まる、帯の下 1・上 13、respawn 1    | 到着しない              | 7c と同じ                                                                    |
+| kasumi-24402611-75                            | 232 m 離れる、帯の下 5〜7、respawn 1           | 到着しない（respawn 1） | 7c と同じ                                                                    |
+| azabudai-north-portal-over-2                  | 60 m で止まる（幅 4.3 m の道に置かれる）       | 到着                    | 置かれる街路が変わった（R1-2b M1 の線の外し #128 など）                      |
+| wall-24039751-right                           | 16.1 m で止まる、帯の下 12〜18（最低 −0.06 m） | 到着・落下 0            | 端の壁（#129）か穴の縁（S7-4b）で地形が変わった                              |
+| wall-24402611-start                           | 置けない（30 m の内に向きの合う車線が無い）    | 到着（事故 1）          | 40 m 手前の点の近くの街路が変わった（#128）                                  |
+| kasumi-24402611-90・895902565-850・-856・-865 | 11.9・25.6・15.6・37.6 m で止まる、帯の内      | 到着                    | 自動運転の終わり方（前の車の見方 d03d94d など）か、目的地の点の取り方        |
+| decided-895902565-80・decided-45021976-3412   | 70.9・46.8 m で止まる、帯の内                  | 到着                    | 同上                                                                         |
+| control-one-way・control-narrow               | 到着、帯の下 3〜4（最低 −0.67・−0.12 m）       | （対照、合格の扱い）    | 床版から遠い平らな街路で DEM より下を走る: 帯の基準（DEM）と描かれた路面の差 |
+
+- 機械の負荷は高かった（load average 13〜15、ほかの担当の生成とエディタ）。ただし 2 つの道具を別の時刻に走らせて同じ数が出たので、負荷のせいではないと読んでいる。
+- 帯の下の判定は、今の数（0.4 m）のままでは対照でも落ちる。線は変えていない（設計の判断）。
 
 # 未対応・既知の欠落
 
