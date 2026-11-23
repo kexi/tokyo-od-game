@@ -1628,6 +1628,7 @@ export const LOG_EVENTS = {
    */
   street_same_road_measured: info({
     dir: z.string(),
+    skippedForMissingTiles: count,
     lines: count,
     alphaM: count,
     extendedM: z.number().nonnegative(),

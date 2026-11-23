@@ -907,6 +907,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   },
   street_same_road_measured: {
     dir: "public/data/expressway",
+    skippedForMissingTiles: 0,
     lines: 2,
     alphaM: 63,
     extendedM: 1.3,

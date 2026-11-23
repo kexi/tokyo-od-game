@@ -290,6 +290,8 @@ for (const c of siteChunks) {
   groups.set(key, [...(groups.get(key) ?? []), c]);
 }
 
+/** Windows left out because a road tile of theirs is not in the cache (counted, and --check fails on any). */
+let skippedForMissingTiles = 0;
 for (const [key] of groups) {
   const [cx, cy] = key.split("-").map(Number);
   const tiles: RoadLine[] = [];
@@ -300,7 +302,10 @@ for (const [key] of groups) {
       if (t === null) isMissing = true;
       else tiles.push(...t);
     }
-  if (isMissing) continue;
+  if (isMissing) {
+    skippedForMissingTiles++;
+    continue;
+  }
   const lat = tileYToLat(cy + 0.5, ROAD_TILE_ZOOM);
   const lon = tileXToLon(cx + 0.5, ROAD_TILE_ZOOM);
   const near = files.chunks.filter((c) => {
@@ -732,6 +737,7 @@ const tally = (pick: (r: Row) => string) => {
 };
 const summary = {
   dir: target,
+  skippedForMissingTiles,
   lines: list.length,
   alphaM: Math.round(list.reduce((n, r) => n + r.takenM, 0)),
   extendedM: round(list.reduce((n, r) => n + r.extendedM, 0)),
@@ -758,7 +764,9 @@ if (out !== undefined)
 // --check (just check-same-road-pieces): a piece left of an alpha line inside the band and not at the
 // foot fails (exit code 1). Why a check and not only the column: R2 and R3's data are read by no one
 // line by line, and the shape the rule lets through (the foot's edge and the band's edge between the
-// same two samples) is in no data yet.
+// same two samples) is in no data yet. A window left out for a road tile missing from the cache fails
+// too: its sites were not looked at, so a pass would say nothing of them (#127's review).
 const isChecked = args.includes("--check");
 const hasPiecesInBand = summary.leftInBandNotFoot > 0;
-if (isChecked && hasPiecesInBand) process.exitCode = 1;
+const hasSkipped = skippedForMissingTiles > 0;
+if (isChecked && (hasPiecesInBand || hasSkipped)) process.exitCode = 1;
