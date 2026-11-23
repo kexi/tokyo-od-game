@@ -1326,7 +1326,8 @@ export const LOG_EVENTS = {
   }),
   /**
    * The OSM extract read (src/expressway/extract.ts): its replication timestamp against the pinned
-   * one, its SHA-256, and whether a mismatch was let through by --accept-extract.
+   * one, its SHA-256, and whether a mismatch was let through by --accept-extract. R1-3: the
+   * decisions' tables the build applies (`--decisions`, all by default), the first line of a build.
    */
   expressway_extract_checked: info({
     timestamp: z.string().nullable(),
@@ -1334,6 +1335,7 @@ export const LOG_EVENTS = {
     sha256: z.string(),
     pinned: z.boolean(),
     accepted: z.boolean(),
+    decisions: z.enum(["all", "none", "feet-only", "structures-only"]),
   }),
   /** The pinned extract copied from kanto-latest (extract.ts), once, while that was still it. */
   expressway_extract_pinned: info({ file: z.string(), timestamp: z.string().nullable(), sha256: z.string() }),
