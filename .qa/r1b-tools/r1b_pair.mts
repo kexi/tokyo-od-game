@@ -84,7 +84,14 @@ const built = near.map((c) => ({ c, b: build(c) }));
 for (const { c, b } of built) {
   const first = b.rings[0];
   const last = b.rings[b.rings.length - 1];
-  const dist = (r: typeof first) => Math.hypot(r.c.x - ring.c.x, r.c.z - ring.c.z).toFixed(2);
+  // How far, and split in this end ring's frame: along (outward past the face +) and across (left +).
+  const dist = (r: typeof first) => {
+    const dx = r.c.x - ring.c.x;
+    const dz = r.c.z - ring.c.z;
+    const along = -back * (dx * ring.t.x + dz * ring.t.z);
+    const across = dx * ring.t.z - dz * ring.t.x;
+    return `${Math.hypot(dx, dz).toFixed(2)} (along ${along.toFixed(2)}, across ${across.toFixed(2)})`;
+  };
   console.log(
     "partner chunk",
     c.id,
