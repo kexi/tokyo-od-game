@@ -95,6 +95,17 @@ type Try = {
   placed?: unknown;
   ride?: StreetDriveRide;
   over?: { min: number; max: number };
+  /**
+   * What the autopilot said of its drive (debug.expressway.stop): its own arrival (within the hook's
+   * ARRIVED_M 80 m, not this check's), why it gave up, the game seconds and metres driven. Kept to tell
+   * a drive the autopilot ended short from one stuck to the 60 s cap without driving again.
+   */
+  autopilot?: {
+    arrived: boolean | null;
+    gaveUp: string | null;
+    seconds: number | null;
+    distanceM: number | null;
+  };
   faults: StreetFault[];
   lawEvents?: Record<string, string[]>;
 };
@@ -154,9 +165,14 @@ async function drive(p: StreetPlace, at: { lat: number; lon: number }): Promise<
       const hasEnded = !isDriving && t > MIN_STEPS;
       if (hasEnded) break;
     }
-    const summary = await b.evaluate<{ fell?: boolean; invalid?: string | null }>(
-      `__game.debug.expressway.stop(${JSON.stringify(p.id)})`,
-    );
+    const summary = await b.evaluate<{
+      fell?: boolean;
+      invalid?: string | null;
+      arrived?: boolean;
+      gaveUp?: string | null;
+      seconds?: number;
+      distanceM?: number;
+    }>(`__game.debug.expressway.stop(${JSON.stringify(p.id)})`);
     const end = await b.evaluate<{ endM: number; lat: number; lon: number }>(`(() => {
       const G = window.__game; const f = G.getFrame(); const p = G.vehicle.position();
       const T = f.toLocal(${placed.to.lat}, ${placed.to.lon}, f.origin.h); const g = f.toGeodetic(p);
@@ -192,6 +208,12 @@ async function drive(p: StreetPlace, at: { lat: number; lon: number }): Promise<
       placed,
       ride,
       over: { min: Math.round(check.minOver * 100) / 100, max: Math.round(check.maxOver * 100) / 100 },
+      autopilot: {
+        arrived: summary?.arrived ?? null,
+        gaveUp: summary?.gaveUp ?? null,
+        seconds: summary?.seconds ?? null,
+        distanceM: summary?.distanceM ?? null,
+      },
       faults,
       lawEvents: {
         accident: during("accident"),
