@@ -1,0 +1,2534 @@
+{
+  "summary": {
+    "places": 15,
+    "rows": 15,
+    "byBest": {
+      "fits-in-width": {
+        "n": 12,
+        "m": 310
+      },
+      "blocked": {
+        "n": 1,
+        "m": 11
+      },
+      "out-of-width-clear": {
+        "n": 2,
+        "m": 108
+      }
+    },
+    "byShape": {
+      "middle": {
+        "n": 8,
+        "m": 187
+      },
+      "one-way": {
+        "n": 7,
+        "m": 242
+      }
+    },
+    "byJartic": {
+      "none": {
+        "n": 3,
+        "m": 56
+      },
+      "one-way": {
+        "n": 11,
+        "m": 303
+      },
+      "split": {
+        "n": 1,
+        "m": 70
+      }
+    },
+    "byShapeAndJartic": {
+      "middle/none": {
+        "n": 3,
+        "m": 56
+      },
+      "middle/one-way": {
+        "n": 5,
+        "m": 131
+      },
+      "one-way/one-way": {
+        "n": 6,
+        "m": 172
+      },
+      "one-way/split": {
+        "n": 1,
+        "m": 70
+      }
+    },
+    "rampDrawn": 2,
+    "footJoined": 1,
+    "junctionsNear": {
+      "0": {
+        "n": 3,
+        "m": 119
+      },
+      "1": {
+        "n": 9,
+        "m": 195
+      },
+      "2": {
+        "n": 3,
+        "m": 115
+      }
+    },
+    "alpha": {
+      "n": 1,
+      "m": 52
+    },
+    "alphaWithJarticLanes": 1,
+    "byMemoClass": {
+      "β2": {
+        "n": 8,
+        "m": 187
+      },
+      "β1": {
+        "n": 5,
+        "m": 134
+      },
+      "γ": {
+        "n": 2,
+        "m": 108
+      }
+    },
+    "formE": {
+      "byVerdict": {
+        "β1": {
+          "not movable": {
+            "n": 5,
+            "m": 134
+          }
+        },
+        "γ": {
+          "not movable": {
+            "n": 2,
+            "m": 108
+          }
+        }
+      },
+      "byReason": {
+        "β1": {
+          "jartic one-way": {
+            "n": 5,
+            "m": 134
+          },
+          "site both sides or on the line": {
+            "n": 5,
+            "m": 134
+          }
+        },
+        "γ": {
+          "jartic one-way": {
+            "n": 2,
+            "m": 108
+          },
+          "bridge": {
+            "n": 2,
+            "m": 108
+          },
+          "site both sides or on the line": {
+            "n": 2,
+            "m": 108
+          },
+          "over the cap": {
+            "n": 1,
+            "m": 70
+          },
+          "foot": {
+            "n": 1,
+            "m": 38
+          }
+        }
+      }
+    },
+    "onewayAtSites": {
+      "-": {
+        "n": 10,
+        "m": 295
+      },
+      "divided": {
+        "n": 5,
+        "m": 134
+      }
+    },
+    "ruledOneways": {
+      "divided": {
+        "n": 72,
+        "m": 3145
+      },
+      "one-way": {
+        "n": 37,
+        "m": 963
+      },
+      "two-way": {
+        "n": 4,
+        "m": 219
+      },
+      "unknown": {
+        "n": 91,
+        "m": 3260
+      }
+    }
+  },
+  "moves": [
+    {
+      "seg": 821,
+      "at": [35.671248, 139.743158],
+      "klass": "A",
+      "lengthM": 27,
+      "widthM": 50,
+      "travel": 0,
+      "lanes": 2,
+      "shape": "middle",
+      "options": [
+        {
+          "side": "split",
+          "moves": [6.7, -5.64],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0.09,
+            "streetTwin": 0,
+            "pavement": 0,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        }
+      ],
+      "best": "fits-in-width",
+      "toJunctionM": [null, 30.03],
+      "junctionsNear": 0,
+      "rampDrawn": false,
+      "footJoined": false,
+      "jartic": "none",
+      "e": {
+        "memoClass": "β2",
+        "widthClassUpperM": null,
+        "onewayFrom": "two-way",
+        "foot": null,
+        "bridge": false,
+        "needSamples": 0,
+        "needMedianM": null,
+        "needMaxM": null,
+        "capM": 11.25,
+        "movableSamples": 0,
+        "lanesNow": 2,
+        "lanesOffCentreInWidth": 2,
+        "verdict": "not movable",
+        "reasons": ["site both sides or on the line"],
+        "junctions": {
+          "cross": 0,
+          "tee": 0,
+          "controlled": 0
+        }
+      }
+    },
+    {
+      "seg": 823,
+      "at": [35.67113, 139.743039],
+      "klass": "A",
+      "lengthM": 7,
+      "widthM": 50,
+      "travel": 0,
+      "lanes": 2,
+      "shape": "middle",
+      "options": [
+        {
+          "side": "split",
+          "moves": [8.84, -8.32],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0,
+            "streetTwin": 0.15,
+            "pavement": 0,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        }
+      ],
+      "best": "fits-in-width",
+      "toJunctionM": [null, 23.04],
+      "junctionsNear": 1,
+      "rampDrawn": false,
+      "footJoined": false,
+      "jartic": "none",
+      "e": {
+        "memoClass": "β2",
+        "widthClassUpperM": null,
+        "onewayFrom": "two-way",
+        "foot": null,
+        "bridge": false,
+        "needSamples": 0,
+        "needMedianM": null,
+        "needMaxM": null,
+        "capM": 11.25,
+        "movableSamples": 0,
+        "lanesNow": 2,
+        "lanesOffCentreInWidth": 2,
+        "verdict": "not movable",
+        "reasons": ["site both sides or on the line"],
+        "junctions": {
+          "cross": 0,
+          "tee": 0,
+          "controlled": 0
+        }
+      }
+    },
+    {
+      "seg": 637,
+      "at": [35.659534, 139.736709],
+      "klass": "A",
+      "lengthM": 13,
+      "widthM": 40,
+      "travel": 0,
+      "lanes": 2,
+      "shape": "middle",
+      "options": [
+        {
+          "side": "split",
+          "moves": [6.89, -4.95],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0.02,
+            "streetCross": 0.13,
+            "streetTwin": 0.01,
+            "pavement": 0.01,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        }
+      ],
+      "best": "fits-in-width",
+      "toJunctionM": [0, 0.86],
+      "junctionsNear": 2,
+      "rampDrawn": false,
+      "footJoined": false,
+      "jartic": "one-way",
+      "e": {
+        "memoClass": "β2",
+        "widthClassUpperM": null,
+        "onewayFrom": "two-way",
+        "foot": null,
+        "bridge": false,
+        "needSamples": 0,
+        "needMedianM": null,
+        "needMaxM": null,
+        "capM": 11.25,
+        "movableSamples": 0,
+        "lanesNow": 2,
+        "lanesOffCentreInWidth": 2,
+        "verdict": "not movable",
+        "reasons": ["site both sides or on the line"],
+        "junctions": {
+          "cross": 0,
+          "tee": 1,
+          "controlled": 0
+        }
+      }
+    },
+    {
+      "seg": 638,
+      "at": [35.65963, 139.736751],
+      "klass": "A",
+      "lengthM": 11,
+      "widthM": 40,
+      "travel": 0,
+      "lanes": 5,
+      "shape": "middle",
+      "options": [
+        {
+          "side": "split",
+          "moves": [6.88, -5.18],
+          "outOfWidthM": 3.38,
+          "shares": {
+            "site": 0,
+            "street": 0.12,
+            "streetCross": 0.22,
+            "streetTwin": 0.01,
+            "pavement": 0.07,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        }
+      ],
+      "best": "blocked",
+      "toJunctionM": [89.53, 0.41],
+      "junctionsNear": 1,
+      "rampDrawn": false,
+      "footJoined": false,
+      "jartic": "one-way",
+      "e": {
+        "memoClass": "β2",
+        "widthClassUpperM": null,
+        "onewayFrom": "two-way",
+        "foot": null,
+        "bridge": false,
+        "needSamples": 0,
+        "needMedianM": null,
+        "needMaxM": null,
+        "capM": 3.5,
+        "movableSamples": 0,
+        "lanesNow": 5,
+        "lanesOffCentreInWidth": 3,
+        "verdict": "not movable",
+        "reasons": ["site both sides or on the line"],
+        "junctions": {
+          "cross": 0,
+          "tee": 0,
+          "controlled": 0
+        }
+      }
+    },
+    {
+      "seg": 639,
+      "at": [35.659913, 139.736936],
+      "klass": "A",
+      "lengthM": 62,
+      "widthM": 40,
+      "travel": 0,
+      "lanes": 2,
+      "shape": "middle",
+      "options": [
+        {
+          "side": "split",
+          "moves": [6.3, -8.97],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0,
+            "streetTwin": 0.04,
+            "pavement": 0,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        }
+      ],
+      "best": "fits-in-width",
+      "toJunctionM": [28, 10.94],
+      "junctionsNear": 2,
+      "rampDrawn": false,
+      "footJoined": false,
+      "jartic": "one-way",
+      "e": {
+        "memoClass": "β2",
+        "widthClassUpperM": null,
+        "onewayFrom": "two-way",
+        "foot": null,
+        "bridge": false,
+        "needSamples": 0,
+        "needMedianM": null,
+        "needMaxM": null,
+        "capM": 11.25,
+        "movableSamples": 0,
+        "lanesNow": 2,
+        "lanesOffCentreInWidth": 2,
+        "verdict": "not movable",
+        "reasons": ["site both sides or on the line"],
+        "junctions": {
+          "cross": 0,
+          "tee": 0,
+          "controlled": 0
+        }
+      }
+    },
+    {
+      "seg": 647,
+      "at": [35.658418, 139.736452],
+      "klass": "B1",
+      "lengthM": 20,
+      "widthM": 40,
+      "travel": -1,
+      "lanes": 3,
+      "shape": "one-way",
+      "options": [
+        {
+          "side": "right",
+          "moves": [-13.25],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0.1,
+            "streetTwin": 0,
+            "pavement": 0.08,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        },
+        {
+          "side": "left",
+          "moves": [9.46],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0,
+            "streetTwin": 0.11,
+            "pavement": 0.05,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        }
+      ],
+      "best": "fits-in-width",
+      "toJunctionM": [61.1, 22.82],
+      "junctionsNear": 1,
+      "rampDrawn": false,
+      "footJoined": false,
+      "jartic": "one-way",
+      "oneway": {
+        "jarticOffsetM": 1.2,
+        "jarticOpposite": false,
+        "osm": "divided"
+      },
+      "e": {
+        "memoClass": "β1",
+        "widthClassUpperM": null,
+        "onewayFrom": "jartic-all-day",
+        "foot": null,
+        "bridge": false,
+        "needSamples": 0,
+        "needMedianM": null,
+        "needMaxM": null,
+        "capM": 11.25,
+        "movableSamples": 0,
+        "lanesNow": 3,
+        "lanesOffCentreInWidth": 3,
+        "verdict": "not movable",
+        "reasons": ["jartic one-way", "site both sides or on the line"],
+        "junctions": {
+          "cross": 0,
+          "tee": 0,
+          "controlled": 0
+        }
+      }
+    },
+    {
+      "seg": 650,
+      "at": [35.65828, 139.736438],
+      "klass": "B1",
+      "lengthM": 12,
+      "widthM": 40,
+      "travel": -1,
+      "lanes": 3,
+      "shape": "one-way",
+      "options": [
+        {
+          "side": "right",
+          "moves": [-13.34],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0,
+            "streetTwin": 0,
+            "pavement": 0.1,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        },
+        {
+          "side": "left",
+          "moves": [9.48],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0.01,
+            "streetCross": 0,
+            "streetTwin": 0.08,
+            "pavement": 0.07,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        }
+      ],
+      "best": "fits-in-width",
+      "toJunctionM": [80.55, 11.37],
+      "junctionsNear": 1,
+      "rampDrawn": false,
+      "footJoined": false,
+      "jartic": "one-way",
+      "oneway": {
+        "jarticOffsetM": -1.48,
+        "jarticOpposite": false,
+        "osm": "divided"
+      },
+      "e": {
+        "memoClass": "β1",
+        "widthClassUpperM": null,
+        "onewayFrom": "jartic-all-day",
+        "foot": null,
+        "bridge": false,
+        "needSamples": 0,
+        "needMedianM": null,
+        "needMaxM": null,
+        "capM": 11.25,
+        "movableSamples": 0,
+        "lanesNow": 3,
+        "lanesOffCentreInWidth": 3,
+        "verdict": "not movable",
+        "reasons": ["jartic one-way", "site both sides or on the line"],
+        "junctions": {
+          "cross": 0,
+          "tee": 0,
+          "controlled": 0
+        }
+      }
+    },
+    {
+      "seg": 657,
+      "at": [35.659439, 139.73668],
+      "klass": "A",
+      "lengthM": 9,
+      "widthM": 40,
+      "travel": 0,
+      "lanes": 2,
+      "shape": "middle",
+      "options": [
+        {
+          "side": "split",
+          "moves": [6.58, -5.87],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0.16,
+            "streetTwin": 0,
+            "pavement": 0.04,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        }
+      ],
+      "best": "fits-in-width",
+      "toJunctionM": [0, 40.08],
+      "junctionsNear": 1,
+      "rampDrawn": false,
+      "footJoined": false,
+      "jartic": "one-way",
+      "e": {
+        "memoClass": "β2",
+        "widthClassUpperM": null,
+        "onewayFrom": "two-way",
+        "foot": null,
+        "bridge": false,
+        "needSamples": 0,
+        "needMedianM": null,
+        "needMaxM": null,
+        "capM": 11.25,
+        "movableSamples": 0,
+        "lanesNow": 2,
+        "lanesOffCentreInWidth": 2,
+        "verdict": "not movable",
+        "reasons": ["site both sides or on the line"],
+        "junctions": {
+          "cross": 0,
+          "tee": 1,
+          "controlled": 0
+        }
+      }
+    },
+    {
+      "seg": 659,
+      "at": [35.659221, 139.73663],
+      "klass": "B1",
+      "lengthM": 40,
+      "widthM": 40,
+      "travel": -1,
+      "lanes": 3,
+      "shape": "one-way",
+      "options": [
+        {
+          "side": "right",
+          "moves": [-13.55],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0,
+            "streetTwin": 0,
+            "pavement": 0.14,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        },
+        {
+          "side": "left",
+          "moves": [10.99],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0.11,
+            "streetTwin": 0.05,
+            "pavement": 0.07,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        }
+      ],
+      "best": "fits-in-width",
+      "toJunctionM": [8.59, 0.49],
+      "junctionsNear": 2,
+      "rampDrawn": false,
+      "footJoined": false,
+      "jartic": "one-way",
+      "oneway": {
+        "jarticOffsetM": -3.39,
+        "jarticOpposite": false,
+        "osm": "divided"
+      },
+      "e": {
+        "memoClass": "β1",
+        "widthClassUpperM": null,
+        "onewayFrom": "jartic-all-day",
+        "foot": null,
+        "bridge": false,
+        "needSamples": 0,
+        "needMedianM": null,
+        "needMaxM": null,
+        "capM": 11.25,
+        "movableSamples": 0,
+        "lanesNow": 3,
+        "lanesOffCentreInWidth": 3,
+        "verdict": "not movable",
+        "reasons": ["jartic one-way", "site both sides or on the line"],
+        "junctions": {
+          "cross": 0,
+          "tee": 0,
+          "controlled": 0
+        }
+      }
+    },
+    {
+      "seg": 661,
+      "at": [35.658967, 139.736585],
+      "klass": "B1",
+      "lengthM": 19,
+      "widthM": 40,
+      "travel": -1,
+      "lanes": 3,
+      "shape": "one-way",
+      "options": [
+        {
+          "side": "right",
+          "moves": [-14.59],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0.23,
+            "streetTwin": 0,
+            "pavement": 0.13,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        },
+        {
+          "side": "left",
+          "moves": [8.69],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0.04,
+            "streetTwin": 0.12,
+            "pavement": 0.11,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        }
+      ],
+      "best": "fits-in-width",
+      "toJunctionM": [0, 84.92],
+      "junctionsNear": 1,
+      "rampDrawn": false,
+      "footJoined": false,
+      "jartic": "one-way",
+      "oneway": {
+        "jarticOffsetM": -5.85,
+        "jarticOpposite": false,
+        "osm": "divided"
+      },
+      "e": {
+        "memoClass": "β1",
+        "widthClassUpperM": null,
+        "onewayFrom": "jartic-all-day",
+        "foot": null,
+        "bridge": false,
+        "needSamples": 0,
+        "needMedianM": null,
+        "needMaxM": null,
+        "capM": 11.25,
+        "movableSamples": 0,
+        "lanesNow": 3,
+        "lanesOffCentreInWidth": 3,
+        "verdict": "not movable",
+        "reasons": ["jartic one-way", "site both sides or on the line"],
+        "junctions": {
+          "cross": 0,
+          "tee": 1,
+          "controlled": 0
+        }
+      }
+    },
+    {
+      "seg": 662,
+      "at": [35.658696, 139.736521],
+      "klass": "B1",
+      "lengthM": 43,
+      "widthM": 40,
+      "travel": -1,
+      "lanes": 3,
+      "shape": "one-way",
+      "options": [
+        {
+          "side": "right",
+          "moves": [-14.62],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0.02,
+            "streetTwin": 0,
+            "pavement": 0.12,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        },
+        {
+          "side": "left",
+          "moves": [8.98],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0,
+            "streetTwin": 0.21,
+            "pavement": 0.1,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        }
+      ],
+      "best": "fits-in-width",
+      "toJunctionM": [18.67, 42.25],
+      "junctionsNear": 1,
+      "rampDrawn": false,
+      "footJoined": false,
+      "jartic": "one-way",
+      "oneway": {
+        "jarticOffsetM": -1.15,
+        "jarticOpposite": false,
+        "osm": "divided"
+      },
+      "e": {
+        "memoClass": "β1",
+        "widthClassUpperM": null,
+        "onewayFrom": "jartic-all-day",
+        "foot": null,
+        "bridge": false,
+        "needSamples": 0,
+        "needMedianM": null,
+        "needMaxM": null,
+        "capM": 11.25,
+        "movableSamples": 0,
+        "lanesNow": 3,
+        "lanesOffCentreInWidth": 3,
+        "verdict": "not movable",
+        "reasons": ["jartic one-way", "site both sides or on the line"],
+        "junctions": {
+          "cross": 0,
+          "tee": 0,
+          "controlled": 0
+        }
+      }
+    },
+    {
+      "seg": 817,
+      "at": [35.664676, 139.738714],
+      "klass": "A",
+      "lengthM": 36,
+      "widthM": 40,
+      "travel": 0,
+      "lanes": 3,
+      "shape": "middle",
+      "options": [
+        {
+          "side": "split",
+          "moves": [2.02, -3.28],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0.12,
+            "streetCross": 0,
+            "streetTwin": 0.4,
+            "pavement": 0.13,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        }
+      ],
+      "best": "fits-in-width",
+      "toJunctionM": [28.42, 82.03],
+      "junctionsNear": 1,
+      "rampDrawn": false,
+      "footJoined": false,
+      "jartic": "one-way",
+      "e": {
+        "memoClass": "β2",
+        "widthClassUpperM": null,
+        "onewayFrom": "two-way",
+        "foot": null,
+        "bridge": false,
+        "needSamples": 0,
+        "needMedianM": null,
+        "needMaxM": null,
+        "capM": 5.75,
+        "movableSamples": 0,
+        "lanesNow": 3,
+        "lanesOffCentreInWidth": 3,
+        "verdict": "not movable",
+        "reasons": ["site both sides or on the line"],
+        "junctions": {
+          "cross": 0,
+          "tee": 0,
+          "controlled": 0
+        }
+      }
+    },
+    {
+      "seg": 818,
+      "at": [35.664419, 139.738667],
+      "klass": "A",
+      "lengthM": 22,
+      "widthM": 40,
+      "travel": 0,
+      "lanes": 3,
+      "shape": "middle",
+      "options": [
+        {
+          "side": "split",
+          "moves": [0.19, -4.07],
+          "outOfWidthM": 0,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0,
+            "streetTwin": 0.78,
+            "pavement": 0.19,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        }
+      ],
+      "best": "fits-in-width",
+      "toJunctionM": [64.19, 60.26],
+      "junctionsNear": 0,
+      "rampDrawn": false,
+      "footJoined": false,
+      "jartic": "none",
+      "e": {
+        "memoClass": "β2",
+        "widthClassUpperM": null,
+        "onewayFrom": "two-way",
+        "foot": null,
+        "bridge": false,
+        "needSamples": 0,
+        "needMedianM": null,
+        "needMaxM": null,
+        "capM": 5.75,
+        "movableSamples": 0,
+        "lanesNow": 3,
+        "lanesOffCentreInWidth": 2,
+        "verdict": "not movable",
+        "reasons": ["site both sides or on the line"],
+        "junctions": {
+          "cross": 0,
+          "tee": 0,
+          "controlled": 0
+        }
+      }
+    },
+    {
+      "seg": 188,
+      "at": [35.634041, 139.778048],
+      "klass": "C",
+      "lengthM": 70,
+      "widthM": 9,
+      "travel": -1,
+      "lanes": 2,
+      "shape": "one-way",
+      "options": [
+        {
+          "side": "right",
+          "moves": [-15.97],
+          "outOfWidthM": 15.22,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0,
+            "streetTwin": 0,
+            "pavement": 0,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        },
+        {
+          "side": "left",
+          "moves": [5.85],
+          "outOfWidthM": 5.1,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0,
+            "streetTwin": 0.04,
+            "pavement": 0.67,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        }
+      ],
+      "best": "out-of-width-clear",
+      "toJunctionM": [89, 43.77],
+      "junctionsNear": 0,
+      "rampDrawn": true,
+      "footJoined": false,
+      "jartic": "split",
+      "e": {
+        "memoClass": "γ",
+        "widthClassUpperM": 13,
+        "onewayFrom": "jartic-all-day",
+        "foot": null,
+        "bridge": true,
+        "needSamples": 30,
+        "needMedianM": 2.03,
+        "needMaxM": 3.73,
+        "capM": 2.75,
+        "movableSamples": 21,
+        "lanesNow": 2,
+        "lanesOffCentreInWidth": 0,
+        "verdict": "not movable",
+        "reasons": ["jartic one-way", "bridge", "site both sides or on the line", "over the cap"],
+        "junctions": {
+          "cross": 0,
+          "tee": 0,
+          "controlled": 0
+        }
+      }
+    },
+    {
+      "seg": 215,
+      "at": [35.633626, 139.778333],
+      "klass": "C",
+      "lengthM": 38,
+      "widthM": 9,
+      "travel": 1,
+      "lanes": 2,
+      "shape": "one-way",
+      "options": [
+        {
+          "side": "left",
+          "moves": [9.33],
+          "outOfWidthM": 8.58,
+          "shares": {
+            "site": 0,
+            "street": 0.01,
+            "streetCross": 0,
+            "streetTwin": 0,
+            "pavement": 0,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        },
+        {
+          "side": "right",
+          "moves": [-6.76],
+          "outOfWidthM": 6.01,
+          "shares": {
+            "site": 0,
+            "street": 0,
+            "streetCross": 0,
+            "streetTwin": 0.06,
+            "pavement": 0.24,
+            "building": 0
+          },
+          "parallelSameEnds": 0
+        }
+      ],
+      "best": "out-of-width-clear",
+      "toJunctionM": [6, 158.77],
+      "junctionsNear": 1,
+      "rampDrawn": true,
+      "footJoined": true,
+      "jartic": "one-way",
+      "e": {
+        "memoClass": "γ",
+        "widthClassUpperM": 13,
+        "onewayFrom": "jartic-all-day",
+        "foot": "4848755:start",
+        "bridge": true,
+        "needSamples": 0,
+        "needMedianM": null,
+        "needMaxM": null,
+        "capM": 2.75,
+        "movableSamples": 0,
+        "lanesNow": 2,
+        "lanesOffCentreInWidth": 0,
+        "verdict": "not movable",
+        "reasons": ["jartic one-way", "foot", "bridge", "site both sides or on the line"],
+        "junctions": {
+          "cross": 0,
+          "tee": 0,
+          "controlled": 0
+        }
+      }
+    }
+  ],
+  "alphas": [
+    {
+      "at": [35.633946, 139.778049],
+      "chunk": "4848755:0",
+      "widthM": 4.3,
+      "lengthM": 52,
+      "jarticLanes": 5
+    }
+  ],
+  "ruledOneways": {
+    "35.67871,139.73935": {
+      "lengthM": 143.32175765364633,
+      "widthM": 42.5,
+      "jarticOffsetM": -0.22,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.67882,139.74015": {
+      "lengthM": 3.23882789024467,
+      "widthM": 42.5,
+      "jarticOffsetM": 0.12,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.67892,139.74065": {
+      "lengthM": 10.008890453892441,
+      "widthM": 42.5,
+      "jarticOffsetM": -0.12,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.67887,139.74038": {
+      "lengthM": 40.213897408901765,
+      "widthM": 42.5,
+      "jarticOffsetM": 0.15,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.67901,139.74108": {
+      "lengthM": 89.22607792100222,
+      "widthM": 42.5,
+      "jarticOffsetM": -0.16,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.67890,139.74055": {
+      "lengthM": 10.008893172415108,
+      "widthM": 42.5,
+      "jarticOffsetM": -0.12,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.67574,139.74899": {
+      "lengthM": 16.889507440623255,
+      "widthM": 45,
+      "jarticOffsetM": -2.97,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.67563,139.74892": {
+      "lengthM": 9.738887307196007,
+      "widthM": 45,
+      "jarticOffsetM": 1.8,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.67430,139.74668": {
+      "lengthM": 39.68757258547307,
+      "widthM": 27,
+      "jarticOffsetM": 0.95,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.67463,139.74712": {
+      "lengthM": 75.12991499095114,
+      "widthM": 30,
+      "jarticOffsetM": -3.02,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.67418,139.74734": {
+      "lengthM": 89.81255669006573,
+      "widthM": 30,
+      "jarticOffsetM": -0.31,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.67431,139.74810": {
+      "lengthM": 22.237507072425544,
+      "widthM": 44,
+      "jarticOffsetM": -0.66,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66663,139.73908": {
+      "lengthM": 7.516751860632463,
+      "widthM": 40,
+      "jarticOffsetM": 1.56,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66646,139.73905": {
+      "lengthM": 31.989796969804953,
+      "widthM": 40,
+      "jarticOffsetM": 1.57,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66623,139.73901": {
+      "lengthM": 20.141227614452013,
+      "widthM": 40,
+      "jarticOffsetM": 4.32,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66682,139.73911": {
+      "lengthM": 14.418403190691919,
+      "widthM": 40,
+      "jarticOffsetM": -2.14,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66672,139.73910": {
+      "lengthM": 8.32924050437921,
+      "widthM": 40,
+      "jarticOffsetM": 1.54,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66668,139.73909": {
+      "lengthM": 2.259094878364886,
+      "widthM": 40,
+      "jarticOffsetM": 1.68,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66921,139.74741": {
+      "lengthM": 41.1718152653762,
+      "widthM": 16,
+      "jarticOffsetM": -2.11,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66962,139.74765": {
+      "lengthM": 109.52255937621936,
+      "widthM": 16,
+      "jarticOffsetM": -1.37,
+      "jarticOpposite": false,
+      "osm": "two-way"
+    },
+    "35.67021,139.74840": {
+      "lengthM": 79.64690334502305,
+      "widthM": 16,
+      "jarticOffsetM": -6.32,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66909,139.74776": {
+      "lengthM": 26.09468570776949,
+      "widthM": 16,
+      "jarticOffsetM": -0.8,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66896,139.74817": {
+      "lengthM": 53.99267376138621,
+      "widthM": 16,
+      "jarticOffsetM": -0.74,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66199,139.72954": {
+      "lengthM": 5.915815499521915,
+      "widthM": 40,
+      "jarticOffsetM": 7.8,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66204,139.72965": {
+      "lengthM": 17.691322079000834,
+      "widthM": 40,
+      "jarticOffsetM": 7.41,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66235,139.73033": {
+      "lengthM": 123.2886296974492,
+      "widthM": 40,
+      "jarticOffsetM": 5.45,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66597,139.73792": {
+      "lengthM": 293.02557570957936,
+      "widthM": 16,
+      "jarticOffsetM": -0.55,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66582,139.73894": {
+      "lengthM": 109.40971949135621,
+      "widthM": 40,
+      "jarticOffsetM": 4.04,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66521,139.73881": {
+      "lengthM": 27.601441326178055,
+      "widthM": 40,
+      "jarticOffsetM": 1.87,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66304,139.73833": {
+      "lengthM": 15.345132814845181,
+      "widthM": 40,
+      "jarticOffsetM": 3.54,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66272,139.73825": {
+      "lengthM": 56.67673782116211,
+      "widthM": 40,
+      "jarticOffsetM": 3.59,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66217,139.73811": {
+      "lengthM": 66.73086138476317,
+      "widthM": 40,
+      "jarticOffsetM": 4.48,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66182,139.73803": {
+      "lengthM": 13.40497227725817,
+      "widthM": 40,
+      "jarticOffsetM": -0.39,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66059,139.73116": {
+      "lengthM": 18.457466415397306,
+      "widthM": 25,
+      "jarticOffsetM": 6.98,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.65842,139.73645": {
+      "lengthM": 19.45018737495569,
+      "widthM": 40,
+      "jarticOffsetM": 1.2,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.65823,139.73644": {
+      "lengthM": 22.367928267822233,
+      "widthM": 40,
+      "jarticOffsetM": -1.48,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.65811,139.73644": {
+      "lengthM": 5.506545425841001,
+      "widthM": 40,
+      "jarticOffsetM": -1.68,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.65922,139.73663": {
+      "lengthM": 39.49061511396399,
+      "widthM": 40,
+      "jarticOffsetM": -3.39,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.65896,139.73658": {
+      "lengthM": 18.67258746084944,
+      "widthM": 40,
+      "jarticOffsetM": -5.85,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.65869,139.73652": {
+      "lengthM": 42.431187748568604,
+      "widthM": 40,
+      "jarticOffsetM": -1.15,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.65648,139.73710": {
+      "lengthM": 48.43126390517596,
+      "widthM": 40,
+      "jarticOffsetM": -4.12,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66627,139.73901": {
+      "lengthM": 10.378328485206026,
+      "widthM": 40,
+      "jarticOffsetM": 4.45,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66618,139.73900": {
+      "lengthM": 9.762899267750916,
+      "widthM": 40,
+      "jarticOffsetM": 4.32,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66578,139.73893": {
+      "lengthM": 99.64683135332272,
+      "widthM": 40,
+      "jarticOffsetM": 4.04,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.59086,139.73607": {
+      "lengthM": 36.534801340073486,
+      "widthM": 42.5,
+      "jarticOffsetM": 0.05,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.59063,139.73604": {
+      "lengthM": 14.190525779761328,
+      "widthM": 42.5,
+      "jarticOffsetM": 0.52,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.59052,139.73603": {
+      "lengthM": 10.561468190736473,
+      "widthM": 42.5,
+      "jarticOffsetM": 0.56,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.59138,139.73706": {
+      "lengthM": 108.04899917583008,
+      "widthM": 20,
+      "jarticOffsetM": 6.02,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.59138,139.73788": {
+      "lengthM": 42.17425109372693,
+      "widthM": 20,
+      "jarticOffsetM": -5.9,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.59139,139.73837": {
+      "lengthM": 45.706746849538355,
+      "widthM": 20,
+      "jarticOffsetM": -2.14,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.59140,139.73874": {
+      "lengthM": 22.384228700237777,
+      "widthM": 20,
+      "jarticOffsetM": 0.67,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.59230,139.73982": {
+      "lengthM": 132.19485404563173,
+      "widthM": 37.5,
+      "jarticOffsetM": 3.18,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.59173,139.73940": {
+      "lengthM": 16.270783486767037,
+      "widthM": 37.5,
+      "jarticOffsetM": 2.73,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.59028,139.73600": {
+      "lengthM": 9.717477867035953,
+      "widthM": 42.5,
+      "jarticOffsetM": 0.37,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.59039,139.73601": {
+      "lengthM": 16.89330929073676,
+      "widthM": 42.5,
+      "jarticOffsetM": 0.11,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.59342,139.74065": {
+      "lengthM": 19.636703198509423,
+      "widthM": 37.5,
+      "jarticOffsetM": 0.22,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.59308,139.74040": {
+      "lengthM": 69.43440744802726,
+      "widthM": 37.5,
+      "jarticOffsetM": -2.79,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.59475,139.74150": {
+      "lengthM": 30.982635378369107,
+      "widthM": 37.5,
+      "jarticOffsetM": -4.85,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.59397,139.74104": {
+      "lengthM": 160.11261609677913,
+      "widthM": 37.5,
+      "jarticOffsetM": 0.22,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.59327,139.74055": {
+      "lengthM": 19.009393232052986,
+      "widthM": 37.5,
+      "jarticOffsetM": -0.46,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.59024,139.73600": {
+      "lengthM": 17.244084647641653,
+      "widthM": 42.5,
+      "jarticOffsetM": 0.5,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.59036,139.73601": {
+      "lengthM": 9.7174674190095,
+      "widthM": 42.5,
+      "jarticOffsetM": 0.37,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.59012,139.73599": {
+      "lengthM": 9.445216354376557,
+      "widthM": 42.5,
+      "jarticOffsetM": 1.7,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.58985,139.73596": {
+      "lengthM": 50.05551207791639,
+      "widthM": 42.5,
+      "jarticOffsetM": -0.14,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.58903,139.73590": {
+      "lengthM": 132.6340904247854,
+      "widthM": 42.5,
+      "jarticOffsetM": 0,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.66663,139.75699": {
+      "lengthM": 8.603941581116212,
+      "widthM": 16,
+      "jarticOffsetM": -4.89,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.67073,139.76125": {
+      "lengthM": 12.803248671414558,
+      "widthM": 16,
+      "jarticOffsetM": 1.83,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66864,139.75798": {
+      "lengthM": 24.363112783395216,
+      "widthM": 16,
+      "jarticOffsetM": 1.67,
+      "jarticOpposite": false,
+      "osm": "two-way"
+    },
+    "35.66789,139.75764": {
+      "lengthM": 45.20140566345983,
+      "widthM": 16,
+      "jarticOffsetM": -3.38,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66751,139.75746": {
+      "lengthM": 44.41333953193256,
+      "widthM": 16,
+      "jarticOffsetM": -5.56,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66843,139.75789": {
+      "lengthM": 24.293513155305924,
+      "widthM": 16,
+      "jarticOffsetM": 0.87,
+      "jarticOpposite": true,
+      "osm": "one-way"
+    },
+    "35.66821,139.75779": {
+      "lengthM": 29.673447698248275,
+      "widthM": 16,
+      "jarticOffsetM": -3.27,
+      "jarticOpposite": true,
+      "osm": "one-way"
+    },
+    "35.66818,139.75806": {
+      "lengthM": 52.86635386097292,
+      "widthM": 25,
+      "jarticOffsetM": -4.68,
+      "jarticOpposite": true,
+      "osm": "two-way"
+    },
+    "35.66713,139.75727": {
+      "lengthM": 46.59067052322455,
+      "widthM": 16,
+      "jarticOffsetM": -5.53,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66680,139.75709": {
+      "lengthM": 33.60780144841608,
+      "widthM": 16,
+      "jarticOffsetM": -1.53,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66804,139.75850": {
+      "lengthM": 32.31513331804725,
+      "widthM": 25,
+      "jarticOffsetM": -3.33,
+      "jarticOpposite": true,
+      "osm": "two-way"
+    },
+    "35.66970,139.76053": {
+      "lengthM": 39.292317611520616,
+      "widthM": 16,
+      "jarticOffsetM": 1.33,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66947,139.76087": {
+      "lengthM": 41.57842041609264,
+      "widthM": 16,
+      "jarticOffsetM": -2.55,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.67059,139.76146": {
+      "lengthM": 36.478668512803715,
+      "widthM": 16,
+      "jarticOffsetM": 5.41,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.67036,139.76180": {
+      "lengthM": 44.2902667622963,
+      "widthM": 16,
+      "jarticOffsetM": 2.28,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.67009,139.76218": {
+      "lengthM": 45.93323191667115,
+      "widthM": 16,
+      "jarticOffsetM": -2.66,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66979,139.76263": {
+      "lengthM": 12.724978978138024,
+      "widthM": 16,
+      "jarticOffsetM": 3.87,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66989,139.76247": {
+      "lengthM": 23.82030478980183,
+      "widthM": 16,
+      "jarticOffsetM": 3.91,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66921,139.76124": {
+      "lengthM": 45.15783830347175,
+      "widthM": 16,
+      "jarticOffsetM": -0.14,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66903,139.76151": {
+      "lengthM": 18.91687644880294,
+      "widthM": 16,
+      "jarticOffsetM": -0.92,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66891,139.76168": {
+      "lengthM": 22.322060480586575,
+      "widthM": 16,
+      "jarticOffsetM": -5.37,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66869,139.76199": {
+      "lengthM": 50.715473779549356,
+      "widthM": 16,
+      "jarticOffsetM": 0.55,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66827,139.76258": {
+      "lengthM": 2.3150381141805854,
+      "widthM": 16,
+      "jarticOffsetM": 0.45,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66841,139.76239": {
+      "lengthM": 44.668263956426486,
+      "widthM": 16,
+      "jarticOffsetM": -0.62,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66823,139.76264": {
+      "lengthM": 10.728108196397436,
+      "widthM": 16,
+      "jarticOffsetM": -0.22,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66978,139.76264": {
+      "lengthM": 15.984580094066784,
+      "widthM": 16,
+      "jarticOffsetM": 3.76,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66986,139.76252": {
+      "lengthM": 12.724967263057634,
+      "widthM": 16,
+      "jarticOffsetM": 3.87,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66832,139.76252": {
+      "lengthM": 12.882712217263776,
+      "widthM": 16,
+      "jarticOffsetM": -0.53,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.67070,139.76353": {
+      "lengthM": 26.148059737142724,
+      "widthM": 16,
+      "jarticOffsetM": -2.93,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.67074,139.76781": {
+      "lengthM": 12.47641950749867,
+      "widthM": 16,
+      "jarticOffsetM": -2.19,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66958,139.76291": {
+      "lengthM": 49.76522391479489,
+      "widthM": 16,
+      "jarticOffsetM": -0.98,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.67047,139.76386": {
+      "lengthM": 52.451070060939905,
+      "widthM": 16,
+      "jarticOffsetM": -3.25,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66927,139.76335": {
+      "lengthM": 54.71703073371399,
+      "widthM": 16,
+      "jarticOffsetM": 0.36,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66898,139.76377": {
+      "lengthM": 45.9690991370206,
+      "widthM": 16,
+      "jarticOffsetM": 0.78,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.67014,139.76433": {
+      "lengthM": 59.93119692957978,
+      "widthM": 16,
+      "jarticOffsetM": -2.33,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66980,139.76480": {
+      "lengthM": 53.46193967535203,
+      "widthM": 16,
+      "jarticOffsetM": 1.65,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66875,139.76410": {
+      "lengthM": 32.103879186816364,
+      "widthM": 16,
+      "jarticOffsetM": 0.24,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66855,139.76438": {
+      "lengthM": 35.62659500593261,
+      "widthM": 16,
+      "jarticOffsetM": -0.18,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66956,139.76515": {
+      "lengthM": 29.760246520525175,
+      "widthM": 16,
+      "jarticOffsetM": 0.26,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66815,139.76275": {
+      "lengthM": 38.35364621382078,
+      "widthM": 16,
+      "jarticOffsetM": -0.06,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66793,139.76304": {
+      "lengthM": 32.74083908055533,
+      "widthM": 16,
+      "jarticOffsetM": -1.45,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66772,139.76331": {
+      "lengthM": 34.358211934643776,
+      "widthM": 16,
+      "jarticOffsetM": -0.34,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66742,139.76368": {
+      "lengthM": 61.11378099110516,
+      "widthM": 16,
+      "jarticOffsetM": 0.57,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66825,139.76475": {
+      "lengthM": 59.461317049429255,
+      "widthM": 16,
+      "jarticOffsetM": -1,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66935,139.76542": {
+      "lengthM": 38.57466198426925,
+      "widthM": 16,
+      "jarticOffsetM": -0.04,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66905,139.76578": {
+      "lengthM": 54.126640151613515,
+      "widthM": 16,
+      "jarticOffsetM": -3.63,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66796,139.76766": {
+      "lengthM": 99.3163442360524,
+      "widthM": 16,
+      "jarticOffsetM": 3.94,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.67050,139.76814": {
+      "lengthM": 9.178267418798704,
+      "widthM": 16,
+      "jarticOffsetM": -2.9,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66665,139.77320": {
+      "lengthM": 3.520766115966608,
+      "widthM": 16,
+      "jarticOffsetM": -3.39,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66659,139.77327": {
+      "lengthM": 16.62586651105527,
+      "widthM": 16,
+      "jarticOffsetM": 2.91,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66647,139.77341": {
+      "lengthM": 20.746339782264688,
+      "widthM": 16,
+      "jarticOffsetM": 1.18,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66636,139.77353": {
+      "lengthM": 10.88686703699995,
+      "widthM": 16,
+      "jarticOffsetM": 1.85,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66628,139.77362": {
+      "lengthM": 12.69484822195428,
+      "widthM": 16,
+      "jarticOffsetM": -1.35,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.67068,139.77015": {
+      "lengthM": 30.78761700723583,
+      "widthM": 16,
+      "jarticOffsetM": -2.05,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.67042,139.76824": {
+      "lengthM": 35.75196788938441,
+      "widthM": 16,
+      "jarticOffsetM": -2.82,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.67021,139.76852": {
+      "lengthM": 32.76804776520963,
+      "widthM": 16,
+      "jarticOffsetM": 2.51,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.67001,139.76880": {
+      "lengthM": 34.227279662438214,
+      "widthM": 16,
+      "jarticOffsetM": 0.33,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66980,139.76908": {
+      "lengthM": 35.46653800218682,
+      "widthM": 16,
+      "jarticOffsetM": -0.3,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66959,139.76936": {
+      "lengthM": 32.47634813775632,
+      "widthM": 16,
+      "jarticOffsetM": -2.08,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.67049,139.77043": {
+      "lengthM": 34.68299920043927,
+      "widthM": 16,
+      "jarticOffsetM": -2.44,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66948,139.76950": {
+      "lengthM": 2.918507933405304,
+      "widthM": 16,
+      "jarticOffsetM": 0.02,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66917,139.76994": {
+      "lengthM": 1.0280206807553034,
+      "widthM": 16,
+      "jarticOffsetM": -1.11,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66895,139.77026": {
+      "lengthM": 73.21956362675607,
+      "widthM": 16,
+      "jarticOffsetM": -0.44,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66858,139.77076": {
+      "lengthM": 49.56847255596384,
+      "widthM": 16,
+      "jarticOffsetM": 0.35,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.67001,139.77120": {
+      "lengthM": 32.55998697137665,
+      "widthM": 16,
+      "jarticOffsetM": 1.68,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66978,139.77149": {
+      "lengthM": 40.29323909256677,
+      "widthM": 16,
+      "jarticOffsetM": -0.12,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66949,139.77186": {
+      "lengthM": 51.82903575104989,
+      "widthM": 16,
+      "jarticOffsetM": 2.35,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66925,139.77216": {
+      "lengthM": 24.545517688372623,
+      "widthM": 16,
+      "jarticOffsetM": -1.92,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66909,139.77238": {
+      "lengthM": 28.53656409936789,
+      "widthM": 16,
+      "jarticOffsetM": 0.12,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66892,139.77259": {
+      "lengthM": 25.624605925443696,
+      "widthM": 16,
+      "jarticOffsetM": 0.32,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66882,139.77272": {
+      "lengthM": 7.282728677268054,
+      "widthM": 16,
+      "jarticOffsetM": -0.36,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66866,139.77294": {
+      "lengthM": 45.117853462374605,
+      "widthM": 16,
+      "jarticOffsetM": -1.37,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66805,139.77152": {
+      "lengthM": 130.72655616290763,
+      "widthM": 16,
+      "jarticOffsetM": 1.03,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66744,139.77230": {
+      "lengthM": 66.80112267630906,
+      "widthM": 16,
+      "jarticOffsetM": -1.39,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66834,139.77338": {
+      "lengthM": 62.50909319222816,
+      "widthM": 16,
+      "jarticOffsetM": 2.2,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66715,139.77262": {
+      "lengthM": 18.349701022107507,
+      "widthM": 16,
+      "jarticOffsetM": 1.79,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66702,139.77277": {
+      "lengthM": 23.314367695640737,
+      "widthM": 16,
+      "jarticOffsetM": 2.59,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66681,139.77302": {
+      "lengthM": 40.69756041110859,
+      "widthM": 16,
+      "jarticOffsetM": 4.44,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66667,139.77318": {
+      "lengthM": 1.287538774454648,
+      "widthM": 16,
+      "jarticOffsetM": -2.45,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66814,139.77365": {
+      "lengthM": 2.934360608628888,
+      "widthM": 16,
+      "jarticOffsetM": 2.17,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66593,139.75723": {
+      "lengthM": 50.680434363971735,
+      "widthM": 16,
+      "jarticOffsetM": -0.36,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66581,139.75761": {
+      "lengthM": 23.167731575922126,
+      "widthM": 16,
+      "jarticOffsetM": -1.4,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66573,139.75786": {
+      "lengthM": 25.329308522310846,
+      "widthM": 16,
+      "jarticOffsetM": -0.72,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66568,139.75802": {
+      "lengthM": 5.454418072208579,
+      "widthM": 16,
+      "jarticOffsetM": -0.68,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66529,139.75897": {
+      "lengthM": 49.7807499560963,
+      "widthM": 16,
+      "jarticOffsetM": -2.07,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66366,139.75772": {
+      "lengthM": 3.2145306031833223,
+      "widthM": 40,
+      "jarticOffsetM": 44.45,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.66318,139.75725": {
+      "lengthM": 48.94257374502089,
+      "widthM": 16,
+      "jarticOffsetM": -0.82,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66589,139.76263": {
+      "lengthM": 10.745587644230154,
+      "widthM": 40,
+      "jarticOffsetM": 0.48,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66582,139.76248": {
+      "lengthM": 20.49101892965619,
+      "widthM": 40,
+      "jarticOffsetM": -1.16,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66584,139.76252": {
+      "lengthM": 11.193235922064492,
+      "widthM": 40,
+      "jarticOffsetM": -1.05,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66627,139.77363": {
+      "lengthM": 10.46227255141176,
+      "widthM": 16,
+      "jarticOffsetM": 2.42,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66664,139.75517": {
+      "lengthM": 18.11821059807672,
+      "widthM": 16,
+      "jarticOffsetM": -0.36,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66660,139.75528": {
+      "lengthM": 3.3806057563564638,
+      "widthM": 16,
+      "jarticOffsetM": 0.34,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66653,139.75549": {
+      "lengthM": 36.77764692498838,
+      "widthM": 16,
+      "jarticOffsetM": -0.26,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66637,139.75594": {
+      "lengthM": 52.16502401747207,
+      "widthM": 16,
+      "jarticOffsetM": 0.34,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66620,139.75642": {
+      "lengthM": 11.360286217520539,
+      "widthM": 16,
+      "jarticOffsetM": 2.34,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66625,139.75628": {
+      "lengthM": 16.028820606812726,
+      "widthM": 16,
+      "jarticOffsetM": 2.68,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66660,139.75698": {
+      "lengthM": 16.125761898850815,
+      "widthM": 16,
+      "jarticOffsetM": -4.91,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66616,139.75655": {
+      "lengthM": 13.43213124654887,
+      "widthM": 16,
+      "jarticOffsetM": 1.87,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66689,139.75444": {
+      "lengthM": 40.8374665237585,
+      "widthM": 16,
+      "jarticOffsetM": -1.52,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66677,139.75478": {
+      "lengthM": 26.257744950870524,
+      "widthM": 16,
+      "jarticOffsetM": -1.61,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66669,139.75500": {
+      "lengthM": 16.337467769435836,
+      "widthM": 16,
+      "jarticOffsetM": -0.24,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66695,139.75718": {
+      "lengthM": 3.256998188812001,
+      "widthM": 16,
+      "jarticOffsetM": -6.37,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66672,139.75705": {
+      "lengthM": 13.90915487657835,
+      "widthM": 16,
+      "jarticOffsetM": -1.92,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66686,139.75713": {
+      "lengthM": 19.69864655879594,
+      "widthM": 16,
+      "jarticOffsetM": -1.53,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66629,139.75616": {
+      "lengthM": 8.317087540728641,
+      "widthM": 16,
+      "jarticOffsetM": 2.39,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.66615,139.75659": {
+      "lengthM": 20.77831119197967,
+      "widthM": 16,
+      "jarticOffsetM": 1.49,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66597,139.75713": {
+      "lengthM": 10.45607418084807,
+      "widthM": 16,
+      "jarticOffsetM": -0.49,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66605,139.75689": {
+      "lengthM": 37.79044691915116,
+      "widthM": 16,
+      "jarticOffsetM": -0.46,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66327,139.75705": {
+      "lengthM": 6.838951563277783,
+      "widthM": 16,
+      "jarticOffsetM": -0.95,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66323,139.75713": {
+      "lengthM": 10.798178652069303,
+      "widthM": 16,
+      "jarticOffsetM": -0.93,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66592,139.75729": {
+      "lengthM": 40.224365029576944,
+      "widthM": 16,
+      "jarticOffsetM": -0.36,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66600,139.75703": {
+      "lengthM": 10.456069637624807,
+      "widthM": 16,
+      "jarticOffsetM": -0.49,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66317,139.75729": {
+      "lengthM": 42.051463686452244,
+      "widthM": 16,
+      "jarticOffsetM": -0.82,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.66623,139.75634": {
+      "lengthM": 27.389106759576784,
+      "widthM": 16,
+      "jarticOffsetM": 2.34,
+      "jarticOpposite": false,
+      "osm": "one-way"
+    },
+    "35.65361,139.76015": {
+      "lengthM": 12.221314936252137,
+      "widthM": 37,
+      "jarticOffsetM": -1.66,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.65353,139.76016": {
+      "lengthM": 6.65102781120729,
+      "widthM": 30,
+      "jarticOffsetM": -1.02,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.65344,139.76016": {
+      "lengthM": 12.214097475914754,
+      "widthM": 30,
+      "jarticOffsetM": -1.06,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.65320,139.76017": {
+      "lengthM": 41.36501499312627,
+      "widthM": 30,
+      "jarticOffsetM": 1.13,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.65298,139.76017": {
+      "lengthM": 8.343566199569828,
+      "widthM": 30,
+      "jarticOffsetM": 3.03,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.65284,139.76015": {
+      "lengthM": 22.046705435290463,
+      "widthM": 30,
+      "jarticOffsetM": -0.59,
+      "jarticOpposite": false,
+      "osm": "divided"
+    },
+    "35.65912,139.75092": {
+      "lengthM": 29.227920816318363,
+      "widthM": 25,
+      "jarticOffsetM": 1.73,
+      "jarticOpposite": true,
+      "osm": "unknown"
+    },
+    "35.63526,139.77145": {
+      "lengthM": 185.3845940008194,
+      "widthM": 25,
+      "jarticOffsetM": 0.57,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.63494,139.77034": {
+      "lengthM": 28.91260617636166,
+      "widthM": 25,
+      "jarticOffsetM": -2.18,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.63599,139.77361": {
+      "lengthM": 10.213795445325268,
+      "widthM": 25,
+      "jarticOffsetM": -2.6,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.63580,139.77296": {
+      "lengthM": 114.57860152081264,
+      "widthM": 25,
+      "jarticOffsetM": 0.97,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.63604,139.77380": {
+      "lengthM": 45.272776786549535,
+      "widthM": 25,
+      "jarticOffsetM": -2.49,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.63596,139.77351": {
+      "lengthM": 10.213799043374104,
+      "widthM": 25,
+      "jarticOffsetM": -2.6,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.63612,139.77566": {
+      "lengthM": 121.0831336264292,
+      "widthM": 25,
+      "jarticOffsetM": -2.59,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.63502,139.77065": {
+      "lengthM": 31.06316184410136,
+      "widthM": 25,
+      "jarticOffsetM": 0.59,
+      "jarticOpposite": true,
+      "osm": "divided"
+    },
+    "35.63047,139.78097": {
+      "lengthM": 11.296636420801052,
+      "widthM": 16,
+      "jarticOffsetM": 3.7,
+      "jarticOpposite": true,
+      "osm": "unknown"
+    },
+    "35.62677,139.77166": {
+      "lengthM": 111.5213480678943,
+      "widthM": 16,
+      "jarticOffsetM": 2.6,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.62625,139.77207": {
+      "lengthM": 25.497160156223313,
+      "widthM": 16,
+      "jarticOffsetM": 5.43,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.62709,139.77226": {
+      "lengthM": 111.89352272423595,
+      "widthM": 16,
+      "jarticOffsetM": -1.96,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.62658,139.77267": {
+      "lengthM": 24.15206094804275,
+      "widthM": 16,
+      "jarticOffsetM": 1.93,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.62622,139.77295": {
+      "lengthM": 70.20668492804873,
+      "widthM": 16,
+      "jarticOffsetM": -0.24,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.62606,139.77223": {
+      "lengthM": 26.101493992087256,
+      "widthM": 16,
+      "jarticOffsetM": 10.5,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.62664,139.77664": {
+      "lengthM": 8.369522043689328,
+      "widthM": 16,
+      "jarticOffsetM": 3.36,
+      "jarticOpposite": false,
+      "osm": "unknown"
+    },
+    "35.63036,139.78105": {
+      "lengthM": 38.18904404631902,
+      "widthM": 16,
+      "jarticOffsetM": 3.83,
+      "jarticOpposite": true,
+      "osm": "unknown"
+    }
+  }
+}
