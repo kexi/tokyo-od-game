@@ -9,6 +9,8 @@ import {
   type StreetSection,
 } from "./laneChange";
 import { warn } from "../log";
+import { CAR_RIDE_HEIGHT } from "../physics/carBody";
+import { MERGE_MAX_DZ } from "./expresswayMerge";
 import {
   classOf,
   isExpressway,
@@ -385,6 +387,21 @@ export class RoadGraph {
    * (deckRank). Why not the nearest centreline: a car in the main line's left lane is nearer the
    * ramp's centre there, and was booked at the ramp's 40 km/h for 3 s at 60 (review of P3).
    *
+   * That order is asked among the decks on the surface the car stands on only (P2.7 R1-4a-1): the
+   * highest deck road at or below the car's feet — p.y − CAR_RIDE_HEIGHT, within MERGE_MAX_DZ — read
+   * where p lies inside the segment, and the decks within MERGE_MAX_DZ of it (one surface, as the
+   * merge makes one slab of them). With no such road, all decks as before. So p is taken to be a car's
+   * body centre, as every caller passes (vehicle.position(): main.ts, navGuide, autoDriver,
+   * pursuitDirector, laneLinks, the deck drive). Why: a ramp passing 0.2–1.6 m over or under another
+   * deck within SURFACE_GATE (24402125:2 over 45068170:0) was answered with the main line below it,
+   * at the main line's limit (the points counted by just check-expressway-locate). Why a segment's
+   * inside: read at its end, the next chunk of the same run stands a grade's 0.2 m off and would be
+   * taken for another surface. Why not the highest road at or below p itself, without the car's
+   * height ((ホ) of R1-4a-1): on a main line under a ramp 0.15–0.86 m above it, the ramp's road is
+   * below p, and 55 answers on the car's own surface in the central data turned to the ramp. Why not
+   * the road nearest p in height ((ロ)): a deck 0.4–1.3 m over the road is nearer the body centre
+   * than the car's own road.
+   *
    * Where the terrain under a ground road has not loaded, its height is unknown: such a road is
    * the answer only when no road of known height passes, and the fallback is counted
    * (unknownGroundHits). Why not skip it: a car on a street whose DEM tile is late would find no
@@ -397,7 +414,7 @@ export class RoadGraph {
   ): RoadHit | null {
     let ground: RoadHit | null = null;
     let groundD = maxDist;
-    let deck: { hit: RoadHit; rank: number } | null = null;
+    const decks: Array<{ hit: RoadHit; rank: number; y: number; isInside: boolean }> = [];
     let deckD = maxDist;
     let blind: RoadHit | null = null;
     let blindD = maxDist;
@@ -431,9 +448,8 @@ export class RoadGraph {
       if (isOtherLevel) continue;
       if (isDeck) {
         deckD = Math.min(deckD, on.dist);
-        const rank = deckRank(seg, on.dist);
-        const isBetterDeck = deck === null || rank > deck.rank;
-        if (isBetterDeck) deck = { hit: hitAt(seg, on), rank };
+        const isInside = on.s > 0 && on.s < seg.length;
+        decks.push({ hit: hitAt(seg, on), rank: deckRank(seg, on.dist), y, isInside });
         continue;
       }
       const isNearerGround = on.dist < groundD;
@@ -441,6 +457,7 @@ export class RoadGraph {
       groundD = on.dist;
       ground = hitAt(seg, on);
     }
+    const deck = deckUnderCar(decks, p.y);
     // A deck under p beats a street only when it is nearer (both pass the gate near a ground end).
     const isOnDeck = deck !== null && deckD <= groundD;
     if (isOnDeck) return deck!.hit;
@@ -575,6 +592,30 @@ export class RoadGraph {
  * Order of the decks a point is on: a main line over a ramp, then the higher posted limit, then the
  * nearer centreline (the distance only breaks ties: it is below 100 m by the width gate).
  */
+/**
+ * Of the decks passing nearestOnSurface's gates, the one a car with its body centre at height y is
+ * on: deckRank's best among those on the surface it stands on (see nearestOnSurface), else among all.
+ */
+function deckUnderCar<D extends { rank: number; y: number; isInside: boolean }>(
+  decks: readonly D[],
+  y: number,
+): D | null {
+  const feet = y - CAR_RIDE_HEIGHT + MERGE_MAX_DZ;
+  let stand: number | null = null;
+  for (const d of decks) {
+    const isUnderFeet = d.isInside && d.y <= feet;
+    const isHigher = stand === null || d.y > stand;
+    if (isUnderFeet && isHigher) stand = d.y;
+  }
+  let best: D | null = null;
+  for (const d of decks) {
+    const isOnStand = stand === null || Math.abs(d.y - stand) <= MERGE_MAX_DZ;
+    const isBetter = best === null || d.rank > best.rank;
+    if (isOnStand && isBetter) best = d;
+  }
+  return best;
+}
+
 function deckRank(seg: Segment, dist: number): number {
   const isMainLine = classOf(seg.line) === "expressway";
   return (isMainLine ? 1e6 : 0) + speedLimit(seg) * 1e3 - dist;

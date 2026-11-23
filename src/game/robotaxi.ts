@@ -10,6 +10,7 @@ import {
   Vector3,
   type Scene,
 } from "three";
+import { CAR_RIDE_HEIGHT } from "../physics/carBody";
 import { ADULT_KG } from "../physics/masses";
 import { Vehicle, type DriveInput } from "../physics/vehicle";
 import type { RoadGraph, Segment } from "../world/roads";
@@ -41,7 +42,6 @@ export function fareFor(metres: number, slowSeconds: number): number {
   return FARE.first + FARE.step * Math.ceil((units - FARE.firstMetres) / FARE.stepMetres);
 }
 
-const RIDE_HEIGHT = 0.86;
 /** Seconds a robotaxi that gave up (stuck, or blocked where it may not pass) waits before trying again. */
 const RETRY_AFTER = 10;
 const IDLE: DriveInput = { throttle: 0, brake: 1, steer: 0, handbrake: false, brakeOnly: true };
@@ -127,7 +127,7 @@ export class RoboTaxi {
     // The left lane's centre (laneChange.ts), not a quarter of the GSI 幅員 (which may hold the pavement).
     const left = new Vector3(travel.z, 0, -travel.x).multiplyScalar(laneCentreOffset(start.seg, 0));
     const at = pos.clone().add(left);
-    at.y = (this.groundAt(at.x, at.z) ?? pos.y) + RIDE_HEIGHT;
+    at.y = (this.groundAt(at.x, at.z) ?? pos.y) + CAR_RIDE_HEIGHT;
     this.car.setCoasting(true);
     this.car.teleport(at, yaw);
     this.car.syncVisuals();

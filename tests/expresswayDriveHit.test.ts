@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { insideHit, rideHit } from "../src/debug/expresswayDrive";
 import { LocalFrame } from "../src/geo/frame";
-import { RoadGraph, type RoadLine } from "../src/world/roads";
+import { MERGE_MAX_DZ } from "../src/world/expresswayMerge";
+import { CAR_RIDE_HEIGHT } from "../src/physics/carBody";
+import { DECK_REACH, RoadGraph, type RoadLine, type Segment } from "../src/world/roads";
 
 // The drive hook's surface under the car (P2.7-5, 4.4's |dy|): a hit clamped to the end of one chunk
 // while the car is already on the next one must be measured on the next one. Two chunks of one run
@@ -102,8 +104,54 @@ describe("rideHit: the ride on the autopilot's route (review of 7c1, A)", () => 
     expect(Math.abs(graph.surfaceY(r, hit!.s)! - 1.6)).toBeLessThan(0.01);
   });
 
-  it("falls back to the graph's locate off the route (the main line here, as before)", () => {
-    expect(rideHit(graph, p, [], null)?.seg).toBe(m);
-    expect(rideHit(graph, p, [], new Set())?.seg).toBe(m);
+  it("falls back to the graph's locate off the route (a car on the main line under the ramp: the main line)", () => {
+    // Before R1-4a-1 this asked at the car on the ramp and held the main line below as locate's answer
+    // there: the mix-up R1-4a-1 fixed (roads.ts deckUnderCar). The ramp's side is below (locate: the deck a car stands on).
+    const onMain = frame.toLocal(35.68, 139.76, frame.origin.h).setY(0 + 0.8);
+    expect(rideHit(graph, onMain, [], null)?.seg).toBe(m);
+    expect(rideHit(graph, onMain, [], new Set())?.seg).toBe(m);
+  });
+});
+
+describe("locate: the deck a car stands on, where another deck passes within SURFACE_GATE (R1-4a-1)", () => {
+  // A main line (60 km/h) and a ramp (40 km/h) along one plan line, the ramp `dz` over (or under) the
+  // main line: the car's body centre is CAR_RIDE_HEIGHT over the road it is on (as vehicle.position()).
+  const pair = (dz: number) => {
+    const main = deck(-100, 100, "45068170:0", 60, ["m0", "m1"]);
+    const ramp: RoadLine = { ...deck(-50, 50, "24402125:2", 40, ["r0", "r1"]), cls: "ramp" };
+    const graph = new RoadGraph([main, ramp], frame);
+    const [m, r] = ["45068170:0", "24402125:2"].map((x) => graph.segments.find((s) => s.line.xid === x)!);
+    m.elev = [0, 0];
+    r.elev = [dz, dz];
+    return { graph, m, r };
+  };
+  const carOn = (seg: Segment, east = 0) =>
+    frame.toLocal(35.68, 139.76 + east / 90_400, frame.origin.h).setY(seg.elev![0] + CAR_RIDE_HEIGHT);
+
+  it("answers the ramp for a car on it 1.6 m over the main line, and the main line for a car under it", () => {
+    const { graph, m, r } = pair(1.6);
+    expect(graph.locate(carOn(r), 30)?.seg).toBe(r);
+    expect(graph.locate(carOn(m), 30)?.seg).toBe(m);
+  });
+
+  it("answers the ramp for a car on it 1.6 m under the main line, and the main line for a car on that", () => {
+    const { graph, m, r } = pair(-1.6);
+    expect(graph.locate(carOn(r), 30)?.seg).toBe(r);
+    expect(graph.locate(carOn(m), 30)?.seg).toBe(m);
+  });
+
+  it("keeps deckRank's main line on one surface (within MERGE_MAX_DZ) and parts the two just past it", () => {
+    const one = pair(MERGE_MAX_DZ - 0.01);
+    expect(one.graph.locate(carOn(one.r), 30)?.seg).toBe(one.m);
+    expect(one.graph.locate(carOn(one.m), 30)?.seg).toBe(one.m);
+    const two = pair(MERGE_MAX_DZ + 0.01);
+    expect(two.graph.locate(carOn(two.r), 30)?.seg).toBe(two.r);
+    expect(two.graph.locate(carOn(two.m), 30)?.seg).toBe(two.m);
+  });
+
+  it("answers the ramp for a car beyond its carriageway's edge within DECK_REACH, over the main line", () => {
+    const { graph, r } = pair(1.6);
+    const beyond = r.line.width / 2 + DECK_REACH / 2;
+    expect(graph.locate(carOn(r, beyond), 30)?.seg).toBe(r);
   });
 });

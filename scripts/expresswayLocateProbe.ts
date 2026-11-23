@@ -1,20 +1,24 @@
 // Where RoadGraph.locate answers a car on an expressway deck with another run's deck (P2.7 R1-4a-1): every
 // lane centre of every chunk (main lines and ramps), every 2 m, at the car's body centre over its own road
-// (+0.86 m: the chassis origin over the ground at rest, game/carModel.ts), asked with graph.locate(p, 30)
+// (+CAR_RIDE_HEIGHT, physics/carBody.ts), asked with graph.locate(p, 30)
 // in a network of the expressway alone (joinExpressway([], …)) per tile of the folder (the tile's chunks
 // and its 8 neighbours', in a frame at the tile's centre: scripts/expresswaySeams.ts framesOf), the points
 // of the tile's own chunks. Each answer is one of: the same run; another run on the same surface (the two
 // roads within MERGE_MAX_DZ there: the 分合流, deckRank's order by design); another run on another surface
 // (the mix-up). A mix-up is where a car can be (the answer's road below its own, or the answer's deck's
 // underside above the car's roof: road − girder over the girder's bottom flange, road − SLAB beside it,
-// against own road + 0.86 + CAR_HALF.y) or cannot be (the other deck's body within the car's height).
+// against own road + CAR_RIDE_HEIGHT + CAR_HALF.y) or cannot be (the other deck's body within the car's height).
 // It also asks, from the same candidates, the forms the fix may take (--forms): which surface the car is
 // on, then deckRank's order among the candidates within MERGE_MAX_DZ of it. The candidates are
 // nearestOnSurface's own (the decks within the carriageway + DECK_REACH and SURFACE_GATE of p) and its
-// rank, re-done here; a point where the re-done answer differs from graph.locate is counted (replicaOff).
+// rank as main had them before R1-4a-1 (deckRank over every deck: the form "now"), re-done here; the points
+// where graph.locate answers otherwise than that are counted (differsFromMain), and of those the ones where
+// main's answer was on the car's own surface (sameSurfaceChanged, listed: R1-4a-1's line 2 wants none).
 // One JSON log line (expressway_locate_probed); --out <file> writes the pairs; exit code 1 when a mix-up
 // is left where a car can be.
-// Run: pnpm exec tsx scripts/expresswayLocateProbe.ts <dir|label> [--out <file>] [--forms]
+// --points <file> writes main's mix-ups one per point (lat, lon, ellipsoidal h of the car's body centre,
+// the lane's direction in the tile's frame) for a check with the decks' colliders.
+// Run: pnpm exec tsx scripts/expresswayLocateProbe.ts <dir|label> [--out <file>] [--forms] [--points <file>]
 // (just check-expressway-locate <dir>).
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -22,8 +26,8 @@ import type { Vector3 } from "three";
 import { ST, STATION_STRIDE, type XwChunk } from "../src/expressway/format.ts";
 import { LocalFrame } from "../src/geo/frame.ts";
 import { log } from "../src/log.ts";
-import { CAR_HALF } from "../src/physics/carBody.ts";
-import { SLAB } from "../src/world/expresswayDeck.ts";
+import { CAR_HALF, CAR_RIDE_HEIGHT } from "../src/physics/carBody.ts";
+import { GIRDER_BOTTOM_SHARE, SLAB } from "../src/world/expresswayDeck.ts";
 import { MERGE_MAX_DZ } from "../src/world/expresswayMerge.ts";
 import { expresswayRoadInput, joinExpressway } from "../src/world/expresswayRoads.ts";
 import { laneCentreOffset } from "../src/world/laneChange.ts";
@@ -33,20 +37,16 @@ import { readExpresswayFiles } from "./expresswayFiles.ts";
 import { framesOf } from "./expresswaySeams.ts";
 
 const ROOT = join(import.meta.dirname, "..");
-/** The car's body centre over its road at rest (game/carModel.ts: "the ground sits ~0.86 m below it"). */
-const BODY_OVER_ROAD_M = 0.86;
 /** graph.locate's reach as the law check asks it (main.ts). */
 const MAX_DIST_M = 30;
 const STEP_M = 2;
-/** The box girder's bottom flange as a share of the deck's half width (expresswayDeck.ts GIRDER_BOTTOM_SHARE). */
-const GIRDER_BOTTOM_SHARE = 0.55;
 
 const args = process.argv.slice(2);
 const flag = (name: string) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : undefined;
 };
-const VALUED = new Set(["--out"]);
+const VALUED = new Set(["--out", "--points"]);
 const target = args.find((a, i) => !a.startsWith("--") && !(i > 0 && VALUED.has(args[i - 1])));
 if (target === undefined)
   throw new Error("usage: expresswayLocateProbe.ts <dir|label> [--out <file>] [--forms]");
@@ -57,6 +57,7 @@ const files = readExpresswayFiles(dir);
 const runs = [...new Map([...files.tiles.values()].flatMap((t) => t.runs).map((r) => [r.id, r])).values()];
 const chunkById = new Map(files.chunks.map((c) => [c.id, c]));
 const runOf = (xid: string) => xid.split(":")[0];
+const r = (v: number) => Math.round(v * 100) / 100;
 
 type Candidate = { seg: Segment; y: number; rank: number; dist: number; s: number };
 /** nearestOnSurface's decks for p (roads.ts): within the carriageway + DECK_REACH and SURFACE_GATE. */
@@ -118,10 +119,10 @@ const FORMS: Record<string, (list: Candidate[], p: Vector3) => Candidate | null>
     return onSurface(list, on) ?? best(list);
   },
   // (ヘ) As (ホ), the road the car is on read from its body centre's height: candidates not over
-  // p.y − BODY_OVER_ROAD_M + MERGE_MAX_DZ (needs the car's height in roads.ts: measured only).
+  // p.y − CAR_RIDE_HEIGHT + MERGE_MAX_DZ (needs the car's height in roads.ts: measured only).
   he: (list, p) => {
     const under = list.filter(
-      (c) => c.y <= p.y - BODY_OVER_ROAD_M + MERGE_MAX_DZ && c.s > 0 && c.s < c.seg.length,
+      (c) => c.y <= p.y - CAR_RIDE_HEIGHT + MERGE_MAX_DZ && c.s > 0 && c.s < c.seg.length,
     );
     const on = under.reduce<Candidate | null>((b, c) => (b === null || c.y > b.y ? c : b), null);
     return onSurface(list, on) ?? best(list);
@@ -156,7 +157,15 @@ type Point = {
   ownMain: boolean;
   ansMain: boolean;
 };
-const counts = { points: 0, none: 0, replicaOff: 0, "same-run": 0, "same-surface": 0, "other-surface": 0 };
+const counts = {
+  points: 0,
+  none: 0,
+  differsFromMain: 0,
+  sameSurfaceChanged: 0,
+  "same-run": 0,
+  "same-surface": 0,
+  "other-surface": 0,
+};
 const sameSurfaceLower = { ownMain: 0, ownRamp: 0 };
 const mixups: Point[] = [];
 const sameLower: Point[] = [];
@@ -165,6 +174,10 @@ const formStats: Record<
   { canBeLeft: number; cannotBeLeft: number; sameChanged: number; sameChangedCannotBe: number }
 > = {};
 const changed: Record<string, Array<Record<string, unknown>>> = {};
+const sameChangedList: Array<Record<string, unknown>> = [];
+/** main's mix-ups, one per point, for a collider check (--points <file>). */
+const mainMixups: Array<Record<string, unknown>> = [];
+const pointsOut = flag("points");
 for (const f of Object.keys(FORMS))
   formStats[f] = { canBeLeft: 0, cannotBeLeft: 0, sameChanged: 0, sameChangedCannotBe: 0 };
 const tileOf = new Map<string, string>();
@@ -197,7 +210,7 @@ keys.forEach((key, fi) => {
         const p = pos
           .clone()
           .add(leftOf(along, laneCentreOffset(seg, lane)))
-          .setY(y0 + BODY_OVER_ROAD_M);
+          .setY(y0 + CAR_RIDE_HEIGHT);
         counts.points++;
         const hit = g.locate(p, MAX_DIST_M);
         const list = candidates(g, p);
@@ -206,7 +219,20 @@ keys.forEach((key, fi) => {
           counts.none++;
           continue;
         }
-        if (now?.seg !== hit.seg) counts.replicaOff++;
+        const isChanged = now?.seg !== hit.seg;
+        if (isChanged) counts.differsFromMain++;
+        const isMainOnOwn = now !== null && Math.abs(now.y - y0) <= MERGE_MAX_DZ;
+        if (isChanged && isMainOnOwn) {
+          counts.sameSurfaceChanged++;
+          sameChangedList.push({
+            own: xid,
+            lane,
+            s: runS(chunkById.get(xid)!, frame, p),
+            main: now.seg.line.xid,
+            now: hit.seg.line.xid,
+            dz: r((g.surfaceY(hit.seg, hit.s) ?? Number.NaN) - y0),
+          });
+        }
         const ans = hit.seg.line.xid ?? "";
         const yAns = g.surfaceY(hit.seg, hit.s) ?? Number.NaN;
         const dz = yAns - y0;
@@ -237,7 +263,7 @@ keys.forEach((key, fi) => {
           const half = c.seg.line.width / 2;
           const isOverFlange = c.dist <= half * GIRDER_BOTTOM_SHARE;
           const depth = isOverFlange ? Math.max(SLAB, other?.girder ?? SLAB) : SLAB;
-          return c.y - depth >= y0 + BODY_OVER_ROAD_M + CAR_HALF.y;
+          return c.y - depth >= y0 + CAR_RIDE_HEIGHT + CAR_HALF.y;
         };
         if (kind === "same-surface" && hit.seg !== seg && speedLimit(hit.seg) < speedLimit(seg)) {
           if (ownMain) sameSurfaceLower.ownMain++;
@@ -246,13 +272,28 @@ keys.forEach((key, fi) => {
         }
         if (kind === "other-surface")
           mixups.push(point(canBeBeside({ seg: hit.seg, y: yAns, dist: Math.abs(hit.lateral) })));
+        const isMainMixup = now !== null && runOf(now.seg.line.xid ?? "") !== runOf(xid) && !isMainOnOwn;
+        if (isMainMixup && pointsOut !== undefined) {
+          const at = frame.toGeodetic(p);
+          mainMixups.push({
+            own: xid,
+            ans: now.seg.line.xid,
+            lat: at.lat,
+            lon: at.lon,
+            h: at.h,
+            dirX: along.x,
+            dirZ: along.z,
+            dz: r(now.y - y0),
+            canBe: canBeBeside(now),
+          });
+        }
         if (!withForms) continue;
-        const isSameNow = Math.abs(dz) <= MERGE_MAX_DZ;
+        const isSameNow = isMainOnOwn;
         for (const [name, form] of Object.entries(FORMS)) {
           const a = form(list, p);
           if (a === null) continue;
           const isOther = runOf(a.seg.line.xid ?? "") !== runOf(xid) && Math.abs(a.y - y0) > MERGE_MAX_DZ;
-          if (isSameNow && a.seg !== hit.seg) {
+          if (isSameNow && a.seg !== now!.seg) {
             formStats[name].sameChanged++;
             if (!canBeBeside(a)) formStats[name].sameChangedCannotBe++;
             (changed[name] ??= []).push({
@@ -286,7 +327,6 @@ type Pair = {
   lanes: number[];
   limits: string[];
 };
-const r = (v: number) => Math.round(v * 100) / 100;
 const pairsOf = (list: Point[]): Pair[] => {
   const m = new Map<string, Pair>();
   for (const p of list) {
@@ -324,7 +364,8 @@ const fields = {
   dir: target,
   points: counts.points,
   none: counts.none,
-  replicaOff: counts.replicaOff,
+  differsFromMain: counts.differsFromMain,
+  sameSurfaceChanged: counts.sameSurfaceChanged,
   sameRun: counts["same-run"],
   sameSurface: counts["same-surface"],
   sameSurfaceLowerLimit: sameSurfaceLower,
@@ -342,7 +383,11 @@ const out = flag("out");
 if (out !== undefined)
   await writeFile(
     out,
-    JSON.stringify({ ...fields, mixups: mixPairs, sameSurfaceLower: pairsOf(sameLower), changed }, null, 1) +
-      "\n",
+    JSON.stringify(
+      { ...fields, mixups: mixPairs, sameSurfaceLower: pairsOf(sameLower), sameChangedList, changed },
+      null,
+      1,
+    ) + "\n",
   );
+if (pointsOut !== undefined) await writeFile(pointsOut, JSON.stringify(mainMixups) + "\n");
 if (canBe.length > 0) process.exitCode = 1;

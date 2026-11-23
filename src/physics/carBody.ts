@@ -7,3 +7,10 @@
  * the Node probes that build it) would then depend on the game's drawing of the car.
  */
 export const CAR_HALF = { x: 0.92, y: 0.38, z: 2.15 } as const;
+/**
+ * The car's body centre (the chassis origin, what vehicle.position() answers) over the road it stands
+ * on at rest, metres (game/carModel.ts: "the ground sits ~0.86 m below it"). The callers of
+ * RoadGraph.nearestOnSurface / locate pass that point, and roads.ts reads from it which road the car
+ * stands on (P2.7 R1-4a-1); the robotaxi and the police patrol place their cars by it.
+ */
+export const CAR_RIDE_HEIGHT = 0.86;

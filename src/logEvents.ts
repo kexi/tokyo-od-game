@@ -1859,7 +1859,8 @@ export const LOG_EVENTS = {
   /**
    * Where RoadGraph.locate answers a car on a deck with another run of a data folder
    * (scripts/expresswayLocateProbe.ts, P2.7 R1-4a-1): the lane-centre points asked, those with no answer,
-   * those where the probe's own copy of nearestOnSurface answers otherwise, the answers on the same run /
+   * those answered otherwise than main's rule before R1-4a-1 (and of them those where main's answer was on
+   * the car's own surface), the answers on the same run /
    * another run on the same surface (and of those, a lower posted limit by the asking deck's class) /
    * another surface, the pairs, where a car can be and cannot be, the mix-ups whose limits differ, and
    * per form of the fix (--forms) what it leaves and the same-surface answers it changes.
@@ -1868,7 +1869,8 @@ export const LOG_EVENTS = {
     dir: z.string(),
     points: count,
     none: count,
-    replicaOff: count,
+    differsFromMain: count,
+    sameSurfaceChanged: count,
     sameRun: count,
     sameSurface: count,
     sameSurfaceLowerLimit: z.object({ ownMain: count, ownRamp: count }),

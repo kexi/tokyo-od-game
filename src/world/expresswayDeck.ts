@@ -132,7 +132,7 @@ export const GRAPH_RADIUS_M = 1300;
 /** Thickness of the deck slab (exported for the structure fit test: it rests on a bridge's floor beams). */
 export const SLAB = DECK_SLAB_M;
 /** The box girder's bottom flange as a share of the deck width. */
-const GIRDER_BOTTOM_SHARE = 0.55;
+export const GIRDER_BOTTOM_SHARE = 0.55;
 const PIER_ALONG = 2.2;
 const PIER_ACROSS_SHARE = 0.4;
 const PIER_FOOT = 0.6;
