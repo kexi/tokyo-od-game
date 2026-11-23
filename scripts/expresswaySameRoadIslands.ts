@@ -73,6 +73,12 @@ type Island = {
   windows: string[];
 };
 const islands = new Map<string, Island>();
+/**
+ * Road tiles a window wanted that the cache does not have (counted, and the run fails on any). Why
+ * not read them as empty, as before: a window with an empty tile is a network with a hole in it, and
+ * nothing said so (#128's review M1: 326 of central's 897 tiles were missing).
+ */
+const missingTiles = new Set<string>();
 let windows = 0;
 /** Components of a graph's segments (undirected): each component's segments, the largest first. */
 function components(graph: RoadGraph): Segment[][] {
@@ -107,7 +113,11 @@ for (const centre of centres) {
   const [cx, cy] = centre.split("-").map(Number);
   const tiles: RoadLine[] = [];
   for (let dy = -1; dy <= 1; dy++)
-    for (let dx = -1; dx <= 1; dx++) tiles.push(...((await read(cx + dx, cy + dy)) ?? []));
+    for (let dx = -1; dx <= 1; dx++) {
+      const t = await read(cx + dx, cy + dy);
+      if (t === null) missingTiles.add(`${cx + dx}-${cy + dy}`);
+      else tiles.push(...t);
+    }
   const lat = tileYToLat(cy + 0.5, ROAD_TILE_ZOOM);
   const lon = tileXToLon(cx + 0.5, ROAD_TILE_ZOOM);
   const near = files.chunks.filter((c) => {
@@ -217,6 +227,7 @@ const tally = (f: (i: Island) => boolean) => {
 };
 const summary = {
   dir: target,
+  missingTiles: missingTiles.size,
   windows,
   edge: tally((i) => i.kind === "edge"),
   inside: tally((i) => i.kind === "inside"),
@@ -227,3 +238,6 @@ const summary = {
 log("street_same_road_islands_counted", summary);
 const out = flag("out");
 if (out !== undefined) await writeFile(out, JSON.stringify({ summary, islands: list }, null, 1) + "\n");
+// Fails after the output is written, as the probes do.
+const hasMissingTiles = missingTiles.size > 0;
+if (hasMissingTiles) process.exitCode = 1;

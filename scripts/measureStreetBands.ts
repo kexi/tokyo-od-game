@@ -21,7 +21,7 @@
 // pavement inside the bands and under an edge line moved out, the ramps' feet beside the bands,
 // piers over the lanes, and the nodes with two segments only.
 // One JSON log line (street_bands_measured) and --out <file> for the full list.
-// Run: pnpm exec tsx scripts/measureStreetBands.ts <dir|label> [--cache <dir>] [--plateau <dir>] [--out <file>] [--moves <file>] [--check]
+// Run: pnpm exec tsx scripts/measureStreetBands.ts <dir|label> [--cache <dir>] [--plateau <dir>] [--out <file>] [--moves <file>]
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { VectorTile } from "@mapbox/vector-tile";
@@ -1317,9 +1317,9 @@ if (outPath !== undefined)
     outPath,
     JSON.stringify({ summary, segments: banded, jumps, piersOverLanes }, null, 1) + "\n",
   );
-// --check: a site chunk left out for a road tile missing from the cache fails (exit code 1). Why:
-// the counts were then of a network with a hole in it, and nothing said so (central's γ read 75 for
-// 76 until #127's review found a window skipped the same way in measureSameRoad).
-const isChecked = args.includes("--check");
+// A site chunk left out for a road tile missing from the cache fails the run (exit code 1, after the
+// output is written): the counts were then of a network with a hole in it, and nothing said so
+// (central's γ read 75 for 76). Why by default and not behind a flag: a run for its numbers (--moves,
+// --out) would pass a hole again, as the lanes and hole probes would not (#128's review W1).
 const hasSkipped = skipped > 0;
-if (isChecked && hasSkipped) process.exitCode = 1;
+if (hasSkipped) process.exitCode = 1;
