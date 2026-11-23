@@ -3,6 +3,8 @@ import { HEIGHT_STRUCTURES } from "../src/expressway/assumptions";
 import { belowDeferralOf, isBelowCompiled, TUNNEL_DEPTH_M } from "../src/expressway/below";
 import {
   approachStretchesOf,
+  ceilingRowsOf,
+  holesOf,
   joinsOf,
   overApproachOf,
   PORTAL_APPROACH_M,
@@ -12,13 +14,14 @@ import {
   unplannedOf,
 } from "../src/expressway/belowScore";
 import {
+  ceilingRowTally,
   planNetwork,
   type Plan,
   portalApproachEnds,
   solvePlan,
   unplannedChains,
 } from "../src/expressway/compile";
-import { STATION_STRIDE, type XwChunk } from "../src/expressway/format";
+import { STATION_STRIDE, type XwChunk, type XwRunSummary } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import { buildChains, type Network, normalizeNode, normalizeWay, splitRuns } from "../src/expressway/network";
 import { LEVEL_APART_M } from "../src/expressway/overlap";
@@ -455,7 +458,7 @@ const fixture = (name: string) =>
   ReportSchema.parse(JSON.parse(readFileSync(join(import.meta.dirname, "fixtures", name), "utf8")));
 
 describe("スコアカード版 7（report.ts）", () => {
-  it("the ship baselines are the current version (11 since S7-2), each deferred run under one reason, adding up to the plan's count", () => {
+  it("the ship baselines are the current version (12 since S7-3c), each deferred run under one reason, adding up to the plan's count", () => {
     for (const [name, below] of [
       ["expresswayScorecard.ship.json", "pruned"],
       ["expresswayScorecard.ship-all.json", "all"],
@@ -670,5 +673,87 @@ describe("汐留の取付け（基準 fixture）", () => {
     const pair = u.overApproach.list.find((p) => p.id === "45068170|24402125");
     expect(pair).toBeDefined();
     expect(pair!.minDzM).toBeLessThan(LEVEL_APART_M);
+  });
+});
+
+describe("スコアカード版 12（belowScore.ts holesOf・ceilingRowsOf、compile.ts ceilingRowTally、S7-3c 3.5）", () => {
+  // One tunnel run of 1,000 m, a station every 20 m at the ground 20 m: the road 7 m under it but at
+  // 20 (cover 6.0), 500 (6.65: still the box and cover of TUNNEL_DEPTH_M, under HOLE_COVER_M) and 700
+  // (6.0, a mouth onto a cut there), and at the ground at both ends.
+  const coverAt = (s: number) =>
+    s === 0 || s === 1000 ? 0 : s === 20 || s === 700 ? 6 : s === 500 ? 6.65 : 7;
+  const st: number[] = [];
+  for (let s = 0; s <= 1000; s += 20) st.push(s, 139.75, 35.65, 20 - coverAt(s), 0, 20, 0);
+  const chunk = {
+    id: "1:0",
+    run: "1",
+    k: 0,
+    structure: "tunnel",
+    st,
+    portals: [{ s: 700, from: "tunnel", to: "cut" }],
+  } as unknown as XwChunk;
+  const run = {
+    id: "1",
+    lengthM: 1000,
+    planV: 60,
+    below: true,
+    start: { kind: "portal" },
+    end: { kind: "portal" },
+  } as unknown as XwRunSummary;
+
+  it("counts the hole stations, those T12 holds a ceiling at (a mouth's is the cut's), and the stretches far from the tunnel's ends", () => {
+    const holes = holesOf([chunk], [run], true);
+    expect(holes).toMatchObject({ tunnelStations: 51, holeStations: 5, stretches: 4 });
+    // 500 is held; 700 is a mouth (the cut's station); 20 is too near the portal for the descent.
+    expect(holes.heldHoleStations).toBe(1);
+    // 500 is more than 100 m from the tunnel's ends; 700's mouth is an end of the tunnel itself.
+    expect(holes.far.count).toBe(1);
+    expect(holes.farDeep.count).toBe(1);
+    expect(holes.far.m).toBe(holes.farDeep.m);
+    // 500's edges where the cover crosses HOLE_COVER_M between stations (holeShare): 497.14 to 502.86.
+    expect(holes.farDeep.m).toBeCloseTo(5.7, 1);
+    expect(TUNNEL_DEPTH_M).toBeLessThanOrEqual(6.65);
+  });
+
+  it("tallies the ceiling rows off the grid per run, and the most in one grid interval", () => {
+    expect(ceilingRowTally(12, [0, 1.5, 2.25, 5, 7.75, 10, 12])).toEqual({ rows: 3, maxPerInterval: 2 });
+    expect(ceilingRowTally(12, [0, 5, 10, 12])).toEqual({ rows: 0, maxPerInterval: 0 });
+    const rows = ceilingRowsOf({
+      mode: "points",
+      runs: new Map([
+        ["b", { rows: 3, maxPerInterval: 2 }],
+        ["a", { rows: 0, maxPerInterval: 0 }],
+        ["c", { rows: 1, maxPerInterval: 1 }],
+      ]),
+    });
+    expect(rows).toEqual({
+      mode: "points",
+      rows: 4,
+      runs: 2,
+      maxPerInterval: 2,
+      list: [
+        { id: "b", rows: 3, maxPerInterval: 2 },
+        { id: "c", rows: 1, maxPerInterval: 1 },
+      ],
+    });
+  });
+
+  it("a version-11 report still parses, and set beside its version 12 it differs by the holes and the ceiling rows alone", () => {
+    const twelve = fixture("expresswayScorecard.ship-all.json");
+    expect(twelve.version).toBe(12);
+    expect(twelve.underground!.ceilingRows?.mode).toBe("grid");
+    const { holes: _holes, ceilingRows: _rows, ...underground } = twelve.underground!;
+    const eleven = ReportSchema.parse({ ...twelve, underground, version: 11 });
+    const before = flattenReport(eleven);
+    const after = flattenReport(twelve);
+    const changed = [...before.keys()].filter(
+      (key) => key !== "version" && before.get(key) !== after.get(key),
+    );
+    expect(changed).toEqual([]);
+    const added = [...after.keys()].filter((key) => !before.has(key));
+    expect(added.length).toBeGreaterThan(0);
+    expect(
+      added.every((key) => key.startsWith("underground.holes") || key.startsWith("underground.ceilingRows")),
+    ).toBe(true);
   });
 });

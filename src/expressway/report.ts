@@ -86,9 +86,13 @@ const cls = z.enum(["expressway", "ramp", "street"]);
  * of cover: 0 without the flag), and per end its lowered stretch and approach depth or why it was left
  * at grade; with the flag only, `ground.openEnds.lowered` (the lowered ends off their lowered target,
  * out of the fields above it) and `underground.overApproach.besideLowered` (two lowered approaches
- * going down side by side on one surface, out of `list`). Version 10 reports still parse.
+ * going down side by side on one surface, out of `list`). Version 10 reports still parse. 12 (S7-3c):
+ * `underground.holes` (the holes over the written tunnels, those at a station T12 holds a ceiling at,
+ * and the stretches far from a tunnel's end) and, in a height build, `underground.ceilingRows` (the
+ * rows the compiler holds between a below run's grid rows, under --below-ceilings grid or points).
+ * Version 11 reports still parse.
  */
-export const REPORT_VERSION = 11;
+export const REPORT_VERSION = 12;
 
 const blockSize = { runs: count, pieces: count, variables: count };
 
@@ -120,6 +124,7 @@ export const ReportSchema = z.strictObject({
     z.literal(8),
     z.literal(9),
     z.literal(10),
+    z.literal(11),
     z.literal(REPORT_VERSION),
   ]),
   label: z.string(),
@@ -732,6 +737,11 @@ export type ReportInput = {
   notLowered?: ReadonlyArray<{ below: string; belowAtStart: boolean; reason: "both-portals" }>;
   /** The chains with tunnel ways and no viaduct (compile.ts unplannedChains), into `underground.unplanned`. */
   unplanned?: readonly UnplannedBelow[];
+  /** S7-3c: the build's --below-ceilings and compile.ts CompileResult.ceilingRows, into `underground.ceilingRows`. */
+  ceilingRows?: {
+    mode: "grid" | "points";
+    runs: ReadonlyMap<string, { rows: number; maxPerInterval: number }>;
+  };
 };
 
 const round = (v: number, digits: number) => {
@@ -1547,6 +1557,8 @@ export function buildReport(input: ReportInput): Report {
       approachEnds: input.approachEnds ?? [],
       notLowered: input.notLowered ?? [],
       unplanned: input.unplanned ?? [],
+      isHeight: input.heightStructures === true,
+      ...(input.ceilingRows ? { ceilingRows: input.ceilingRows } : {}),
       chunks: input.chunks,
       runs: input.runs,
       belowIds: new Set([

@@ -3033,6 +3033,12 @@ export type CompileResult = {
    * scorecard (the band's centre); not written.
    */
   groundTargets: Map<string, GroundLines>;
+  /**
+   * S7-3c 3.5: a height build's written below runs, the ceiling rows each holds between its grid's
+   * rows (thresholdStations, `--below-ceilings` grid or points) and the most in one grid interval, for
+   * the scorecard; not written. Absent in a build by the tags.
+   */
+  ceilingRows?: Map<string, CeilingRowTally>;
   /** A height build's tally of the PR 7a rules (structuresByHeight); not written. */
   heightRules?: HeightRuleTally;
 };
@@ -5740,6 +5746,17 @@ export function solvePlan(
       groundApproaches(plan, rp),
     );
   }
+  // S7-3c 3.5: the rows between the grid's, set up again as the solve set them up (setupRun, which
+  // reads only the plan and the ground for a below run). Why again and not kept from the solve: the
+  // setups are made per component, per block and per fallback; the plan and ground decide them alone.
+  const ceilingRows = new Map<string, CeilingRowTally>();
+  for (const r of isHeight ? runs : []) {
+    const rp = plan.runs.get(r.id);
+    const isBelow = rp?.below === true;
+    if (!isBelow) continue;
+    const setup = setupRun(plan, rp, ground, [], [], objectiveOf);
+    ceilingRows.set(r.id, ceilingRowTally(rp.length, setup.stations));
+  }
   return {
     chunks,
     runs,
@@ -5749,8 +5766,25 @@ export function solvePlan(
     features,
     partition,
     groundTargets,
-    ...(isHeight ? { heightRules } : {}),
+    ...(isHeight ? { heightRules, ceilingRows } : {}),
   };
+}
+
+/** A below run's ceiling rows between its grid's rows (CompileResult.ceilingRows). */
+export type CeilingRowTally = { rows: number; maxPerInterval: number };
+
+/** How many of a below run's set-up stations are off its grid, and the most in one grid interval. */
+export function ceilingRowTally(length: number, stations: ArrayLike<number>): CeilingRowTally {
+  const grid = gridStations(length);
+  const isOnGrid = (s: number) => grid.some((g) => Math.abs(g - s) < 1e-9);
+  const perInterval = new Map<number, number>();
+  for (const s of Array.from(stations)) {
+    if (isOnGrid(s)) continue;
+    const k = Math.floor(s / GRID_M);
+    perInterval.set(k, (perInterval.get(k) ?? 0) + 1);
+  }
+  const counts = [...perInterval.values()];
+  return { rows: counts.reduce((a, b) => a + b, 0), maxPerInterval: Math.max(0, ...counts) };
 }
 
 /**

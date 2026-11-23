@@ -12,6 +12,7 @@ import {
   checkSurface,
   checkVerticalCurves,
   climbingEnds,
+  type CoverEnds,
   isTunnelFreeRun,
   checkSeamHeading,
 } from "./checks";
@@ -56,31 +57,7 @@ export function violationsOf(
   const byRun = new Map<string, XwChunk[]>();
   for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
   for (const list of byRun.values()) list.sort((a, b) => a.k - b.k);
-  // S7-3 3.4: the written runs as below.ts reads them for the descent to their portals, the ground at
-  // their end stations read as T12's portal elevations are (the road's in a build by the tags).
-  const links = new Map<string, BelowLinkRun>();
-  for (const r of meta.runs) {
-    const list = byRun.get(r.id);
-    if (!list) continue;
-    const a = list[0].st;
-    const b = list[list.length - 1].st;
-    const at = isHeight ? ST.ground : ST.z;
-    // S7-2 3.3: a portal beyond an end on a lowered approach, from the below run's own summary (the
-    // numbers the compiler used), never interpolated from the approach's stations.
-    const portalAt = portalAtOfSummary(r);
-    links.set(r.id, {
-      ...(portalAt ? { portalAt } : {}),
-      id: r.id,
-      lengthM: r.lengthM,
-      planV: r.planV as DesignSpeed,
-      below: r.below === true,
-      ends: [
-        { kind: r.start.kind, parent: r.start.parent, parentS: r.start.parentS },
-        { kind: r.end.kind, parent: r.end.parent, parentS: r.end.parentS },
-      ],
-      ground: [a[at], b[b.length - STATION_STRIDE + at]],
-    });
-  }
+  const links = belowLinksOfFiles(meta.runs, byRun, isHeight);
   // S7-2 追記 3 の 1: each lowered approach's stretches and the below runs under them, from its own
   // summary (XwEnd.lowered), for T13: the same whichever runs the folder writes (PR #130 review 必須 1).
   const stretches = loweredStretchesOf(meta.runs);
@@ -141,20 +118,7 @@ export function violationsOf(
         );
     }
     found.T5.push(...checkGroundEnd(list[0], r, true), ...checkGroundEnd(list[list.length - 1], r, false));
-    const first = list[0].st;
-    const last = list[list.length - 1].st;
-    // The descent from the portals starts at the ground there, as the compiler's (setupBelow's portalZ).
-    // Why only in a height build: there a below run may seam to a run at grade (S6 PR 2) whose road
-    // stands up to its band off the ground, and the road's height read as the portal's put ceilings
-    // where the compiler had none (23594607, 21 in ship/all). A build by the tags keeps the road's.
-    const plainEnds = isHeight
-      ? { z0: first[5], z1: last[last.length - STATION_STRIDE + 5] }
-      : { z0: first[3], z1: last[last.length - STATION_STRIDE + 3] };
-    // S7-3 3.4: an end going on under the ground is measured from the portals beyond it, as setupBelow
-    // does (the same below.ts functions, read from the files' ends and end stations).
-    const ends = hasPortalsBeyond(links, r.id)
-      ? { ...plainEnds, reaches: portalReaches(links, r.id) }
-      : plainEnds;
+    const ends = coverEndsOf(links, r.id, list, isHeight);
     const isTunnelFree = isHeight && isTunnelFreeRun(list, r, ends);
     // A run at grade's cuts are T13's (its road is within a band of the ground, no ceiling). A viaduct
     // -tagged run's cuts keep T12 (review W10): they are deeper than the dead band by what they are.
@@ -230,4 +194,63 @@ export function groundEndsOf(r: XwRunSummary, runs: ReadonlyMap<string, XwRunSum
   const meetsGround = (e: XwRunSummary["start"]) =>
     e.kind === "ground" || e.kind === "portal" || (e.kind === "seam" && runs.get(e.parent!)?.ground === true);
   return [meetsGround(r.start), meetsGround(r.end)];
+}
+
+/**
+ * S7-3 3.4: the written runs as below.ts reads them for the descent to their portals, the ground at
+ * their end stations read as T12's portal elevations are (the road's in a build by the tags). T12
+ * (violationsOf) and the scorecard's holes (belowScore.ts holesOf) both read them.
+ */
+export function belowLinksOfFiles(
+  runs: readonly XwRunSummary[],
+  byRun: ReadonlyMap<string, readonly XwChunk[]>,
+  isHeight: boolean,
+): Map<string, BelowLinkRun> {
+  const links = new Map<string, BelowLinkRun>();
+  for (const r of runs) {
+    const list = byRun.get(r.id);
+    if (!list) continue;
+    const a = list[0].st;
+    const b = list[list.length - 1].st;
+    const at = isHeight ? ST.ground : ST.z;
+    // S7-2 3.3: a portal beyond an end on a lowered approach, from the below run's own summary (the
+    // numbers the compiler used), never interpolated from the approach's stations.
+    const portalAt = portalAtOfSummary(r);
+    links.set(r.id, {
+      ...(portalAt ? { portalAt } : {}),
+      id: r.id,
+      lengthM: r.lengthM,
+      planV: r.planV as DesignSpeed,
+      below: r.below === true,
+      ends: [
+        { kind: r.start.kind, parent: r.start.parent, parentS: r.start.parentS },
+        { kind: r.end.kind, parent: r.end.parent, parentS: r.end.parentS },
+      ],
+      ground: [a[at], b[b.length - STATION_STRIDE + at]],
+    });
+  }
+  return links;
+}
+
+/** What T12 measures a written run's ceilings from (checks.ts CoverEnds), its chunks in order of k. */
+export function coverEndsOf(
+  links: ReadonlyMap<string, BelowLinkRun>,
+  id: string,
+  list: readonly XwChunk[],
+  isHeight: boolean,
+): CoverEnds {
+  const first = list[0].st;
+  const last = list[list.length - 1].st;
+  // The descent from the portals starts at the ground there, as the compiler's (setupBelow's portalZ).
+  // Why only in a height build: there a below run may seam to a run at grade (S6 PR 2) whose road
+  // stands up to its band off the ground, and the road's height read as the portal's put ceilings
+  // where the compiler had none (23594607, 21 in ship/all). A build by the tags keeps the road's.
+  const plainEnds = isHeight
+    ? { z0: first[5], z1: last[last.length - STATION_STRIDE + 5] }
+    : { z0: first[3], z1: last[last.length - STATION_STRIDE + 3] };
+  // S7-3 3.4: an end going on under the ground is measured from the portals beyond it, as setupBelow
+  // does (the same below.ts functions, read from the files' ends and end stations).
+  const hasBeyond = hasPortalsBeyond(links, id);
+  if (!hasBeyond) return plainEnds;
+  return { ...plainEnds, reaches: portalReaches(links, id) };
 }

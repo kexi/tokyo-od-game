@@ -453,7 +453,7 @@ describe("スコアカードのスキーマ（report.ts ReportSchema）", () => 
 
   it("version 10 keeps version 6's fields: the sizes of report.json and the ledger (P2.7-4); the objective (v1 when not given) and v2's weights; version-2 and -3 reports still parse", () => {
     const report = buildReport(input());
-    expect(report.version).toBe(11); // S7-1 raised it to 7 for `underground`, R1-1a to 8 (gzipEnv, budget, stages, borders, ends), S7-3 to 9 (joins, unplanned), R1-1b to 10 (the ends' kind, onward, rampEnds, the mouths' side and at), S7-2 to 11 (portals.lowered)
+    expect(report.version).toBe(12); // S7-1 raised it to 7 for `underground`, R1-1a to 8 (gzipEnv, budget, stages, borders, ends), S7-3 to 9 (joins, unplanned), R1-1b to 10 (the ends' kind, onward, rampEnds, the mouths' side and at), S7-2 to 11 (portals.lowered), S7-3c to 12 (holes, ceilingRows)
     expect(report.size.record).toEqual({ raw: 900, gzip: 200 });
     expect(report.size.ledger).toBeNull();
     // Every district, the planned runs all counted in one (a run with no district is outside).

@@ -1,8 +1,18 @@
 import { z } from "zod";
-import { BELOW_DEFER_REASONS, type BelowDeferReason, TUNNEL_DEPTH_M } from "./below";
+import {
+  BELOW_DEFER_REASONS,
+  type BelowDeferReason,
+  ceilingAt,
+  ceilingFrom,
+  isHoleAt,
+  TUNNEL_DEPTH_M,
+} from "./below";
+import { isTunnelFreeRun } from "./checks";
+import type { DesignSpeed } from "../law/roadStandards";
+import { holeShare } from "../world/expresswayBore";
 import { STATION_STRIDE, ST, type XwChunk, type XwClass, type XwRunSummary } from "./format";
 import { pairStations, SAME_SURFACE_M } from "./overlap";
-import { loweredStretchesOf } from "./violations";
+import { belowLinksOfFiles, coverEndsOf, loweredStretchesOf } from "./violations";
 
 /**
  * The scorecard's `underground` (S7-1, report.ts version 7): what S7 (地下全面) is measured by before
@@ -216,6 +226,41 @@ export const UndergroundSchema = z.strictObject({
           ends: z.tuple([z.array(z.string()), z.array(z.string())]),
         }),
       ),
+    })
+    .optional(),
+  /**
+   * S7-3c 3.5 (version 12): the holes the game cuts over the written tunnels (below.ts isHoleAt: ground
+   * − road under HOLE_COVER_M at a station of a tunnel chunk), and how many of those stations T12 holds
+   * a ceiling at (checks.checkCover's reading: the ends, the portals beyond them, a mouth's station is
+   * the cut's, isTunnelFreeRun). A stretch is a chunk's run of hole stations, its edges where the cover
+   * crosses the threshold between stations (expresswayBore.ts holeShare); `far` the stretches more than
+   * FAR_FROM_TUNNEL_END_M from the tunnel's nearest end (a mouth inside a chunk, a change of structure
+   * between chunks, the run's own end), `farDeep` those of them whose every station keeps
+   * TUNNEL_DEPTH_M. Absent before version 12.
+   */
+  holes: z
+    .strictObject({
+      tunnelStations: count,
+      holeStations: count,
+      heldHoleStations: count,
+      stretches: count,
+      far: z.strictObject({ count, m: km }),
+      farDeep: z.strictObject({ count, m: km }),
+    })
+    .optional(),
+  /**
+   * S7-3c 3.5 (version 12): the ceiling rows the compiler holds between a written below run's grid rows
+   * (compile.ts ceilingRowsBetween: thresholdStations' under grid, and the points' under
+   * `--below-ceilings points`), in all, per run with any and the most in one grid interval. Absent
+   * before version 12 and in a build by the tags.
+   */
+  ceilingRows: z
+    .strictObject({
+      mode: z.enum(["grid", "points"]),
+      rows: count,
+      runs: count,
+      maxPerInterval: count,
+      list: z.array(z.strictObject({ id: z.string(), rows: count, maxPerInterval: count })),
     })
     .optional(),
 });
@@ -684,6 +729,13 @@ export function undergroundOf(input: {
   belowIds: ReadonlySet<string>;
   /** S7-2 (version 11): the approaches the plan left at grade (compile.ts loweredApproaches' skipped). */
   notLowered?: ReadonlyArray<{ below: string; belowAtStart: boolean; reason: "both-portals" }>;
+  /** S7-3c (version 12): a height build's files (the holes are T12's reading of them). */
+  isHeight?: boolean;
+  /** S7-3c (version 12): the build's `--below-ceilings` and compile.ts CompileResult.ceilingRows. */
+  ceilingRows?: {
+    mode: "grid" | "points";
+    runs: ReadonlyMap<string, { rows: number; maxPerInterval: number }>;
+  };
 }): Underground {
   const notLowered = new Map(
     (input.notLowered ?? []).map(
@@ -700,6 +752,128 @@ export function undergroundOf(input: {
     ),
     joins: joinsOf(input.chunks, input.runs, input.belowIds),
     unplanned: unplannedOf(input.unplanned),
+    holes: holesOf(input.chunks, input.runs, input.isHeight ?? false),
+    ...(input.ceilingRows ? { ceilingRows: ceilingRowsOf(input.ceilingRows) } : {}),
+  };
+}
+
+/** How far from a tunnel's end a hole is counted `far` (S7-3c 3.5: the cut the design's b3 counts by). */
+export const FAR_FROM_TUNNEL_END_M = 100;
+
+/** The scorecard's `underground.holes` (S7-3c 3.5) of the written files. */
+export function holesOf(
+  chunks: readonly XwChunk[],
+  runs: readonly XwRunSummary[],
+  isHeight: boolean,
+): NonNullable<Underground["holes"]> {
+  const byRun = new Map<string, XwChunk[]>();
+  for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
+  for (const list of byRun.values()) list.sort((a, b) => a.k - b.k);
+  const links = belowLinksOfFiles(runs, byRun, isHeight);
+  const out = {
+    tunnelStations: 0,
+    holeStations: 0,
+    heldHoleStations: 0,
+    stretches: 0,
+    far: { count: 0, m: 0 },
+    farDeep: { count: 0, m: 0 },
+  };
+  for (const r of runs) {
+    const list = byRun.get(r.id);
+    const hasTunnel = r.below === true && list !== undefined && list.some((c) => c.structure === "tunnel");
+    if (!hasTunnel) continue;
+    const ends = coverEndsOf(links, r.id, list, isHeight);
+    const isFree = isHeight && isTunnelFreeRun(list, r, ends);
+    const ceiling = (g: number, sv: number) =>
+      ends.reaches
+        ? ceilingFrom("tunnel", g, sv, r.lengthM, ends.reaches)
+        : ceilingAt("tunnel", g, sv, r.lengthM, ends, r.planV as DesignSpeed);
+    const tunnelEnds = tunnelEndsOf(list);
+    for (const c of list) {
+      if (c.structure !== "tunnel") continue;
+      const mouths = (c.portals ?? [])
+        .filter((p) => (p.from === "tunnel") !== (p.to === "tunnel"))
+        .map((p) => p.s);
+      const n = c.st.length / STATION_STRIDE;
+      const at = (i: number, f: number) => c.st[i * STATION_STRIDE + f];
+      const cover = (i: number) => at(i, ST.ground) - at(i, ST.z);
+      const isHole = (i: number) => isHoleAt("tunnel", at(i, ST.z), at(i, ST.ground));
+      for (let i = 0; i < n; i++) {
+        out.tunnelStations++;
+        if (!isHole(i)) continue;
+        out.holeStations++;
+        const sv = at(i, ST.s);
+        // A mouth's station is the cut's, as T12 reads it (checks.checkCover): no tunnel ceiling there.
+        const isMouth = mouths.some((m) => Math.abs(m - sv) <= 0.011);
+        const isHeld = !isMouth && !isFree && ceiling(at(i, ST.ground), sv) !== null;
+        if (isHeld) out.heldHoleStations++;
+      }
+      for (let i = 0; i < n;) {
+        if (!isHole(i)) {
+          i++;
+          continue;
+        }
+        let j = i;
+        while (j + 1 < n && isHole(j + 1)) j++;
+        const s0 =
+          i > 0 ? at(i - 1, ST.s) + (at(i, ST.s) - at(i - 1, ST.s)) * holeShare(c, i - 1, i) : at(i, ST.s);
+        const s1 =
+          j < n - 1 ? at(j, ST.s) + (at(j + 1, ST.s) - at(j, ST.s)) * holeShare(c, j, j + 1) : at(j, ST.s);
+        const fromEnd = Math.min(...tunnelEnds.map((e) => Math.min(Math.abs(e - s0), Math.abs(e - s1))));
+        out.stretches++;
+        const isFar = fromEnd > FAR_FROM_TUNNEL_END_M;
+        if (isFar) {
+          out.far.count++;
+          out.far.m += s1 - s0;
+          let least = Infinity;
+          for (let k = i; k <= j; k++) least = Math.min(least, cover(k));
+          const isDeep = least >= TUNNEL_DEPTH_M;
+          if (isDeep) {
+            out.farDeep.count++;
+            out.farDeep.m += s1 - s0;
+          }
+        }
+        i = j + 1;
+      }
+    }
+  }
+  const round1 = (m: number) => Math.round(m * 10) / 10;
+  return {
+    ...out,
+    far: { ...out.far, m: round1(out.far.m) },
+    farDeep: { ...out.farDeep, m: round1(out.farDeep.m) },
+  };
+}
+
+/** Where a run's tunnel ends: a mouth inside a chunk, a change of structure between chunks, the run's own ends. */
+function tunnelEndsOf(list: readonly XwChunk[]): number[] {
+  const out: number[] = [];
+  list.forEach((c, k) => {
+    for (const p of c.portals ?? []) if ((p.from === "tunnel") !== (p.to === "tunnel")) out.push(p.s);
+    const isTunnel = c.structure === "tunnel";
+    const isFirst = isTunnel && (k === 0 || list[k - 1].structure !== "tunnel");
+    const isLast = isTunnel && (k === list.length - 1 || list[k + 1].structure !== "tunnel");
+    if (isFirst) out.push(c.st[ST.s]);
+    if (isLast) out.push(c.st[c.st.length - STATION_STRIDE + ST.s]);
+  });
+  return out;
+}
+
+/** The scorecard's `underground.ceilingRows` (S7-3c 3.5). */
+export function ceilingRowsOf(input: {
+  mode: "grid" | "points";
+  runs: ReadonlyMap<string, { rows: number; maxPerInterval: number }>;
+}): NonNullable<Underground["ceilingRows"]> {
+  const list = [...input.runs]
+    .filter(([, t]) => t.rows > 0)
+    .map(([id, t]) => ({ id, rows: t.rows, maxPerInterval: t.maxPerInterval }))
+    .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return {
+    mode: input.mode,
+    rows: list.reduce((n, x) => n + x.rows, 0),
+    runs: list.length,
+    maxPerInterval: Math.max(0, ...list.map((x) => x.maxPerInterval)),
+    list,
   };
 }
 

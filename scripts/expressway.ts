@@ -1248,6 +1248,12 @@ if (reportPath) {
     notLowered: loweredApproaches(plan).skipped,
     // S7-3: the chains planNetwork never compiles (no viaduct), with tunnel ways.
     unplanned: unplannedChains(plan),
+    // S7-3c: the ceiling rows between the grid's (a height build's only).
+    ...(result.ceilingRows
+      ? {
+          ceilingRows: { mode: isBelowCeilingsPoints ? "points" : "grid", runs: result.ceilingRows } as const,
+        }
+      : {}),
   };
   const report = buildReport(reportInput);
   await mkdir(dirname(reportPath), { recursive: true });
