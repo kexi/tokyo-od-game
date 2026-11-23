@@ -921,7 +921,22 @@ describe("車線数の変わる継ぎ目で壁高欄を閉じる（S6 PR 7c1、A
     const leftOnly = { ...both, right: { ...openSide(own), wall: null } };
     const count = (sides: typeof both) => {
       const solid: number[] = [];
-      closeWidthStep({ end: "end", narrowEdge }, ring, sides, own.edge, false, [], [], solid);
+      closeWidthStep(
+        {
+          end: "end",
+          boxes: [
+            { inner: narrowEdge, outer: own.edge },
+            { inner: -narrowEdge, outer: -own.edge },
+          ],
+        },
+        ring,
+        sides,
+        own.edge,
+        false,
+        [],
+        [],
+        solid,
+      );
       return solid.length;
     };
     expect(count(both)).toBeGreaterThan(0);

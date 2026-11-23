@@ -52,6 +52,43 @@ export function deckDriveFailures(ride: DeckDriveRide, seen: DeckDriveSeen): str
   return failures;
 }
 
+/**
+ * How far short of the end a wall-stop drive's car may stand and still have met the wall (m, its
+ * centre): the car's half length and the wall's PARAPET_WIDTH are under 3 m, a bounce back adds a
+ * few. Further, it stopped for something else and the drive measured no wall.
+ */
+export const WALL_SHORT_M = 10;
+
+/** What a wall-stop drive gives back: the cruise's summary with its watch on the end. */
+export type WallDriveRide = Pick<DeckDriveRide, "fell" | "maxDyAt" | "chunks"> & {
+  wall?: { chunk: string; maxPastEndM: number; maxKmh: number; lastDyM: number | null };
+};
+
+/**
+ * What fails a drive into an end wall (R1-1b 6 節「壁で止まる走行」): a fall, the car's centre past
+ * the end (over the wall or through it), not standing on the road at the end (on the wall's top, or
+ * fallen: |dy| over MAX_ABS_DY_M), never coming to the wall, a building crossed, an uncaught error.
+ * Why not deckDriveFailures: the car standing still at the wall is this drive's pass, a cruise's fail.
+ */
+export function wallStopFailures(ride: WallDriveRide, seen: { crossed: number; uncaught: number }): string[] {
+  const failures: string[] = [];
+  const wall = ride.wall;
+  if (!wall) return ["no watch on the end (debug.expressway.cruise endOf)"];
+  if (ride.fell) failures.push(`fell off a deck (at ${ride.maxDyAt ?? "?"})`);
+  const isPast = wall.maxPastEndM > 0;
+  if (isPast)
+    failures.push(`came ${wall.maxPastEndM} m past the end of ${wall.chunk} (over or through the wall)`);
+  const isShort = wall.maxPastEndM < -WALL_SHORT_M;
+  if (isShort) failures.push(`stopped ${-wall.maxPastEndM} m short of the end (no wall met)`);
+  const isOffRoad = wall.lastDyM === null || Math.abs(wall.lastDyM) > MAX_ABS_DY_M;
+  if (isOffRoad) failures.push(`stood ${wall.lastDyM ?? "off the deck"} m over the road at the end`);
+  const isCrossed = seen.crossed > 0;
+  if (isCrossed) failures.push(`building crossed on a deck (${seen.crossed})`);
+  const isBroken = seen.uncaught > 0;
+  if (isBroken) failures.push(`uncaught errors (${seen.uncaught})`);
+  return failures;
+}
+
 /** What the autopilot's drive (debug.expressway.route, then stop) gives back. */
 export type AutoDriveRide = {
   fell: boolean;

@@ -451,9 +451,9 @@ describe("スコアカードのスキーマ（report.ts ReportSchema）", () => 
     ]);
   });
 
-  it("version 9 keeps version 6's fields: the sizes of report.json and the ledger (P2.7-4); the objective (v1 when not given) and v2's weights; version-2 and -3 reports still parse", () => {
+  it("version 10 keeps version 6's fields: the sizes of report.json and the ledger (P2.7-4); the objective (v1 when not given) and v2's weights; version-2 and -3 reports still parse", () => {
     const report = buildReport(input());
-    expect(report.version).toBe(9); // S7-1 raised it to 7 for `underground`, R1-1a to 8 (gzipEnv, budget, stages, borders, ends), S7-3 to 9 (joins, unplanned)
+    expect(report.version).toBe(10); // S7-1 raised it to 7 for `underground`, R1-1a to 8 (gzipEnv, budget, stages, borders, ends), S7-3 to 9 (joins, unplanned), R1-1b to 10 (the ends' kind, onward, rampEnds, the mouths' side and at)
     expect(report.size.record).toEqual({ raw: 900, gzip: 200 });
     expect(report.size.ledger).toBeNull();
     // Every district, the planned runs all counted in one (a run with no district is outside).
@@ -637,6 +637,22 @@ describe("タイルの予算と gzip の比べ方（R1-1a、U3、スコアカー
     expect(isGzipField("size.gzip.total")).toBe(true);
     expect(isGzipField("stages[0].gzipBytes")).toBe(true);
     expect(isGzipField("size.raw.total")).toBe(false);
+  });
+
+  it("a version-8 scorecard (ends without kind, onward, beyond, rampEnds, side and at) still parses (R1-1b)", () => {
+    const fixture = JSON.parse(
+      readFileSync(join(import.meta.dirname, "fixtures", "expresswayScorecard.ship.json"), "utf8"),
+    ) as Report;
+    const ends = fixture.ends!;
+    const eight = {
+      ...fixture,
+      version: 8,
+      ends: {
+        mainEnds: ends.mainEnds.map(({ kind: _k, onward: _o, beyond: _b, ...e }) => e),
+        mouths: ends.mouths.map(({ side: _s, at: _a, ...m }) => m),
+      },
+    };
+    expect(ReportSchema.parse(eight).version).toBe(8);
   });
 
   it("the ship scorecard fixture is within U3's budget", () => {

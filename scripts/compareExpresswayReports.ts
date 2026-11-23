@@ -88,6 +88,31 @@ const undergroundLine =
         `joins +${ids(under.joins.added)} / −${ids(under.joins.removed)} / changed ${ids(under.joins.changed)}`,
         `unplanned +${ids(under.unplanned.added)} / −${ids(under.unplanned.removed)} / changed ${ids(under.unplanned.changed)}`,
       ].join("; ");
+// R1-1b (version 10): the ends' rows by id and the mouths by parent, distance and child, as sets (their
+// `kind`, `why`, `side` and `at` are words, which the numbers' table does not show), and the walls: the
+// ends whose kind is not ground and that no run goes on from.
+const endIds = (r: typeof a) => ({
+  main: new Set((r.ends?.mainEnds ?? []).map((e) => `${e.id}:${e.kind ?? "?"}:${e.why}`)),
+  ramp: new Set((r.ends?.rampEnds ?? []).map((e) => `${e.id}:${e.kind}:${e.why}`)),
+  mouths: new Set((r.ends?.mouths ?? []).map((m) => `${m.run}@${m.s}>${m.child}:${m.why}:${m.side ?? "?"}`)),
+  walls: new Set(
+    [...(r.ends?.mainEnds ?? []), ...(r.ends?.rampEnds ?? [])]
+      .filter((e) => e.kind !== "ground" && (e.onward ?? null) === null)
+      .map((e) => e.id),
+  ),
+});
+const ea = endIds(a);
+const eb = endIds(b);
+const setDiff = (x: Set<string>, y: Set<string>) => [...y].filter((k) => !x.has(k));
+const endsChanged = (["main", "ramp", "mouths", "walls"] as const).reduce(
+  (n, k) => n + setDiff(ea[k], eb[k]).length + setDiff(eb[k], ea[k]).length,
+  0,
+);
+const endsLine = `ends: ${(["main", "ramp", "mouths", "walls"] as const)
+  .map(
+    (k) => `${k} ${ea[k].size}→${eb[k].size} +${ids(setDiff(ea[k], eb[k]))} / −${ids(setDiff(eb[k], ea[k]))}`,
+  )
+  .join("; ")}`;
 const cell = (r: Row) => {
   const delta = r.va !== undefined && r.vb !== undefined ? fmt(r.vb - r.va) : "";
   const note = r.change === "same" ? "" : r.change;
@@ -120,6 +145,7 @@ process.stdout.write(
     `blocks: ${blocksChanged.length} changed ${blocksChanged.slice(0, 20).join(" ")} / +${blocksAdded.length} ${blocksAdded.slice(0, 20).join(" ")} / −${blocksRemoved.length} ${blocksRemoved.slice(0, 20).join(" ")}`,
     `runs of the range: +${runsAdded.length} ${runsAdded.slice(0, 20).join(" ")} / −${runsRemoved.length} ${runsRemoved.slice(0, 20).join(" ")}`,
     undergroundLine,
+    endsLine,
     `extract: ${a.extract.timestamp} ${a.extract.sha256.slice(0, 12)} / ${b.extract.timestamp} ${b.extract.sha256.slice(0, 12)}`,
   ].join("\n") + "\n",
 );
@@ -137,7 +163,8 @@ const changed =
   under.deferred.inRangeChanged.length +
   under.portals.changed.length +
   under.joins.changed.length +
-  under.unplanned.changed.length;
+  under.unplanned.changed.length +
+  endsChanged;
 log("expressway_reports_compared", {
   a: a.label,
   b: b.label,
