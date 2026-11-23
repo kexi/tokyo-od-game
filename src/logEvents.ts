@@ -880,7 +880,9 @@ export const LOG_EVENTS = {
    * The autopilot's car in front changed (`changed`, a fresh pick only), or the last pick at an
    * accident (`accident`; `staleTicks` driver updates since it was made: the offLane hold makes
    * none). The car: `pathOffM` from its driven path, `ownM` its nose across the path (+ left),
-   * the band (m) a vehicle has to be within of it. Each vehicle placed up to 60 m ahead: its log ref
+   * the band (m) a vehicle has to be within of it, and the slant it swept by (`slantPerM`, across per
+   * metre along, + left: the smaller of the heading's `headingSlantPerM` and the nose's drift over the
+   * last 8 m `driftPerM` when both point the same way, else 0; D4 v2). Each vehicle placed up to 60 m ahead: its log ref
    * (as accident's otherRef), who it is, along (`aheadM`) and across the path, across from the nose
    * (`fromOwnM`), straight-line distance, seconds stood. `dropped`: near ahead in a straight line
    * (to 60 m, 4 m across the heading) but left out of the look, and why (another level, off the path).
@@ -898,6 +900,9 @@ export const LOG_EVENTS = {
     pathOffM: z.number(),
     ownM: z.number(),
     bandM: z.number(),
+    slantPerM: z.number(),
+    headingSlantPerM: z.number(),
+    driftPerM: z.number(),
     pickedRef: count.nullable(),
     candidates: z.array(
       z.strictObject({

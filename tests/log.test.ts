@@ -368,6 +368,9 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     pathOffM: 0.4,
     ownM: 0.2,
     bandM: 1.7,
+    slantPerM: -0.087,
+    headingSlantPerM: -0.105,
+    driftPerM: -0.087,
     pickedRef: 41,
     candidates: [
       {

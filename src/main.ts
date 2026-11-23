@@ -396,6 +396,9 @@ function renderClock(el: HTMLElement, clock: GameClock, date: { m: number; d: nu
   el.append(day, time);
 }
 
+/** To 0.001 (the front pick's slants per metre). */
+const round3 = (v: number) => Math.round(v * 1000) / 1000;
+
 /** A speed in m/s as km/h to 0.1 (the accident line's Δv). */
 const kmh1 = (ms: number) => Math.round(ms * 36) / 10;
 
@@ -4826,6 +4829,10 @@ async function main(): Promise<void> {
       pathOffM: round2(driver.pathOffM),
       ownM: round2(pick.own),
       bandM: round2(pick.band),
+      // To 0.001 per metre: 0.01 is 0.6 m across at 60 m on, where a car is taken in or not.
+      slantPerM: round3(pick.slant),
+      headingSlantPerM: round3(pick.headingSlant),
+      driftPerM: round3(pick.drift),
       pickedRef: refOf(pick.picked),
       candidates: pick.candidates.slice(0, FRONT_PICK_LISTED).map((c) => ({
         ref: refOf(c.key),
