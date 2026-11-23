@@ -528,6 +528,29 @@ export const LOG_EVENTS = {
     maxDzM: z.number(),
   }),
   /**
+   * A tunnel or cut chunk's openings as built (S7-4a, expresswayMerge.ts openBore): the stretches
+   * opened per other run and side (`tipM`: how far past the data's stretch, the other run's
+   * carriageway still inside the wall band), the other runs with no loaded chunk (N1: walls kept)
+   * and the stretches where the other run lies on the side opposite the data's (walls kept). One
+   * line per chunk that has any of them.
+   */
+  expressway_bore_opening: info({
+    chunk: z.string(),
+    opened: z.array(
+      z.object({
+        with: z.string(),
+        side: z.enum(["left", "right"]),
+        s0: z.number(),
+        s1: z.number(),
+        tipM: z.number(),
+      }),
+    ),
+    noPartner: z.array(z.string()),
+    sideMismatch: z.array(
+      z.object({ with: z.string(), side: z.enum(["left", "right"]), s0: z.number(), s1: z.number() }),
+    ),
+  }),
+  /**
    * A chunk's 分離壁 between it and a same-direction deck that has let go of one surface below it
    * (expresswayMerge.ts dividerOf, A1): the s range, the thinnest wall and how far its outer face
    * reaches down. One line per chunk and partner, beside expressway_merge_skipped.
@@ -1750,6 +1773,19 @@ export const LOG_EVENTS = {
     statuses: z.strictObject({ new: count, accepted: count, open: count, wontfix: count, gone: count }),
     byRule: count,
     seamProbes: count,
+    /**
+     * The tunnels' and cuts' openings as built (S7-4a, expresswaySeams.ts BoreProbe): stretches
+     * opened (by chunk), named runs with no chunk (N1), stretches on the data's wrong side, and the
+     * level rays along the opened stretches where both rings round them are open (no 分離壁, not
+     * walled again) and those that met a wall of the chunk's own (0 expected).
+     */
+    boreOpenings: z.strictObject({
+      opened: count,
+      noPartner: count,
+      sideMismatch: count,
+      wallRays: count,
+      wallHits: count,
+    }),
     budget: z.boolean(),
     bytes: count,
     /** report.json diagnostics whose `allowed` the new ledger turned (the file rewritten when > 0). */

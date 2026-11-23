@@ -1,7 +1,13 @@
 import { Vector3 } from "three";
 import { SAME_SURFACE_ALLOWED_DZ_M } from "../expressway/allowlist";
 import { DIVIDER_MIN_WIDTH, PARAPET_HEIGHT, PARAPET_WIDTH } from "../expressway/assumptions";
-import { STATION_STRIDE, type XwChunk, type XwClass, type XwRunSummary } from "../expressway/format";
+import {
+  STATION_STRIDE,
+  type XwChunk,
+  type XwClass,
+  type XwOpening,
+  type XwRunSummary,
+} from "../expressway/format";
 import { SAME_SURFACE_M } from "../expressway/overlap";
 import {
   frameAt,
@@ -13,6 +19,7 @@ import {
 } from "../expressway/profile";
 import { carriagewayWidth } from "../expressway/section";
 import type { LocalFrame } from "../geo/frame";
+import { boreWallBand } from "./expresswayBore";
 import { type DeckIndex, type DeckSide, type RingSides, roleOf } from "./expresswayMarkings";
 import type { Ellipsoidal } from "./expresswayRoads";
 
@@ -299,14 +306,14 @@ export class DeckMerge {
   }
 
   /**
-   * The rings of `run` near `own`'s chunk (its known chunks whose plan extent comes within 40 m),
-   * joined across consecutive chunks (the seam ring is shared, so it is kept once).
+   * The rings of `run` near `own`'s chunk (its known chunks whose plan extent comes within `reach`,
+   * 40 m but for an opening's tip followed back to its stretch: tipBreak), joined across consecutive
+   * chunks (the seam ring is shared, so it is kept once).
    */
-  private linesNear(run: string, own: ChunkRings): Line[] {
-    const key = `${run}|${own.chunk.id}`;
+  private linesNear(run: string, own: ChunkRings, reach = 40): Line[] {
+    const key = `${run}|${own.chunk.id}|${reach}`;
     const hit = this.lines.get(key);
     if (hit) return hit;
-    const reach = 40;
     const near = this.index
       .chunksOf(run)
       .map((c) => this.ringsOf(c))
@@ -373,10 +380,13 @@ export class DeckMerge {
     return best;
   }
 
-  /** The point of a line's left (+1) or right (−1) slab edge at ring k: its mesh vertex there. */
-  private edgePoint(line: Line, k: number, sign: 1 | -1): Vector3 {
+  /**
+   * The point of a line's left (+1) or right (−1) slab edge at ring k: its mesh vertex there. With
+   * `inset` PARAPET_WIDTH, the carriageway's edge instead (S7-4a, openBore).
+   */
+  private edgePoint(line: Line, k: number, sign: 1 | -1, inset = 0): Vector3 {
     const r = line.rings[k];
-    const u = sign * line.edge[k];
+    const u = sign * (line.edge[k] - inset);
     return ringPoint(r, u, liftAt(r, u, line.bank));
   }
 
@@ -391,6 +401,7 @@ export class DeckMerge {
     sign: 1 | -1,
     side: -1 | 1 | null = null,
     stepK = -1,
+    inset = 0,
   ): Crossing | null {
     const lx = ring.t.z;
     const lz = -ring.t.x;
@@ -404,8 +415,8 @@ export class DeckMerge {
     const first = side === 1 ? Math.max(stepK + 1, foot.k - 6) : Math.max(0, foot.k - 6);
     const last = side === -1 ? Math.min(stepK, foot.k + 7) : Math.min(line.rings.length - 1, foot.k + 7);
     for (let k = first; k < last; k++) {
-      const p = this.edgePoint(line, k, sign);
-      const q = this.edgePoint(line, k + 1, sign);
+      const p = this.edgePoint(line, k, sign, inset);
+      const q = this.edgePoint(line, k + 1, sign, inset);
       const ex = q.x - p.x;
       const ez = q.z - p.z;
       const den = cross(lx, lz, ex, ez);
@@ -611,7 +622,281 @@ export class DeckMerge {
         wall: keepsWall ? { inner: middle - PARAPET / 2, outer: middle + PARAPET / 2 } : null,
       };
     }
+    if (isBoreChunk(own.chunk)) this.openBore(own, ring, out, depth);
     return out;
+  }
+
+  /**
+   * The openings of a run's loaded chunks (format.ts XwOpening) as stretches of the run: pieces on
+   * consecutive chunks with the same side and other run whose ends meet within 1 cm are one. Why not
+   * each chunk's own: an opening crossing a chunk's border leaves 5–11 cm in the next chunk (S7-3
+   * review 2, N1), and that chunk alone would read it as a wall's end there.
+   */
+  private openingsOfRun(run: string): XwOpening[] {
+    const known = this.runOpenings.get(run);
+    if (known) return known;
+    const pieces = this.index
+      .chunksOf(run)
+      .flatMap((c) => c.openings ?? [])
+      .toSorted((a, b) => a.s0 - b.s0);
+    const out: XwOpening[] = [];
+    for (const o of pieces) {
+      const last = out.find((x) => x.side === o.side && x.with === o.with && Math.abs(x.s1 - o.s0) <= 0.01);
+      if (last) last.s1 = Math.max(last.s1, o.s1);
+      else out.push({ ...o });
+    }
+    this.runOpenings.set(run, out);
+    return out;
+  }
+
+  private readonly runOpenings = new Map<string, XwOpening[]>();
+
+  /**
+   * Another run's carriageway across a ring's line (openBore): its foot, its two carriageway edges
+   * (offsets left of this centre, lo ≤ hi) and its centre's offset `d`; null where the line misses
+   * one of its edges (before its start, past its end).
+   */
+  private besideAt(own: ChunkRings, ring: DeckRing, other: string, reach = 40) {
+    const foot = this.footOf(this.linesNear(other, own, reach), ring.c);
+    if (!foot) return null;
+    const left = this.crossEdge(ring, foot, 1, null, -1, PARAPET);
+    const right = this.crossEdge(ring, foot, -1, null, -1, PARAPET);
+    if (!left || !right) return null;
+    const [lo, hi] = left.u < right.u ? [left, right] : [right, left];
+    const d = (foot.point.x - ring.c.x) * ring.t.z - (foot.point.z - ring.c.z) * ring.t.x;
+    // The other's face over this centre against this centre, from the compiled surfaces: partnerAt's
+    // dz, the one the merge's one-slab and 分離壁 rules read (S7-4 review 1, addendum 2).
+    const { line, k, tau } = foot;
+    const r = line.rings[k];
+    const q = line.rings[k + 1];
+    const theirU = (ring.c.x - foot.point.x) * foot.tangent.z - (ring.c.z - foot.point.z) * foot.tangent.x;
+    const theirLift = liftAt(r, theirU, line.bank) * (1 - tau) + liftAt(q, theirU, line.bank) * tau;
+    const footS = r.frame.s + (q.frame.s - r.frame.s) * tau;
+    const theirChunk = chunkHolding(line.owner[k].chunk, line.owner[k + 1].chunk, footS);
+    const dz = compiledZ(theirChunk, footS) + theirLift - compiledZ(own.chunk, ring.frame.s);
+    return { foot, lo, hi, d, dz };
+  }
+
+  /**
+   * Whether the other run's carriageway stays inside this bore's wall band (`band`, from its centre)
+   * all the way from the opening's stretch end to run distance s (S7-4 review 1, must 1): read on
+   * this run's own line every TIP_STEP_M. Why: a ramp that leaves, then crosses over or under the
+   * main line and comes back into its wall band farther on is not the opening's tip, and the main
+   * line's wall must stand there (大橋 JCT's ramps turn over the main line). Why not by height: past
+   * the stretch the two part in height too, as a rule, and that would need a new threshold. A tip
+   * reaching past the run's loaded line (40 m round this chunk) is taken as broken. Null where it is
+   * unbroken, else why not (TipBreak: counted, S7-4 review 1, addendum 2's C).
+   */
+  private tipBreak(own: ChunkRings, s: number, o: XwOpening, sign: 1 | -1, band: number): TipBreak | null {
+    const from = s > o.s1 ? o.s1 : o.s0;
+    const dir = Math.sign(s - from);
+    // Both runs' lines as far as the stretch's end from this chunk (rounded up to 50 m, so the cache
+    // keeps a few): a tip running over a whole chunk past its stretch found this run's line unloaded
+    // and stood its wall over the other carriageway (S7-4 review 1, addendum 2's C: 1 ring on ship).
+    const reach = Math.max(40, Math.ceil((Math.abs(s - from) + 40) / 50) * 50);
+    const lines = this.linesNear(own.chunk.run, own, reach);
+    for (let t = from + dir * TIP_STEP_M; dir * (s - t) > 1e-6; t += dir * TIP_STEP_M) {
+      const line = lines.find((l) => l.rings[0].frame.s <= t && l.rings[l.rings.length - 1].frame.s >= t);
+      if (!line) return "ownLine";
+      let k = 0;
+      while (k < line.rings.length - 2 && line.rings[k + 1].frame.s < t) k++;
+      const a = line.rings[k];
+      const b = line.rings[k + 1];
+      const tau = (t - a.frame.s) / (b.frame.s - a.frame.s || 1);
+      const at = ringBetween(a, b, Math.min(1, Math.max(0, tau)), false);
+      const beside = this.besideAt(own, at, o.with, reach);
+      // No crossing of its carriageway with this ring's line: out of the band if even its centre line
+      // lies farther than the band plus its own half slab (it has turned away); its run's own end if
+      // the nearest point of it is that end (40636701 ends 1 m past 888066399's stretch, and comes back
+      // 170 m on as another stretch of road: a real break); else its line is not loaded (unknown).
+      const foot = beside ? null : this.footOf(this.linesNear(o.with, own, reach), at.c);
+      const isFarOff =
+        foot !== null &&
+        Math.hypot(foot.point.x - at.c.x, foot.point.z - at.c.z) - foot.line.edge[foot.k] > band;
+      const isRunEnd =
+        foot !== null &&
+        ((foot.k === 0 && foot.tau <= 1e-9 && foot.line.owner[0].chunk.prev === null) ||
+          (foot.k + 2 === foot.line.rings.length &&
+            foot.tau >= 1 - 1e-9 &&
+            foot.line.owner[foot.k + 1].chunk.next === null));
+      if (!beside) return isFarOff ? "band" : isRunEnd ? "otherEnd" : "otherLine";
+      const near = sign > 0 ? beside.lo.u : -beside.hi.u;
+      const isInBand = near < band;
+      if (!isInBand) return "band";
+    }
+    return null;
+  }
+
+  /** Whether any loaded chunk of a run has an opening (its bore's walls follow them: refineRings). */
+  hasOpenings(run: string): boolean {
+    return this.openingsOfRun(run).length > 0;
+  }
+
+  /**
+   * What each tunnel or cut chunk's openings came to, by chunk (expresswayDeck.ts logs one
+   * expressway_bore_opening per chunk): the rings opened (s range per other run and side, and how far
+   * past the data's stretch), the openings whose other run has no loaded chunk (N1: left walled),
+   * and the rings where the other run lies on the other side from the data's (left walled).
+   */
+  readonly boreOpenings = new Map<string, BoreOpeningRecord>();
+
+  private boreRecord(chunk: string): BoreOpeningRecord {
+    const known = this.boreOpenings.get(chunk);
+    if (known) return known;
+    const fresh: BoreOpeningRecord = {
+      opened: [],
+      noPartner: [],
+      sideMismatch: [],
+      tipBreaks: { band: 0, otherEnd: 0, otherLine: 0, ownLine: 0 },
+      overlap: { rings: 0, maxFromStretchM: 0, apart: 0 },
+      dividerRings: 0,
+      apartOverlap: 0,
+    };
+    this.boreOpenings.set(chunk, fresh);
+    return fresh;
+  }
+
+  /**
+   * A tunnel or cut's sides opened to the runs its openings name (S7-4a), on `out` as the merge left
+   * it. A side opens where the ring lies in one of its run's opening stretches, or past one while
+   * the other run's carriageway still comes inside this chunk's wall band (boreWallBand: no room for
+   * the wall there), and only where that run's line is loaded and its carriageway crosses this
+   * ring's line (N1: no chunk, no opening). The side is the data's, checked against the other run's
+   * centre: where that lies 1 m or more to the other side, the wall stays and the ring is counted
+   * (S7-4 review 0: half of S7-3's sides were reversed). Within 1 m it cannot tell, so the data's.
+   *
+   * The opened side's floor runs out: where this deck is cut at the other's edge (it is the child)
+   * to its seam there, as the merge put it; where it is the master, inside the stretch or where the
+   * merge ran its road out, to its slab edge (the child's seam lies on it); an opened side floors its
+   * wall band too (to its slab edge, unless it ends on a seam). An open tip runs out to the farther of
+   * that and the other carriageway's edge + STEP_TUCK (rule C); only a 分離壁 (the two roads more than
+   * MERGE_MAX_DZ apart) stops at halfway between the two carriageways' edges. Why not a bore's
+   * own rule for the floor inside the stretch: the seam and its probes would be two (joinSameWay is
+   * the viaduct's, tested and measured).
+   */
+  private openBore(own: ChunkRings, ring: DeckRing, out: RingSides, depth: number): void {
+    const structure = own.chunk.structure as "tunnel" | "cut";
+    const band = own.hw + boreWallBand(structure);
+    const s = ring.frame.s;
+    const record = depth === 0 ? this.boreRecord(own.chunk.id) : null;
+    for (const o of this.openingsOfRun(own.chunk.run)) {
+      const sign: 1 | -1 = o.side === "left" ? 1 : -1;
+      const key = o.side;
+      const side = out[key];
+      if (side.opening) continue;
+      const isInStretch = s >= o.s0 - 1e-6 && s <= o.s1 + 1e-6;
+      const hasChunks = this.index.chunksOf(o.with).length > 0;
+      if (!hasChunks) {
+        const isOwnPiece = (own.chunk.openings ?? []).some((x) => x.with === o.with && x.side === o.side);
+        const isNew = isOwnPiece && record !== null && !record.noPartner.includes(o.with);
+        if (isNew) record!.noPartner.push(o.with);
+        continue;
+      }
+      const beside = this.besideAt(own, ring, o.with);
+      // The ring's line misses the other carriageway (before its start, past its end): nothing beside.
+      if (!beside) continue;
+      const { foot, lo, hi, d, dz } = beside;
+      // The other run 1 m or more on the side opposite the data's: walled, counted inside the stretch
+      // (past it there is no opening to check).
+      const isSure = Math.abs(d) >= SIDE_SURE_M;
+      const isOtherSide = isSure && Math.sign(d) !== sign;
+      if (isOtherSide) {
+        if (record && isInStretch) addStretch(record.sideMismatch, o, s);
+        continue;
+      }
+      // Its carriageway's nearest edge on the opening's side, metres from this centre towards it (its
+      // carriageway's edge, not its slab's: crossEdge with PARAPET).
+      const near = sign > 0 ? lo.u : -hi.u;
+      const isPast = !isInStretch && near < band;
+      const broken = isPast ? this.tipBreak(own, s, o, sign, band) : null;
+      if (isPast && broken !== null && record) record.tipBreaks[broken]++;
+      const isOnFromStretch = isPast && broken === null;
+      // Rule A (addendum 3): past the stretch but the two carriageways still overlap: the stretch goes
+      // on (the data's end lies 0.2–2 m short of where they part), its rules, no 分離壁.
+      const isOverlap = isOnFromStretch && near < own.hw;
+      const isApart = Math.abs(dz) > MERGE_MAX_DZ;
+      if (isOverlap && record) {
+        const from = s > o.s1 ? o.s1 : o.s0;
+        record.overlap.rings++;
+        record.overlap.maxFromStretchM = Math.max(record.overlap.maxFromStretchM, Math.abs(s - from));
+        if (isApart) record.overlap.apart++;
+      }
+      // On the stretch the side opens only where the other's slab reaches past this edge (in plan, as
+      // the merge's joinSameWay reads it) or the merge has let this rail go anyway (a deck cut on the
+      // other's). Why not wherever the data's stretch
+      // runs: near the nose the other lies wholly inside this slab, and an opened side there ended
+      // its floor at the slab's edge over nothing (28127108:5 s 1148–1330 by 190617371).
+      const slabL = this.crossEdge(ring, foot, 1);
+      const slabR = this.crossEdge(ring, foot, -1);
+      const farSlab =
+        slabL && slabR ? (sign > 0 ? Math.max(slabL.u, slabR.u) : -Math.min(slabL.u, slabR.u)) : -Infinity;
+      const isPastEdge = farSlab > own.edge;
+      const isBesideHere = side.wall === null || isPastEdge;
+      const isInside = (isInStretch || isOverlap) && isBesideHere;
+      const isTip = isOnFromStretch && !isOverlap;
+      if (!isInside && !isTip) continue;
+      // Addenda 2 and 5: wherever the two roads are more than MERGE_MAX_DZ apart, on the stretch too (the
+      // data's stretch is where the other comes inside the wall band in plan, not one surface), a
+      // 分離壁 halfway between the two carriageways. Where they overlap there is no room for it: both
+      // keep their walls, as on main (two boxes of different heights over one another in plan, which
+      // the runtime cannot draw: counted for the compiler).
+      const isOverlapping = near < own.hw;
+      if (isApart && isOverlapping) {
+        if (record) record.apartOverlap++;
+        continue;
+      }
+      const isDivider = isApart;
+      if (isDivider && record) record.dividerRings++;
+      const isOwnCut = outranksAsMaster(this.index, own.chunk.run, o.with);
+      const isCutHere = isOwnCut && side.seam !== null && side.seamOf?.run === o.with;
+      const isMasterOut = !isOwnCut && (isInside || side.reach >= own.edge - 1e-9);
+      // What the stretch's rule spans here: the seam a cut deck ends on, a master's slab edge, else its
+      // own carriageway's edge (rule B: never short of it).
+      const stretchReach = isCutHere ? side.reach : isMasterOut ? own.edge : own.hw;
+      const middle = (own.hw + near) / 2;
+      // Rule C (addendum 3): an open tip spans out to the farther of the stretch's reach and the other
+      // carriageway's edge + STEP_TUCK, whatever the other side does at its own rings (they switch at
+      // different places, and a floor stopped halfway left a strip under neither). Only the 分離壁
+      // stops at the middle. Why not halfway for both, as before: each side computed where the other
+      // would stop and the two lines did not meet (28127106:0 s 114.43, 4849055:1 s 92.61).
+      // Rule B (never short of its own carriageway's edge) needs no term here: a tip and a 分離壁 come
+      // only where near ≥ hw (else rule A or apartOverlap), so near + STEP_TUCK and the middle are past
+      // hw already. Why not keep max(…, hw) to be safe: it never acted (review of #120, a dead term).
+      const tipReach = Math.max(stretchReach, near + STEP_TUCK);
+      // Addendum 5: an opened side floors its wall band too, at road height, out to its slab edge (a
+      // groove under the removed wall where the other's floor did not reach), unless it ends on a seam.
+      // Not on a seam's side: its reach is the seam's, which lies past this centre where the other covers
+      // it (negative), and a floor at 0 there dropped the seam (98848277:0 under 331922709).
+      const bandReach = isCutHere ? -Infinity : own.edge;
+      const reach = isDivider ? middle : Math.max(isTip ? tipReach : stretchReach, bandReach);
+      const keepsSeam = isCutHere && reach <= side.reach + 1e-9;
+      out[key] = {
+        ...side,
+        wall: null,
+        reach,
+        seam: keepsSeam ? side.seam : null,
+        seamOf: keepsSeam ? side.seamOf : null,
+        seamWeight: keepsSeam ? side.seamWeight : 1,
+        opening: { with: o.with, isTip: isTip && !isInside, ...(isDivider ? { isDivider: true } : {}) },
+      };
+      if (record) addStretch(record.opened, o, s);
+      // The other side of a deck cut at the other's edge, where its slab edge lies on the other's
+      // slab (the merge's joinSameWay drops that rail too): no wall there either, its floor and ceiling
+      // out to where the merge ends its road. Why not keep it, as the opening's rule alone says: near
+      // the nose the ramp lies over the main line's lanes, and its far wall stood in them (a car on the
+      // main line ran into it, tests/expresswayBoreOpenings.test.ts D).
+      const farKey = sign > 0 ? "right" : "left";
+      const far = out[farKey];
+      const farEdge = -sign * own.edge;
+      const isFarOnIt =
+        isOwnCut &&
+        !far.opening &&
+        slabL !== null &&
+        slabR !== null &&
+        farEdge >= Math.min(slabL.u, slabR.u) &&
+        farEdge <= Math.max(slabL.u, slabR.u);
+      if (isFarOnIt) out[farKey] = { ...far, wall: null, opening: { with: o.with, isTip, isCovered: true } };
+    }
   }
 
   /**
@@ -1019,6 +1304,72 @@ export type MergeSkip = {
   s1: number;
   maxDzM: number;
 };
+
+/**
+ * Where another run's centre lies at least this far to one side of a bore's centre, its side is
+ * known; nearer, as at the 分合流's node where the two centre lines meet, the data's side holds
+ * (S7-4 review 0). Why 1 m: the review's line, half a lane.
+ */
+const SIDE_SURE_M = 1;
+
+/**
+ * How finely an opening's tip is followed back to its stretch (DeckMerge.tipBreak), m: a gap
+ * shorter than this between two stretches inside the band is taken as none. Why 1 m: the merge's own
+ * probe step (SLIDE_PROBE_M); a crossing ramp leaves the band for metres, not centimetres.
+ */
+const TIP_STEP_M = 1;
+
+/** What a tunnel or cut chunk's openings came to (DeckMerge.boreOpenings). */
+export type BoreOpeningRecord = {
+  /** Rings opened per opening: their s range, and how much of it lies past the data's stretch (`tipM`). */
+  opened: BoreStretch[];
+  /** Other runs named by this chunk's openings with no loaded chunk: walls kept (N1). */
+  noPartner: string[];
+  /** Rings where the other run lies 1 m or more on the other side from the data's: walls kept. */
+  sideMismatch: BoreStretch[];
+  /** Rings past a stretch, the other carriageway inside the band, walled for this reason (TipBreak). */
+  tipBreaks: Record<TipBreak, number>;
+  /** Rings past a stretch where the two carriageways still overlap (rule A), how far past it at most, and those more than MERGE_MAX_DZ apart. */
+  overlap: { rings: number; maxFromStretchM: number; apart: number };
+  /** Rings with a 分離壁 (addenda 2 and 5). */
+  dividerRings: number;
+  /** Rings the two roads are more than MERGE_MAX_DZ apart with their carriageways overlapping: both walled (addendum 5). */
+  apartOverlap: number;
+};
+
+/**
+ * Why a tip ring was walled though the other carriageway lies inside the band: it left the band on
+ * the way from the stretch, the other run ends on the way, the other's line has no crossing there
+ * otherwise, or this run's line is not loaded (the last two: not known, counted to be 0).
+ */
+export type TipBreak = "band" | "otherEnd" | "otherLine" | "ownLine";
+/**
+ * Rings of one opening (other run and side) in a chunk: the s range they span and their count, and
+ * the run's stretch of that opening in the data (`data`); past it is the tip (`tipM`, the part of the
+ * range outside it).
+ */
+export type BoreStretch = {
+  with: string;
+  side: "left" | "right";
+  s0: number;
+  s1: number;
+  rings: number;
+  data: { s0: number; s1: number };
+  tipM: number;
+};
+
+/** Adds ring s of opening `o` to its stretch in `list`. */
+function addStretch(list: BoreStretch[], o: XwOpening, s: number): void {
+  let known = list.find((x) => x.with === o.with && x.side === o.side && x.data.s0 === o.s0);
+  if (!known) {
+    known = { with: o.with, side: o.side, s0: s, s1: s, rings: 0, data: { s0: o.s0, s1: o.s1 }, tipM: 0 };
+    list.push(known);
+  }
+  known.s0 = Math.min(known.s0, s);
+  known.s1 = Math.max(known.s1, s);
+  known.rings++;
+  known.tipM = Math.max(0, known.data.s0 - known.s0) + Math.max(0, known.s1 - known.data.s1);
+}
 
 /** Whether a chunk is a cut or a tunnel (its walls are its own: no 分離壁 against it, S7-4). */
 const isBoreChunk = (c: Pick<XwChunk, "structure">) => c.structure === "tunnel" || c.structure === "cut";

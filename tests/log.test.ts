@@ -247,6 +247,12 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     s1: 202.2,
     maxDzM: 0.21,
   },
+  expressway_bore_opening: {
+    chunk: "4854085:10",
+    opened: [{ with: "4848757", side: "left", s0: 2302.4, s1: 2398.3, tipM: 11.2 }],
+    noPartner: ["4853044"],
+    sideMismatch: [],
+  },
   expressway_divider_built: {
     chunk: "24402125:0",
     with: "24402611",
@@ -801,6 +807,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     statuses: { new: 0, accepted: 85, open: 5, wontfix: 0, gone: 0 },
     byRule: 30,
     seamProbes: 3646,
+    boreOpenings: { opened: 0, noPartner: 0, sideMismatch: 0, wallRays: 0, wallHits: 0 },
     budget: true,
     bytes: 60000,
     reallowed: 0,
