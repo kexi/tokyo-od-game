@@ -428,6 +428,10 @@ measure-shader-prebuild label="run" base="http://localhost:5173/tokyo-od-game/" 
 measure-tile-memory label="run" base="http://localhost:4174/tokyo-od-game/" *args:
     pnpm exec tsx scripts/qa/memory-tiles.ts --label {{ label }} --base {{ base }} {{ args }}
 
+# 夜雨の東京駅から、未読込の地域へのワープと移動中のワープの置き換えで CPU プロファイルを取り、50 ms を超えたフレームの中の時間を関数・ゲームのファイル・旧性能 PR の候補ごとに足し上げて .qa/frame-attribution/<label>/ に書く（開発サーバーが必要。args に --modes coldWarp,latestWarp・--interval（µs）・--over（ms））
+measure-frame-attribution label="run" base="http://localhost:5173/tokyo-od-game/" *args:
+    pnpm exec tsx scripts/qa/frame-attribution.ts --label {{ label }} --base {{ base }} {{ args }}
+
 # 首都高の床版の上に自車を置き、昼と雨の夜のフレーム間隔を 12 秒ずつ測って .qa/perf-deck-<label>.json に書く（A/B は変更前を別の開発サーバーで配って base を替える）
 measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
     pnpm exec tsx scripts/qa/perf-deck.ts --label {{ label }} --base {{ base }}
