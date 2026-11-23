@@ -4326,6 +4326,36 @@ ship/all、`--below-junctions compile` の off（`s7p-all-on`）→ cut（`s7p-a
 
 [^p27s72]: 指示は scratchpad の p27/s7r/s7-2-instructions.md（追記 1〜9、設計 Fable、2026-11-22〜23）。引き継ぎは s7-2-handoff.md・s7-2-handoff2.md。計測は `.cache/expressway-area/s7p-*`・`.qa/expressway/s7p-*.report.json`・`.qa/s7p/`（analyze.mts・analyze2.mts・pairTable.mts・openEnds.mts・line14.mts・coveredViaducts.mts、ローカル、git 管理外）。
 
+# S7-3c 格子の間の天井（コンパイラ、`--below-ceilings points`、既定は grid、作業中 2026-11-23〜）
+
+地下 run の天井を、5 m の格子の行の間でも、検査（T12）がファイルの測点に問うのと同じ問いで守るフラグ。フラグなし（grid）の出力は変えない（既定にするのは S7-6）。この節は作業中で、計測（手順 5）の後に数を足す。[^p27s73c]
+
+## 規則（`compile.ts ceilingRowsBetween`）
+
+- 隣り合う 2 つの行の間を 0.25 m（`THRESHOLD_STEP_M`）ごとに見る。点の天井 c は、その点の地表と構造で `ceilingAt`・`ceilingFrom` に問うたもの（届かなければ無し、`isCoverStretchTooShort` の run のトンネルの点も無し）。
+  - 片方の行にだけ天井が無い区間: 天井の無い行から数えて最初に c がある点（grid の `thresholdStations` と同じ点）。
+  - 両方の行に天井が無い区間: s の小さい行から数えて最初に c がある点。
+  - 両方の行に天井がある区間: 2 つの行の天井を結んだ線 L より `COVER_ROUNDING_M`（1 cm）を超えて低い c のうち、最も低い点（同じなら s の小さい方）。
+  - 足した行の天井は c。足した行で区間を分けて繰り返す。
+- `COVER_ROUNDING_M`（`below.ts`、1 cm）は、`checks.ts checkCover` が路面を天井の上に通す量（ファイルの地表の丸め）。検査とコンパイラが同じ定数を読む。
+  - 採らなかった案: 許容 0（手順 1 の数え。ship/all の計画の地下 run で 5,245 行、そのうち 4,285 行は L − c が 1 cm 未満で、T12 を 1 件も防がない）。
+- 口（トンネル｜掘割）をまたぐ区間も、同じ規則で当てる。
+
+## 確かめたこと（手順 1〜3、合成網と計画だけ）
+
+- 足す行（計画と DEM だけ、解かない。`.qa/s73c/count.mts`、許容 1 cm）: ship/all（`--below-junctions compile --portal-approach cut`）の書かれる地下 run 70 本の格子の行 14,777 に対して 353 行（49 run、1 つの格子の区間で最大 4）。既定範囲で 1,595 行に対して 99 行。既定データ（pruned・フラグなし）は 737538573 の 7 行だけ。
+- 合成網の T12（grid → points）: 崖 401 か所（縁 y −430〜−530）15 か所・24 件 → 0。S7-3 レビュー 0 の斜面 41 か所（yc −690〜−710）4 か所・4 件 → 0。作り直した斜面（−250〜−1000、1 m ごとと半 m ずらし）5 か所・9 件 → 0。
+- 斜面の仕組み（yc −701、s 880.69）: 行 880 と 885 のどちらにもコンパイラの天井が無く（3 点の最低の地表で届かない）、間の点だけが届く。検査は行 880 の点の地表では −1.609 に天井を置く。
+
+## 未確認・既知の形（S7-3c で直さない）
+
+- **逆向きの斜面で、grid のままでも `vertical_unsolved`**（合成網、出口の側が高い斜面、縁 e −877〜−967 の 91 か所。points でも同じ 91 か所）: 出口の坑口（y −903）の先 100 m で地表が 27 m 上がる。続く地平 run 30 の設計地盤線も 27 % で上がり、第20条の勾配では追えない（run 30 を高架にしても run 30 自身が解けない）。天井（出口の地表からの下りで届く s 846 の −3.6 m）とぶつかって、run 20 の診断に出る。**未確認: 天井を外したとき run 20 だけなら解けるか**（`below.ts` の「天井はそれだけで解けなさを足さない」の反例かどうか）。測りは `.qa/s73c/rise1.mts`・`rise2.mts`。
+- **トンネルの端から 100 m より遠いのに、土被りが 6.6 m に足りない穴の並び**（ship/all・main 48dc699 の compile・cut、`.qa/s73c/holes.mts`）: 2 つで、どちらも検査が天井を置かない（坑口からの下りで届かない）。
+  - `28127108:1`: 穴 s 155.7〜206.0（50.3 m）、端から 156 m、測点の土被り 4.691・5.525・6.318・6.513 m。
+  - `867182415:1`: 穴 s 239.7〜272.9（33.2 m）、端から 240 m、土被り 5.391・6.116 m。
+
+[^p27s73c]: 指示は scratchpad の p27/s7r/s7-3c-instructions.md（追記 1、設計 Fable、判定の代わりはコーディネーター、2026-11-23）。計測は `.qa/s73c/`（count.mts・rule.mts・scan.mts・scan-all.sh・cliff-review0.mts・detail.mts・holes.mts・rise1.mts・rise2.mts、ローカル、git 管理外）。
+
 # S7-4b 穴の縁の補間（実行時、既定のタイル不変、2026-11-22）
 
 トンネルの口の近くで、地形の穴（`expresswayBore.ts boreHoles`）の縁を、測点の上でなく測点の間に置く。前は縁が測点の上に乗り、直線のトンネルでは最大約 21 m おきだったので、路面が 7 cm 動くと縁が 20 m 跳んだ（P2.7-6 PR 7c の麻布台、737538573:2 の s 492.67）。[^p27s74b]

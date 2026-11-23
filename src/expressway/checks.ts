@@ -12,7 +12,7 @@ import {
   VERTICAL_CURVE_RADIUS,
 } from "../law/roadStandards";
 import { GIRDER_DEPTH, MAX_LATERAL_SHIFT, OPEN_GROUND_FLOOR, RAMP_MIN_RADIUS } from "./assumptions";
-import { ceilingAt, ceilingFrom, isCoverStretchTooShort, type PortalReach } from "./below";
+import { ceilingAt, ceilingFrom, COVER_ROUNDING_M, isCoverStretchTooShort, type PortalReach } from "./below";
 import { approachLength } from "./compile";
 import { CROSS_STRIDE, ST, STATION_STRIDE, type XwChunk, type XwRunSummary } from "./format";
 import { haversine } from "./geo";
@@ -395,7 +395,7 @@ export function checkCover(
     const top = coverCeiling(structure, p.ground, p.s, run, ends);
     if (top === null) continue;
     // 1 cm for the ground's rounding in the files (the compiler holds the lowest ground near the station).
-    const isAbove = p.z > top + 0.01;
+    const isAbove = p.z > top + COVER_ROUNDING_M;
     if (isAbove) out.push(`${c.id}: ${c.structure} road ${p.z} above ${top.toFixed(2)} at s=${p.s}`);
   }
   return out;

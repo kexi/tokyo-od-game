@@ -53,6 +53,15 @@ export function isHoleAt(structure: "tunnel" | "cut", z: number, ground: number)
  */
 export const CUT_TOLERANCE_M = 0.1;
 
+/**
+ * How far T12 (checks.checkCover) lets a below run's road stand over its ceiling: the files round the
+ * ground to 1 cm. The compiler reads it too (`--below-ceilings points`, compile.ts ceilingRowsBetween):
+ * a point between two rows whose ceiling is under their line by no more than this gets no row of its
+ * own, since T12 would pass a road on that line there. Why not 0 there (S7-3c addendum 1): in ship/all
+ * 4,285 of the 5,245 rows it then added were under the line by less than 1 cm and stopped no T12.
+ */
+export const COVER_ROUNDING_M = 0.01;
+
 /** How much deeper the descent must reach than a ceiling for it to be imposed. */
 const REACH_MARGIN_M = 0.1;
 

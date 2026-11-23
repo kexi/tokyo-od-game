@@ -52,6 +52,7 @@ import {
   type BelowLinkRun,
   belowDeferralOf,
   ceilingFrom,
+  COVER_ROUNDING_M,
   hasPortalsBeyond,
   type PortalAt,
   type PortalReach,
@@ -3277,6 +3278,7 @@ function setupRun(
       objective,
       plan.structures === "height",
       belowReachesOf(plan, rp, ground),
+      plan.belowCeilings === "points",
     );
   // Clearance: the crossings everywhere, and the standard floor outside the approaches to ground.
   // The deck may sit a little under the smoothed DEM where it meets the ground (T5 allows ±5 cm at
@@ -3790,6 +3792,8 @@ function setupBelow(
    * ceilingAt's, from the run's own two ends, as before.
    */
   reaches: [PortalReach[], PortalReach[]] | null = null,
+  /** S7-3c (`--below-ceilings points`): rows between the grid's too, where T12 would ask a station (ceilingRowsBetween). */
+  isPoints = false,
 ): RunSetup {
   const S = rp.length;
   const n = stations.length;
@@ -3836,7 +3840,7 @@ function setupBelow(
   const target = belowTargetOf(rp, stations, groundAt, groundLow, objective);
   const none = new Float64Array(n).fill(-Infinity);
   if (isHeight) {
-    const at = thresholdStations(rp, stations, upper, ground, ceilingOf, isTooShort);
+    const at = thresholdStations(rp, stations, upper, ground, ceilingOf, isTooShort, isPoints);
     if (at.length > 0)
       return withStations(rp, stations, target, upper, at, ground, fixed, ends, groundZ, objective);
   }
@@ -3880,30 +3884,104 @@ function thresholdStations(
   ceilingOf: CeilingRule,
   /** The tunnel keeps no ceiling at all (below.ts isCoverStretchTooShort). */
   isTunnelFree: boolean,
+  /** S7-3c: every point T12 would hold under the rows' line too (ceilingRowsBetween's `points`). */
+  isPoints = false,
 ): number[] {
-  const out: number[] = [];
-  const isReachedAt = (sv: number) => {
+  // The ceiling at a point itself, as T12 asks it of a station: the ground there, the structure there.
+  const pointCeiling = (sv: number) => {
     const isFree = isTunnelFree && belowAt(rp, sv) === "tunnel";
-    if (isFree) return false;
+    if (isFree) return null;
     const p = poseAt(rp, sv);
-    return ceilingOf(belowAt(rp, sv), ground(p.lon, p.lat), sv) !== null;
+    return ceilingOf(belowAt(rp, sv), ground(p.lon, p.lat), sv);
   };
-  for (let k = 0; k + 1 < stations.length; k++) {
-    const a = Number.isFinite(upper[k]);
-    const b = Number.isFinite(upper[k + 1]);
-    const isEdge = a !== b;
-    if (!isEdge) continue;
-    // From the free station towards the held one.
-    const from = a ? stations[k + 1] : stations[k];
-    const to = a ? stations[k] : stations[k + 1];
-    const dir = Math.sign(to - from);
-    for (let sv = from + dir * THRESHOLD_STEP_M; dir * (to - sv) > 1e-6; sv += dir * THRESHOLD_STEP_M) {
-      if (!isReachedAt(sv)) continue;
-      out.push(sv);
-      break;
-    }
+  const rows = Array.from(stations, (s, k) => ({ s, top: Number.isFinite(upper[k]) ? upper[k] : null }));
+  return ceilingRowsBetween(rows, pointCeiling, isPoints ? "points" : "grid").map((r) => r.s);
+}
+
+/** A ceiling row of a below run: its run distance and its ceiling (T.P. m), or null where none is held. */
+export type CeilingRow = { s: number; top: number | null };
+
+/**
+ * The rows a below run adds between its grid's rows (thresholdStations), each with the ceiling of the
+ * point it stands on; `point` is that ceiling as T12 asks it (null where none is held). Points are tried
+ * every THRESHOLD_STEP_M inside an interval of two neighbouring rows, from the row without a ceiling
+ * where just one has none, else from the row of the lower s.
+ * - `grid` (P2.7-6 PR 1 4.2 の 7): between a row that keeps a ceiling and one that keeps none, the first
+ *   point from the free one whose ceiling is held. One row per such interval at most.
+ * - `points` (S7-3c 3.2, addendum 1): the same, and then in every interval again, the rows added
+ *   splitting it, until none is left: where neither row keeps a ceiling, the first held point; where
+ *   both do, the point whose ceiling is lowest under the straight line between them, if it is under it
+ *   by more than COVER_ROUNDING_M (T12 passes a road on that line there). The rows are what T12 asks
+ *   of a station, so each is within the descent from the portals and no row makes a run unsolvable on
+ *   its own (below.ts); an interval of 5 m has 19 points, so it ends.
+ * Why not lower every ceiling by the steepest grade times half a step: every tunnel would go down,
+ * on level ground too. Why not check after solving and add the rows then: a second solve, and no bound
+ * on how often (instructions 3.6).
+ */
+export function ceilingRowsBetween(
+  rows: readonly CeilingRow[],
+  point: (s: number) => number | null,
+  mode: "grid" | "points",
+): Array<{ s: number; top: number }> {
+  const out: Array<{ s: number; top: number }> = [];
+  const isPoints = mode === "points";
+  const stack: Array<[CeilingRow, CeilingRow]> = [];
+  for (let k = rows.length - 2; k >= 0; k--) stack.push([rows[k], rows[k + 1]]);
+  while (stack.length > 0) {
+    const [a, b] = stack.pop()!;
+    const hasA = a.top !== null;
+    const hasB = b.top !== null;
+    const isEdge = hasA !== hasB;
+    const isGridSkipped = !isPoints && !isEdge;
+    if (isGridSkipped) continue;
+    const found = isEdge || !hasA ? firstHeldPoint(a, b, point) : lowestUnderLine(a, b, point);
+    if (found === null) continue;
+    out.push(found);
+    if (!isPoints) continue;
+    stack.push([found, b], [a, found]);
   }
-  return out;
+  // In order of s (grid's are already: one per interval, the intervals in order).
+  return out.sort((p, q) => p.s - q.s);
+}
+
+/** The first point with a ceiling, from the row without one (both without: from the row of the lower s). */
+function firstHeldPoint(
+  a: CeilingRow,
+  b: CeilingRow,
+  point: (s: number) => number | null,
+): { s: number; top: number } | null {
+  const isFromB = a.top !== null && b.top === null;
+  const from = isFromB ? b.s : a.s;
+  const to = isFromB ? a.s : b.s;
+  const dir = Math.sign(to - from);
+  for (let sv = from + dir * THRESHOLD_STEP_M; dir * (to - sv) > 1e-6; sv += dir * THRESHOLD_STEP_M) {
+    const top = point(sv);
+    if (top === null) continue;
+    return { s: sv, top };
+  }
+  return null;
+}
+
+/** The point whose ceiling is lowest under the line of two rows' ceilings, by more than COVER_ROUNDING_M. */
+function lowestUnderLine(
+  a: CeilingRow,
+  b: CeilingRow,
+  point: (s: number) => number | null,
+): { s: number; top: number } | null {
+  const za = a.top!;
+  const zb = b.top!;
+  let best: { s: number; top: number; under: number } | null = null;
+  for (let sv = a.s + THRESHOLD_STEP_M; b.s - sv > 1e-6; sv += THRESHOLD_STEP_M) {
+    const top = point(sv);
+    if (top === null) continue;
+    const line = za + ((zb - za) * (sv - a.s)) / (b.s - a.s);
+    const under = line - top;
+    const isHeldByLine = under <= COVER_ROUNDING_M;
+    if (isHeldByLine) continue;
+    const isLower = best === null || under > best.under;
+    if (isLower) best = { s: sv, top, under };
+  }
+  return best === null ? null : { s: best.s, top: best.top };
 }
 
 /** A below run's setup with its extra ceiling stations (thresholdStations) put in order. */

@@ -16,7 +16,7 @@ import {
   checkJunction,
   checkVerticalCurves,
 } from "../src/expressway/checks";
-import { planNetwork, solvePlan } from "../src/expressway/compile";
+import { ceilingRowsBetween, planNetwork, solvePlan } from "../src/expressway/compile";
 import { STATION_STRIDE, type XwChunk } from "../src/expressway/format";
 import { planeAt } from "../src/expressway/geo";
 import { buildChains, type Network, normalizeNode, normalizeWay, splitRuns } from "../src/expressway/network";
@@ -271,18 +271,19 @@ describe("掘割からトンネルへ（合成の縦断、P9）", () => {
   });
 });
 
-describe("格子の測点の間の土被り（T12、S7-3 レビュー 0 の崖）", () => {
+describe("格子の測点の間の土被り（T12、S7-3 レビュー 0 の崖と斜面、S7-3c）", () => {
   // A tunnel with no end going on under the ground (as before S7-3): a viaduct, then the tunnel down
-  // from a 30 m hill and curving south, out onto the low ground and a viaduct. The hill's edge is a
-  // cliff (30 m → 3 m) at y = −452, between the half grid step ahead of a compiler grid station and the
-  // next station of the files. The compiler holds the ceilings on its 5 m grid with the lowest ground
-  // of three points; the check reads every station of the files with its own ground: there the box
-  // cuts its cover and T12 catches it. A known gap (knowledge/expressway-generation.md「S7-3」,
-  // 未対応・既知の欠落): S7-3c holds the ceiling there too, and this test's expectation turns to 0 then.
+  // from a 30 m hill and curving south, out onto the low ground and a viaduct. The compiler holds the
+  // ceilings on its 5 m grid with the lowest ground of three points; the check reads every station of
+  // the files with its own ground. Where the ground falls between two rows (a cliff at y = −452 on the
+  // net whose south nodes are shifted 3.2 m; a slope of 27 m in 100 m below y = −701 on the unshifted
+  // net) the box cut its cover there and T12 caught it under grid. `--below-ceilings points` adds rows
+  // between them (compile.ts ceilingRowsBetween) and holds it (knowledge/expressway-generation.md「S7-3c」).
   const link = { highway: "motorway_link", oneway: "yes" };
   const linkBridge = { ...link, bridge: "yes", layer: "1" };
   const linkTunnel = { ...link, tunnel: "yes", layer: "-1" };
-  const cliffNet = (): Network => {
+  /** `d`: how far the nodes from the curve's end south are shifted (3.2 m for the cliff, 0 for the slope). */
+  const cliffNet = (d: number): Network => {
     const n: Network = { ways: new Map(), nodes: new Map() };
     const pts: Array<[number, number]> = [];
     for (let x = 0; x <= 600; x += 50) pts.push([x, 0]);
@@ -290,10 +291,10 @@ describe("格子の測点の間の土被り（T12、S7-3 レビュー 0 の崖�
       [630, -20],
       [680, -60],
       [750, -120],
-      [800, -203.2],
+      [800, -200 - d],
     ];
     const south: Array<[number, number]> = [];
-    for (let y = -303.2; y >= -1303.2; y -= 50) south.push([800, y]);
+    for (let y = -300 - d; y >= -1300 - d - 1e-9; y -= 50) south.push([800, y]);
     const all = [...pts, ...curve, ...south];
     const ids = all.map((_, i) => 700000 + i);
     all.forEach(([x, y], i) => {
@@ -303,23 +304,137 @@ describe("格子の測点の間の土被り（T12、S7-3 レビュー 0 の崖�
     const at = (x: number, y: number) => ids[all.findIndex((p) => p[0] === x && p[1] === y)];
     const span = (a: number, b: number) => ids.slice(ids.indexOf(a), ids.indexOf(b) + 1);
     n.ways.set(10, normalizeWay(10, span(ids[0], at(600, 0)), linkBridge));
-    n.ways.set(20, normalizeWay(20, span(at(600, 0), at(800, -903.2)), linkTunnel));
-    n.ways.set(30, normalizeWay(30, span(at(800, -903.2), at(800, -1003.2)), link));
-    n.ways.set(40, normalizeWay(40, span(at(800, -1003.2), at(800, -1303.2)), linkBridge));
+    n.ways.set(20, normalizeWay(20, span(at(600, 0), at(800, -900 - d)), linkTunnel));
+    n.ways.set(30, normalizeWay(30, span(at(800, -900 - d), at(800, -1000 - d)), link));
+    n.ways.set(40, normalizeWay(40, span(at(800, -1000 - d), at(800, -1300 - d)), linkBridge));
     return n;
   };
-  const cliff = (lon: number, lat: number) => (plane.toXY(lon, lat)[1] > -452 ? 30 : 3);
-
-  it("catches the box cutting its cover between two grid stations at a cliff (1 case today; 0 once S7-3c holds it)", () => {
-    const plan = planNetwork(cliffNet(), new Set(), null, [], {
+  const cliffAt = (edge: number) => (lon: number, lat: number) => (plane.toXY(lon, lat)[1] > edge ? 30 : 3);
+  const slopeAt = (yc: number) => (lon: number, lat: number) => {
+    const t = Math.min(1, Math.max(0, (yc - plane.toXY(lon, lat)[1]) / 100));
+    return 30 - 27 * t;
+  };
+  const t12 = (d: number, ground: (lon: number, lat: number) => number, mode: "grid" | "points") => {
+    const plan = planNetwork(cliffNet(d), new Set(), null, [], {
       structures: "height",
       ground: "compile",
       pruneBelow: false,
+      belowCeilings: mode,
     });
-    const res = solvePlan(plan, cliff, []);
-    const v = violationsOf(res, res.chunks, () => undefined, true);
-    expect(v.T12.count).toBe(1);
-    expect(v.T12.first[0]).toMatch(/^20:\d+: tunnel road -3\.\d+ above -3\.60 at s=5\d\d\.\d+$/);
+    const res = solvePlan(plan, ground, []);
+    return violationsOf(res, res.chunks, () => undefined, true).T12;
+  };
+
+  it("A. grid still catches the box cutting its cover between two rows at the cliff; points holds it", () => {
+    const grid = t12(3.2, cliffAt(-452), "grid");
+    expect(grid.count).toBe(1);
+    expect(grid.first[0]).toMatch(/^20:\d+: tunnel road -3\.\d+ above -3\.60 at s=5\d\d\.\d+$/);
+    expect(t12(3.2, cliffAt(-452), "points").count).toBe(0);
+  });
+
+  it("B. points holds every cliff edge and slope where grid had T12 (S7-3 review 0: 15 edges, 4 slopes)", () => {
+    // The scans' positions (cliff −430 to −530 every 0.25 m, slope −690 to −710 every 0.5 m) with T12 under grid.
+    const edges = [-430, -430.25, -430.5, -430.75, -431, -431.25, -431.5, -431.75, -432];
+    edges.push(-451.75, -452, -471.75, -472, -491.75, -492);
+    for (const e of edges) expect([e, t12(3.2, cliffAt(e), "points").count]).toEqual([e, 0]);
+    for (const yc of [-701, -701.5, -702, -702.5]) {
+      expect([yc, t12(0, slopeAt(yc), "grid").count]).toEqual([yc, 1]);
+      expect([yc, t12(0, slopeAt(yc), "points").count]).toEqual([yc, 0]);
+    }
+  }, 120_000);
+
+  it("E. a net no point of which is under its rows' line by more than the rounding solves as under grid", () => {
+    // 掘割からトンネルへ's hill: level ground and straight slopes. A row's ground is the lowest of three
+    // points, under the ground of the points between, so no point's ceiling is under the rows' line.
+    const net = network([
+      { id: 1, x0: 0, x1: 1000, tags: viaduct },
+      { id: 2, x0: 1000, x1: 1200, tags: cut },
+      { id: 3, x0: 1200, x1: 1700, tags: tunnel },
+      { id: 4, x0: 1700, x1: 2200, tags: atGrade },
+    ]);
+    const solve = (mode: "grid" | "points") =>
+      solvePlan(
+        planNetwork(net, new Set(), null, [], {
+          structures: "height",
+          ground: "compile",
+          pruneBelow: false,
+          belowCeilings: mode,
+        }),
+        hill,
+        [],
+      ).chunks;
+    expect(JSON.stringify(solve("points"))).toBe(JSON.stringify(solve("grid")));
+  });
+});
+
+describe("C・D・F. 格子の行の間に足す行（ceilingRowsBetween、S7-3c 3.2・追記 1）", () => {
+  /** A point's ceiling: `at(s)`, or null where `held(s)` is false. */
+  const pointOf =
+    (at: (s: number) => number, held: (s: number) => boolean = () => true) =>
+    (s: number) =>
+      held(s) ? at(s) : null;
+  const near = (s: number, x: number) => Math.abs(s - x) < 1e-9;
+
+  it("C. where points' ceilings are under the rows' line by more than 1 cm, rows with those ceilings are added, the lowest first", () => {
+    const rows = [
+      { s: 0, top: -3 },
+      { s: 5, top: -3 },
+    ];
+    // The lowest under the line (4, by 0.3 m) first; then, between 0 and 4, 2.5 is still under the new
+    // line by 1.25 cm; 3 is not under the line from 2.5 to 4 by more than 1 cm, so it gets none.
+    const dip = pointOf((s) => (near(s, 2.5) ? -3.2 : near(s, 3) ? -3.2 : near(s, 4) ? -3.3 : -3));
+    expect(ceilingRowsBetween(rows, dip, "points")).toEqual([
+      { s: 2.5, top: -3.2 },
+      { s: 4, top: -3.3 },
+    ]);
+    // Under the line by 1 cm or less: T12 passes a road on the line there, so no row.
+    const shallow = pointOf((s) => (near(s, 2.5) ? -3.01 : -3));
+    expect(ceilingRowsBetween(rows, shallow, "points")).toEqual([]);
+    // grid adds no row between two rows that both keep a ceiling.
+    expect(ceilingRowsBetween(rows, dip, "grid")).toEqual([]);
+  });
+
+  it("D. between a row without a ceiling and one with, points adds grid's row, then goes on between it and the held row", () => {
+    const rows = [
+      { s: 0, top: null },
+      { s: 5, top: -2 },
+    ];
+    // Held from s 2 on; at 4 the point's ceiling is 1 m under the line from the row at 2 to the one at 5.
+    const point = pointOf(
+      (s) => (near(s, 4) ? -3 : -2),
+      (s) => s >= 2 - 1e-9,
+    );
+    const grid = ceilingRowsBetween(rows, point, "grid");
+    expect(grid).toEqual([{ s: 2, top: -2 }]);
+    expect(ceilingRowsBetween(rows, point, "points")).toEqual([...grid, { s: 4, top: -3 }]);
+    // The free row last: grid's row is the first held point counted from it.
+    const back = [
+      { s: 0, top: -2 },
+      { s: 5, top: null },
+    ];
+    const held = pointOf(
+      () => -2,
+      (s) => s <= 3 + 1e-9,
+    );
+    expect(ceilingRowsBetween(back, held, "grid")).toEqual([{ s: 3, top: -2 }]);
+    expect(ceilingRowsBetween(back, held, "points")).toEqual([{ s: 3, top: -2 }]);
+  });
+
+  it("F. between two rows without a ceiling, points adds the first held point, then the one nearest the free row (grid none)", () => {
+    const rows = [
+      { s: 0, top: null },
+      { s: 5, top: null },
+    ];
+    // Only 2.25 to 2.75 are held (S7-3 review 0's slope at yc −701: rows 880 and 885 hold none).
+    const point = pointOf(
+      () => -1.7,
+      (s) => s >= 2.25 - 1e-9 && s <= 2.75 + 1e-9,
+    );
+    expect(ceilingRowsBetween(rows, point, "grid")).toEqual([]);
+    expect(ceilingRowsBetween(rows, point, "points")).toEqual([
+      { s: 2.25, top: -1.7 },
+      { s: 2.75, top: -1.7 },
+    ]);
   });
 });
 
