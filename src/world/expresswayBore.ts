@@ -6,7 +6,13 @@ import {
   TUNNEL_ROOF,
   TUNNEL_WALKWAY,
 } from "../expressway/assumptions";
-import { cutWallHeight, HEAD_OVER_GROUND_M, isHoleAt, TUNNEL_INNER_HEIGHT_M } from "../expressway/below";
+import {
+  cutWallHeight,
+  HEAD_OVER_GROUND_M,
+  HOLE_COVER_M,
+  isHoleAt,
+  TUNNEL_INNER_HEIGHT_M,
+} from "../expressway/below";
 import { ST, STATION_STRIDE, type XwChunk } from "../expressway/format";
 import { carriagewayWidth } from "../expressway/section";
 import type { WaterPolygon } from "./waterGeometry";
@@ -534,9 +540,6 @@ export function boreHoles(
   flush();
   return out;
 }
-
-/** Ground over a tunnel's road under which isHoleAt (below.ts) opens the ground, m. */
-const HOLE_COVER_M = H + ROOF + HEAD_OVER_GROUND;
 
 /**
  * Where between stations i and j of a tunnel ground − road crosses HOLE_COVER_M, as a share from i
