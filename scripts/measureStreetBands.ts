@@ -21,7 +21,7 @@
 // pavement inside the bands and under an edge line moved out, the ramps' feet beside the bands,
 // piers over the lanes, and the nodes with two segments only.
 // One JSON log line (street_bands_measured) and --out <file> for the full list.
-// Run: pnpm exec tsx scripts/measureStreetBands.ts <dir|label> [--cache <dir>] [--plateau <dir>] [--out <file>]
+// Run: pnpm exec tsx scripts/measureStreetBands.ts <dir|label> [--cache <dir>] [--plateau <dir>] [--out <file>] [--moves <file>] [--check]
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { VectorTile } from "@mapbox/vector-tile";
@@ -276,6 +276,13 @@ type MoveE = {
   lanesOffCentreInWidth: number;
   verdict: "movable" | "partly movable" | "not movable";
   reasons: string[];
+  /**
+   * On the side it would go to (the 0b option, the whole segment moved by its most): the shares of
+   * PLATEAU's pavement and islands and of this line drawn twice. Columns, not reasons: whether the
+   * pavement is newly met (not under the carriageway already) is not told here, and a doubled line
+   * does not block (追記 1 A6 4).
+   */
+  beyond: { pavement: number; twin: number };
   junctions: { cross: number; tee: number; controlled: number };
 };
 /**
@@ -388,10 +395,18 @@ function formE(c: {
   // The side it would go to (away from the site): that option's shares of buildings and streets.
   const side = dirs.has(1) ? "left" : "right";
   const option = c.options.find((o) => o.side === side);
+  if ((option?.shares.site ?? 0) > 0) reasons.push("site beyond");
   if ((option?.shares.building ?? 0) > 0) reasons.push("building beyond");
   if ((option?.shares.street ?? 0) > 0) reasons.push("street alongside beyond");
   const isLineBlocked = reasons.some((r) =>
-    ["jartic one-way", "foot", "bridge", "building beyond", "street alongside beyond"].includes(r),
+    [
+      "jartic one-way",
+      "foot",
+      "bridge",
+      "site beyond",
+      "building beyond",
+      "street alongside beyond",
+    ].includes(r),
   );
   const verdict: MoveE["verdict"] =
     isLineBlocked || movable === 0
@@ -426,6 +441,7 @@ function formE(c: {
     lanesOffCentreInWidth: c.lanesOffCentreInWidth,
     verdict,
     reasons,
+    beyond: { pavement: option?.shares.pavement ?? 0, twin: option?.shares.streetTwin ?? 0 },
     junctions,
   };
 }
@@ -1260,7 +1276,13 @@ const movesSummary = {
         w.m += m.lengthM;
       }
     }
-    return { byVerdict: out, byReason: reasons };
+    // Where the one-way comes from, by place (the same places as the verdicts).
+    const onewayFrom: Record<string, number> = {};
+    for (const m of placed) {
+      const isTarget = ["γ", "β3", "β1"].includes(m.e.memoClass);
+      if (isTarget) onewayFrom[m.e.onewayFrom] = (onewayFrom[m.e.onewayFrom] ?? 0) + 1;
+    }
+    return { byVerdict: out, byReason: reasons, onewayFrom };
   })(),
   // 手順 0c の 3: the β1 places (wide, JARTIC one-way on a two-way line), by OSM's say.
   onewayAtSites: tally((m) => (m.oneway ? m.oneway.osm : "-")),
@@ -1295,3 +1317,9 @@ if (outPath !== undefined)
     outPath,
     JSON.stringify({ summary, segments: banded, jumps, piersOverLanes }, null, 1) + "\n",
   );
+// --check: a site chunk left out for a road tile missing from the cache fails (exit code 1). Why:
+// the counts were then of a network with a hole in it, and nothing said so (central's γ read 75 for
+// 76 until #127's review found a window skipped the same way in measureSameRoad).
+const isChecked = args.includes("--check");
+const hasSkipped = skipped > 0;
+if (isChecked && hasSkipped) process.exitCode = 1;
