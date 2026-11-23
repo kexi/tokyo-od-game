@@ -398,12 +398,25 @@ describe("上を別の run の床版が通る端の壁（R1-1b 追記 1 A2・追
     expect(round(embankment)).toEqual(round(viaduct));
   });
 
-  it("takes a deck within MERGE_MAX_DZ of this road for this road (0.14 m up: as before), one past it as over (0.16 m: no box)", () => {
-    const alone = wallOf(a, []);
+  it("gives way to another run's road going on within MERGE_MAX_DZ (0.14 m up: no box over it), and takes one past it as over (0.16 m: no box)", () => {
     const level = wallOf(a, [over(0.14)]);
-    expect([...level.b.collider.position]).toEqual([...alone.b.collider.position]);
+    expect(level.wall.yieldTo).toEqual(["B"]);
+    expect(level.wall.yieldedM).toBeGreaterThan(2);
+    expect(level.wall.boxes.every((x) => x.hi <= 2.25 + 1e-9)).toBe(true);
     const above = wallOf(a, [over(0.16)]);
     expect(above.wall.noneM).toBeGreaterThan(2.8);
+    expect(above.wall.yieldedM).toBe(0);
+  });
+
+  it("keeps the wall as before beside another run's level road that ends within one car's length of the face (R1-1b 追記 4 D3)", () => {
+    // B ends dead 2 m past A's face (x 202): no road a car could go on to past the wall.
+    const endsHere = [summary("A", end("ground"), end("open")), summary("B", end("ground"), end("open"))];
+    const b = chunkAlong("B:0", (s) => [102 + s, 6], 100);
+    for (let i = ST.z; i < b.st.length; i += STATION_STRIDE) b.st[i] += 0.02;
+    const alone = buildOf(a, indexOf(endsHere, [a]));
+    const beside = buildOf(a, indexOf(endsHere, [a, b]));
+    expect(beside.endWalls.find((w) => w.end === "end")!.yieldedM).toBe(0);
+    expect([...beside.collider.position]).toEqual([...alone.collider.position]);
   });
 });
 

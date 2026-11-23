@@ -629,6 +629,9 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     loweredM: 2.1,
     noneM: 0.4,
     boxes: 12,
+    yieldedM: 0.2,
+    yieldTo: ["756785283"],
+    yieldDzM: 0.15,
   },
   expressway_end_wall_skipped: { chunk: "224864773:1", end: "end", reason: "hidden" },
   expressway_end_walls_probed: {

@@ -544,6 +544,10 @@ export const LOG_EVENTS = {
     loweredM: z.number().nonnegative(),
     noneM: z.number().nonnegative(),
     boxes: count,
+    /** The width left to a road going on past the end, those runs, and the largest height between the roads there (追記 4 D3). */
+    yieldedM: z.number().nonnegative(),
+    yieldTo: z.array(z.string()),
+    yieldDzM: z.number().nonnegative(),
   }),
   /**
    * Such an end left without a wall (R1-1b 3.4): `tunnel` (a tunnel's section, none in the data) or

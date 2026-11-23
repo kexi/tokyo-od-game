@@ -1,6 +1,7 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Quaternion, Vector3, type Group, type SpotLight } from "three";
 import { createCarModel, WHEEL_RADIUS, type CarModel, type CarStyle } from "../game/carModel";
+import { CAR_HALF } from "./carBody";
 import { BUILDING_GROUPS, VEHICLE_SOLVER_GROUPS } from "./groups";
 import { massContactsFor } from "./massContacts";
 import { VEHICLE_SPECS, type MassClass, type VehicleSpec } from "./masses";
@@ -17,7 +18,7 @@ export type DriveInput = {
   brakeOnly?: boolean;
 };
 
-const HALF = { x: 0.92, y: 0.38, z: 2.15 };
+const HALF = CAR_HALF;
 const SUSPENSION_REST = 0.32;
 export const MAX_STEER = 0.55;
 export const WHEELBASE = 2.7;

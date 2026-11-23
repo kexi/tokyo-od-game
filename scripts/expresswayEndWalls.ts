@@ -419,6 +419,10 @@ type WallRow = {
   heightM: number;
   loweredM: number;
   noneM: number;
+  /** The width left to roads going on past the end, those runs, and the largest height between the roads (追記 4 D3). */
+  yieldedM: number;
+  yieldTo: string[];
+  yieldDzM: number;
   boxes: number;
   pokeM: number | null;
   /** The same over any face level with this road (追記 3 C3 (c)): set beside pokeM, not judged. */
@@ -544,6 +548,9 @@ for (const c of endChunks) {
       heightM: w.heightM,
       loweredM: w.loweredM,
       noneM: w.noneM,
+      yieldedM: w.yieldedM,
+      yieldTo: w.yieldTo,
+      yieldDzM: w.yieldDzM,
       boxes: w.boxes.length,
       pokeM: r3(pokeM),
       levelM: r3(levelM),
