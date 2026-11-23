@@ -19,19 +19,19 @@
 //   pnpm exec tsx scripts/qa/street-drive.ts [--label L] [--base URL] [--only a,b] [--out DIR]
 //     [--tries N] [--site-lanes FILE] [--hole-lanes FILE] [--baseline DIR]
 //
-// --baseline DIR: main's results (this tool's folder from main's checkout driven on main's data). A
+// --baseline DIR: main's results (this tool's folder from main's checkout driven on main's data; only
+// the results of the run its summary.json names, streetResults.ts readMainResults). A
 // failure is `known-main` when every kind of it is one main failed with at that place
 // (streetDriveVerdict.ts againstMain): S7-6's line is "no failure main's result does not have".
 //
 // Exit 1 a place failed, 2 one stayed invalid, 5 a place of the table has no result of this run
 // (driven in parts, or other data), 3 a known failure, 4 only known-main ones, else 0.
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import type { HoleLanes } from "../expresswayCases.ts";
 import { readExpresswayFiles } from "../expresswayFiles.ts";
 import type { SiteLanes } from "../expresswaySiteLanes.ts";
 import { launch } from "./browser.mjs";
-import { parseLogged } from "./deckStops.ts";
 import { invalidOf } from "./driveInvalid.ts";
 import { freePort } from "./ports.ts";
 import { checkServedData } from "./servedData.ts";
@@ -39,14 +39,20 @@ import {
   exitCodeOf,
   judgeStreetDrive,
   type LatLon,
-  type MainDrive,
   RIDE_BAND,
   type StreetDriveRide,
   type StreetDriveTry,
 } from "./streetDriveVerdict.ts";
 import { knownCasesFrom, projectOnRun } from "./streetKnown.ts";
 import { placeLatLon, placesOf, STREET_PLACES, type StreetPlace } from "./streetPlaces.ts";
-import { isReusable, type ResultKey, summarize } from "./streetResults.ts";
+import {
+  fileSha256,
+  isReusable,
+  pointsOf,
+  readMainResults,
+  type ResultKey,
+  summarize,
+} from "./streetResults.ts";
 
 const ROOT = join(import.meta.dirname, "..", "..");
 const argv = process.argv.slice(2);
@@ -65,7 +71,6 @@ const holeLanes = flag("hole-lanes");
 const baselineDir = flag("baseline");
 const readList = <T>(file: string | undefined): T[] =>
   file === undefined ? [] : (JSON.parse(readFileSync(file, "utf8")) as T[]);
-const absolute = (file: string | undefined) => (file === undefined ? null : resolve(file));
 
 /** How far before and past the place the drive starts and ends (m; 7c's street drive). */
 const LEAD_M = 40;
@@ -80,12 +85,14 @@ const STEP_S = 0.25;
 const files = readExpresswayFiles();
 /** The dev server serves the same data (servedData.ts): else nothing is driven. */
 const served = await checkServedData(base);
+/** main's results of its summary's run (streetResults.ts), or none without --baseline. */
+const mainResults = baselineDir === undefined ? null : readMainResults(baselineDir);
 const key: ResultKey = {
   metaSha256: served.metaSha256,
   tilesSha256: served.tilesSha256,
-  siteLanes: absolute(siteLanes),
-  holeLanes: absolute(holeLanes),
-  baseline: absolute(baselineDir),
+  siteLanes: fileSha256(siteLanes),
+  holeLanes: fileSha256(holeLanes),
+  baseline: mainResults?.keySha256 ?? null,
 };
 const cases = knownCasesFrom(readList<SiteLanes>(siteLanes), readList<HoleLanes>(holeLanes), files.byRun);
 const project = (run: string, lat: number, lon: number) => projectOnRun(files.byRun, run, lat, lon);
@@ -121,13 +128,6 @@ type Try = StreetDriveTry & {
   };
   lawEvents?: Record<string, string[]>;
 };
-
-/** The lat/lon of each logged line (expressway_building_crossed, _car_stalled, car_respawned). */
-const pointsOf = (lines: readonly string[]): LatLon[] =>
-  lines.map((l) => {
-    const { lat, lon } = parseLogged<LatLon>(l);
-    return { lat, lon };
-  });
 
 async function drive(p: StreetPlace, at: LatLon): Promise<Try> {
   const start = `${at.lat.toFixed(5)},${at.lon.toFixed(5)}`;
@@ -263,9 +263,7 @@ for (const p of places) {
     const counts = last.invalid === null;
     if (counts) break;
   }
-  const mainFile = baselineDir === undefined ? null : join(baselineDir, `${p.id}.json`);
-  const main =
-    mainFile === null ? null : readIfThere<MainDrive & { failures: unknown; served: unknown }>(mainFile);
+  const main = mainResults?.byPlace.get(p.id) ?? null;
   const judged = judgeStreetDrive(last, cases, project, main);
   const out = {
     label,
