@@ -335,6 +335,10 @@ update-expressway-ledger dir="public/data/expressway" flags="":
 count-bare-drops dir="public/data/expressway" against="" out="":
     pnpm exec tsx --import ./scripts/assetUrlHooks.mjs scripts/expresswayBareDrops.ts {{ dir }} {{ if against != "" { "--against " + against } else { "" } }} {{ if out != "" { "--out " + out } else { "" } }}
 
+# 高速道路の床版の上の車の点（全区間・全車線の中心を 2 m ごと、路面 + 0.86 m）でゲームの locate が別の run を答える所を、同じ run・同じ面（分合流）・別の面（取り違え）に分け、別の面を車が居られる点と居られない点に分けて数える（dir はラベルか生成先のフォルダ、タイルごとのフレーム、1 行の JSON ログ、flags に --out <file> で組の一覧・--forms で直しの候補の形ごとの残り、車が居られる点に取り違えがあれば終了コード 1）
+check-expressway-locate dir="public/data/expressway" flags="":
+    pnpm exec tsx --import ./scripts/assetUrlHooks.mjs scripts/expresswayLocateProbe.ts {{ dir }} {{ flags }}
+
 # 高速道路の生成 2 つのチャンクをバイト単位で比べる（a・b はラベルか生成先のフォルダ、v5・v6 どちらのタイルも読む、違うチャンク・片方にしか無いチャンクの数と ID を 1 行の JSON ログに、違いがあれば終了コード 1）
 compare-expressway-chunks a b:
     pnpm exec tsx scripts/compareExpresswayChunks.ts {{ a }} {{ b }}
