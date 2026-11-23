@@ -668,7 +668,8 @@ export function* deckArraySteps(
       boxes,
       yieldedM: r3(yielded.widthM),
       yieldTo: yielded.runs,
-      yieldDzM: r3(yielded.maxDzM),
+      yieldPastDzM: r3(yielded.pastDzM),
+      yieldFootDzM: r3(yielded.footDzM),
     });
   }
   const lamps: number[] = [];
@@ -1055,12 +1056,14 @@ export type EndWall = {
   noneM: number;
   boxes: Array<{ lo: number; hi: number; top: number }>;
   /**
-   * R1-1b 追記 4 D3: the width left without a box over the road of a run going on past the end, those
-   * runs, and the largest height between that road and this one at the points that gave way.
+   * R1-1b 追記 4 D3, 追記 5 E3: the width left without a box over the road of a run going on past the
+   * end, those runs, and the largest height between that road and this one past the face and under
+   * the box's foot.
    */
   yieldedM: number;
   yieldTo: string[];
-  yieldDzM: number;
+  yieldPastDzM: number;
+  yieldFootDzM: number;
 };
 
 /**
@@ -1170,27 +1173,47 @@ function onwardChunkAt(chunk: XwChunk, end: "start" | "end", context: DeckContex
 const CAR_LENGTH_M = 2 * CAR_HALF.z;
 
 /**
- * Another run's road near a run's end that goes on past it (R1-1b 追記 4 D3): its chunk's rings, the
- * reach of its road at each (its sides as the merge builds them, read when first asked), and whether
- * it shares one surface with this end (`same`).
+ * Whether a run ends at an end face (R1-1b 追記 4 D3): one of its dead ends (endAhead: not ahead) has
+ * its ring's centre within one car's length of the face along its normal, either way. Why not the
+ * side the other run's end lies on (outward of the face): a run coming in from outside and ending at
+ * the face (224864773 at 224864769:end) has its other end 100 m out, going on. Why not endAhead
+ * alone: a run ending 300 m on would count as ending here, and a wall would stand on its road; past
+ * one car's length a car fits on its road beyond the wall, and its own end wall closes it.
  */
-type OnwardRoad = {
-  run: string;
-  same: boolean;
-  rings: DeckRing[];
-  reach: Array<{ lo: number; hi: number }>;
-  /** At each ring, whether its chunk shares one surface with this run there (its own `decks`, partnersAt). */
-  sameAt: boolean[];
-};
+function endsAtFace(
+  run: string,
+  ring: DeckRing,
+  context: DeckContext,
+  place: GeoToLocal,
+  bank: boolean,
+): boolean {
+  const rangeOf = rangeOfRun(context);
+  for (const e of ["start", "end"] as const) {
+    const answer = endAhead(context.index.runs, rangeOf, run, e);
+    if (answer.ahead) continue;
+    const list = context.index.chunksOf(run);
+    const last = e === "start" ? list.find((c) => c.prev === null) : list.find((c) => c.next === null);
+    if (!last) continue;
+    const rs = chunkRings(last, place, bank).rings;
+    const at = rs[e === "start" ? 0 : rs.length - 1].c;
+    const along = (at.x - ring.c.x) * ring.t.x + (at.z - ring.c.z) * ring.t.z;
+    const isWithin = Math.abs(along) <= CAR_LENGTH_M;
+    if (isWithin) return true;
+  }
+  return false;
+}
 
 /**
- * The runs near a run's end (station boxes within NEIGHBOUR_REACH_DEG of the end node, as decksOver)
- * that go on past it: not this run, and with no dead end (endAhead: not ahead) whose ring's centre
- * lies within one car's length of this end face along its normal, either way. Why not the side the
- * other run's end lies on (outward of the face): a run coming in from outside and ending at the face
- * (224864773 at 224864769:end) has its other end 100 m out, going on. Why not endAhead alone: a run
- * ending 300 m on would count as ending here, and a wall would stand on its road; past one car's
- * length a car fits on its road beyond the wall, and its own end wall closes it.
+ * Another run's chunk near a run's end, of a run going on past it (R1-1b 追記 4 D3): its rings and
+ * the reach of its road at each, as its own build makes them.
+ */
+type OnwardRoad = { run: string; rings: DeckRing[]; reach: Array<{ lo: number; hi: number }> };
+
+/**
+ * The chunks near a run's end (station boxes within NEIGHBOUR_REACH_DEG of the end node, as decksOver)
+ * of the runs going on past it: not this run, and not ending at its face (endsAtFace). Any run, the
+ * ones this end shares one surface with or not: whether its road is this one's is asked by height
+ * (yieldOf), as `same` is a relation of stretches and does not say the roads meet at the face.
  */
 function onwardRoadsAt(
   chunk: XwChunk,
@@ -1205,23 +1228,6 @@ function onwardRoadsAt(
   const lon = chunk.st[o + ST.lon];
   const lat = chunk.st[o + ST.lat];
   const r = NEIGHBOUR_REACH_DEG;
-  const same = new Set(context.index.partnersAt(chunk, chunk.st[o + ST.s]));
-  const rangeOf = rangeOfRun(context);
-  const endsHere = (run: string) => {
-    for (const e of ["start", "end"] as const) {
-      const answer = endAhead(context.index.runs, rangeOf, run, e);
-      if (answer.ahead) continue;
-      const list = context.index.chunksOf(run);
-      const last = e === "start" ? list.find((c) => c.prev === null) : list.find((c) => c.next === null);
-      if (!last) continue;
-      const rs = chunkRings(last, place, bank).rings;
-      const at = rs[e === "start" ? 0 : rs.length - 1].c;
-      const along = (at.x - ring.c.x) * ring.t.x + (at.z - ring.c.z) * ring.t.z;
-      const isWithin = Math.abs(along) <= CAR_LENGTH_M;
-      if (isWithin) return true;
-    }
-    return false;
-  };
   const out: OnwardRoad[] = [];
   for (const run of context.index.runs.keys()) {
     if (run === chunk.run) continue;
@@ -1229,7 +1235,7 @@ function onwardRoadsAt(
       const [x0, y0, x1, y1] = stationBox(c);
       return x1 >= lon - r && x0 <= lon + r && y1 >= lat - r && y0 <= lat + r;
     });
-    if (near.length === 0 || endsHere(run)) continue;
+    if (near.length === 0 || endsAtFace(run, ring, context, place, bank)) continue;
     for (const c of near) {
       // Its rings and sides as its own build makes them (refineRings after the base sides): where it
       // meets this deck at a seam its road runs on to the seam over rings of the refinement. Why not
@@ -1245,20 +1251,17 @@ function onwardRoadsAt(
       while (!built.done) built = steps.next();
       const face = (d: DeckSide) => (d.wall ? Math.min(d.wall.inner, d.reach) : d.reach);
       const reach = built.value.sides.map((sd) => ({ lo: -face(sd.right), hi: face(sd.left) }));
-      // Same by the relation where its road is, not by the run alone: a run with a stretch shared
-      // with this end can pass it again a level apart (24636451 by 45392984:2's end, 12.3 m up).
-      const sameAt = built.value.rings.map((x) => context.index.partnersAt(c, x.frame.s).includes(chunk.run));
-      out.push({ run, same: same.has(run), rings: built.value.rings, reach, sameAt });
+      out.push({ run, rings: built.value.rings, reach });
     }
   }
   return out;
 }
 
 /**
- * The road height of an onward run at a point in plan where its road reaches (between two of its
+ * The road height of an onward chunk at a point in plan where its road reaches (between two of its
  * rings, from its right road end to its left, both rings' ends and heights in proportion), or null.
  */
-function onwardRoadY(road: OnwardRoad, p: Vector3, bank: boolean): { y: number; isSame: boolean } | null {
+function onwardRoadY(road: OnwardRoad, p: Vector3, bank: boolean): number | null {
   const rs = road.rings;
   for (let i = 0; i + 1 < rs.length; i++) {
     const a = rs[i];
@@ -1285,22 +1288,37 @@ function onwardRoadY(road: OnwardRoad, p: Vector3, bank: boolean): { y: number; 
     if (!isOn) continue;
     const ya = ringPoint(a, u, liftAt(a, u, bank)).y;
     const yb = ringPoint(b, u, liftAt(b, u, bank)).y;
-    const isSame = road.same && (road.sameAt[i] || road.sameAt[i + 1]);
-    return { y: ya + (yb - ya) * tau, isSame };
+    return ya + (yb - ya) * tau;
   }
   return null;
 }
 
+/** What an end wall gave way (yieldOf): the width, to which runs, and the largest height between the roads past the face and under the box. */
+type Yield = {
+  spans: Array<{ lo: number; hi: number }>;
+  widthM: number;
+  runs: string[];
+  pastDzM: number;
+  footDzM: number;
+};
+
 /**
  * The stretches of an end wall left once it gives way to the roads going on past the end (R1-1b
- * 追記 4 D3): cut every OPEN_SAMPLE_M across, a cut has no box where a run going on (one it shares one
- * surface with at any height; any other where its road is within MERGE_MAX_DZ of this one's there)
- * has its road under the box's foot (at the face or PARAPET_WIDTH in) or on past the face (both
- * OPEN_SAMPLE_M and PARAPET_WIDTH out, as openBeyond), at the cut's ends or middle. Where nothing
- * gives way the stretches are the same objects, so the wall is as before to the vertex.
- * Why not past the face alone: an onward road's edge moves across within the box's depth (203832847:
+ * 追記 4 D3, 追記 5 E3). Cut every OPEN_SAMPLE_M across and looked at at each cut's ends and middle:
+ * - a run going on is this end's road going on where its road is level with this one (within
+ *   MERGE_MAX_DZ) at every point it is read at: past the face (both OPEN_SAMPLE_M and PARAPET_WIDTH
+ *   out, as openBeyond) at the cuts where it lies at both, and only where it lies past the face at no
+ *   cut, under the box's foot (at the face and PARAPET_WIDTH in).
+ * - a cut has no box where such a run's road lies under the box's foot, or past the face at both.
+ * Where nothing gives way the stretches are the same objects, so the wall is as before to the vertex.
+ * Why not give way to the runs it shares one surface with at any height (追記 4 D3's first wording):
+ * `same` is a relation of stretches, and a viaduct climbing away 12.3 m over 45392984:2's end is one;
+ * the end opened 0.8 m under it. Why not read the height under the foot where the road lies past the
+ * face: the foot lies within this deck's slab, no car crosses there, and at 203832847:start the road
+ * going on reads −0.152 m under the box's back but −0.118 and −0.134 m past the face. Why not past
+ * the face alone for the cuts: an onward road's edge moves across within the box's depth (203832847:
  * start: on both points past the face from u 4.65, under the box's back from 4.55), and a corner of
- * the box stood on it. Why not "ends here" runs too: a car on a road ending within a car's length
+ * the box stood on it. Why not the runs ending here too: a car on a road ending within a car's length
  * goes nowhere past the wall, and giving way there opened the face beside the end of that road.
  */
 function yieldOf(
@@ -1309,58 +1327,91 @@ function yieldOf(
   spans: Array<{ lo: number; hi: number }>,
   onward: readonly OnwardRoad[],
   bank: boolean,
-): { spans: Array<{ lo: number; hi: number }>; widthM: number; runs: string[]; maxDzM: number } {
-  const plain = { spans, widthM: 0, runs: [] as string[], maxDzM: 0 };
+): Yield {
+  const plain: Yield = { spans, widthM: 0, runs: [], pastDzM: 0, footDzM: 0 };
   if (onward.length === 0) return plain;
   const back = end === "start" ? 1 : -1;
-  const runs = new Set<string>();
-  let maxDzM = 0;
-  /** The onward run whose road gives way at (u, d) — d back from the face, outward below 0 — or null. */
-  const takerAt = (u: number, d: number): { run: string; dz: number } | null => {
+  const byRun = new Map<string, OnwardRoad[]>();
+  for (const w of onward) byRun.set(w.run, [...(byRun.get(w.run) ?? []), w]);
+  /** A run's road over this road at (u, d) — d back from the face, outward below 0 — or null where it has none. */
+  const dzAt = (roads: readonly OnwardRoad[], u: number, d: number): number | null => {
     const p = ringPoint(ring, u, 0).addScaledVector(ring.t, back * d);
     const road = ringPoint(ring, u, liftAt(ring, u, bank)).y;
-    for (const w of onward) {
-      const on = onwardRoadY(w, p, bank);
-      if (on === null) continue;
-      const dz = on.y - road;
-      const isTaker = on.isSame || Math.abs(dz) <= MERGE_MAX_DZ;
-      if (isTaker) return { run: w.run, dz };
+    for (const w of roads) {
+      const y = onwardRoadY(w, p, bank);
+      if (y !== null) return y - road;
     }
     return null;
   };
+  const cutsOf = (span: { lo: number; hi: number }) => {
+    const n = Math.ceil((span.hi - span.lo) / OPEN_SAMPLE_M - 1e-9);
+    return Array.from({ length: n }, (_, i) => {
+      const from = span.lo + i * OPEN_SAMPLE_M;
+      return { from, to: Math.min(span.hi, from + OPEN_SAMPLE_M) };
+    });
+  };
+  /** At a cut's ends and middle: the run's road past the face at both points, and under the foot. */
+  const readsOf = (roads: readonly OnwardRoad[], cut: { from: number; to: number }) =>
+    [cut.from, (cut.from + cut.to) / 2, cut.to].map((u) => {
+      const near = dzAt(roads, u, -OPEN_SAMPLE_M);
+      const far = dzAt(roads, u, -PARAPET_WIDTH.value);
+      const past = near !== null && far !== null ? [near, far] : null;
+      const foot = [dzAt(roads, u, 0), dzAt(roads, u, PARAPET_WIDTH.value)].filter(
+        (x): x is number => x !== null,
+      );
+      return { past, foot };
+    });
+  // Which runs are this road going on: level at every point they are read at.
+  const takers = new Map<string, { pastDzM: number; footDzM: number }>();
+  for (const [run, roads] of byRun) {
+    const reads = spans.flatMap(cutsOf).flatMap((cut) => readsOf(roads, cut));
+    const pasts = reads.flatMap((x) => x.past ?? []);
+    const foots = reads.flatMap((x) => x.foot);
+    const isReadPast = pasts.length > 0;
+    const heights = isReadPast ? pasts : foots;
+    const isLevel = heights.length > 0 && heights.every((dz) => Math.abs(dz) <= MERGE_MAX_DZ);
+    if (!isLevel) continue;
+    const most = (xs: number[]) => xs.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+    takers.set(run, { pastDzM: most(pasts), footDzM: most(foots) });
+  }
+  if (takers.size === 0) return plain;
   const out: Array<{ lo: number; hi: number }> = [];
+  const runs = new Set<string>();
   let widthM = 0;
   for (const span of spans) {
     let isChanged = false;
     const kept: Array<{ lo: number; hi: number }> = [];
-    const n = Math.ceil((span.hi - span.lo) / OPEN_SAMPLE_M - 1e-9);
-    for (let i = 0; i < n; i++) {
-      const from = span.lo + i * OPEN_SAMPLE_M;
-      const to = Math.min(span.hi, from + OPEN_SAMPLE_M);
-      let taker: { run: string; dz: number } | null = null;
-      for (const u of [from, (from + to) / 2, to]) {
-        const foot = takerAt(u, 0) ?? takerAt(u, PARAPET_WIDTH.value);
-        const past = takerAt(u, -OPEN_SAMPLE_M);
-        const isBeyond = past !== null && takerAt(u, -PARAPET_WIDTH.value) !== null;
-        taker = foot ?? (isBeyond ? past : null);
-        if (taker) break;
+    for (const cut of cutsOf(span)) {
+      let taker: string | null = null;
+      for (const [run] of takers) {
+        const isUnder = readsOf(byRun.get(run)!, cut).some((x) => x.past !== null || x.foot.length > 0);
+        if (isUnder) {
+          taker = run;
+          break;
+        }
       }
       if (taker) {
         isChanged = true;
-        widthM += to - from;
-        runs.add(taker.run);
-        maxDzM = Math.max(maxDzM, Math.abs(taker.dz));
+        widthM += cut.to - cut.from;
+        runs.add(taker);
         continue;
       }
       const last = kept[kept.length - 1];
-      const isJoined = last !== undefined && Math.abs(last.hi - from) < 1e-9;
-      if (isJoined) last.hi = to;
-      else kept.push({ lo: from, hi: to });
+      const isJoined = last !== undefined && Math.abs(last.hi - cut.from) < 1e-9;
+      if (isJoined) last.hi = cut.to;
+      else kept.push({ lo: cut.from, hi: cut.to });
     }
     // Untouched, the stretch stays the object it was (the wall's vertices as before).
     out.push(...(isChanged ? kept : [span]));
   }
-  return { spans: out, widthM, runs: [...runs].toSorted(), maxDzM };
+  const given = [...runs].map((run) => takers.get(run)!);
+  return {
+    spans: out,
+    widthM,
+    runs: [...runs].toSorted(),
+    pastDzM: given.reduce((m, x) => Math.max(m, x.pastDzM), 0),
+    footDzM: given.reduce((m, x) => Math.max(m, x.footDzM), 0),
+  };
 }
 
 /**
@@ -1463,7 +1514,15 @@ function decksOver(
   // NEIGHBOUR_REACH_DEG of the end node.
   const r = NEIGHBOUR_REACH_DEG;
   const out: DeckOver[] = [];
-  const merged = new Set(context.index.partnersAt(chunk, chunk.st[o + ST.s]));
+  // The runs it shares one surface with that end at its face (追記 5 E3): a same partner going on
+  // that passes over the end is a deck over it like any other (27155730 over 23704469:start).
+  const ring = chunkRings(chunk, place, bank).rings;
+  const faceRing = ring[end === "start" ? 0 : ring.length - 1];
+  const merged = new Set(
+    context.index
+      .partnersAt(chunk, chunk.st[o + ST.s])
+      .filter((run) => endsAtFace(run, faceRing, context, place, bank)),
+  );
   for (const run of context.index.runs.keys()) {
     const isOwnOrMerged = run === chunk.run || merged.has(run);
     if (isOwnOrMerged) continue;
@@ -2795,7 +2854,8 @@ export class ExpresswayDecks {
             boxes: x.boxes.length,
             yieldedM: x.yieldedM,
             yieldTo: x.yieldTo,
-            yieldDzM: x.yieldDzM,
+            yieldPastDzM: x.yieldPastDzM,
+            yieldFootDzM: x.yieldFootDzM,
           });
         for (const x of result.endSkips)
           log("expressway_end_wall_skipped", { chunk: c.id, end: x.end, reason: x.reason });

@@ -14,7 +14,17 @@ for n in ["expressway", "r1b-g3", "r1b-g4", "r1b-g5", "r1b-g1-pruned", "r1b-g2-a
     for k in diff:
         ws = [w for w in p["walls"] if w["chunk"] == k]
         rows = [
-            (w["end"], w["widthM"], w["loweredM"], w["yieldedM"], w["yieldTo"], w["yieldDzM"], w["boxes"]) for w in ws
+            (
+                w["end"],
+                w["widthM"],
+                w["loweredM"],
+                w["yieldedM"],
+                w["yieldTo"],
+                w["yieldPastDzM"],
+                w["yieldFootDzM"],
+                w["boxes"],
+            )
+            for w in ws
         ]
         print("   ", k, "tri", a[k]["triangles"], "->", b[k]["triangles"], rows)
     walls_a = {k: v["endWalls"] for k, v in a.items()}

@@ -547,7 +547,8 @@ export const LOG_EVENTS = {
     /** The width left to a road going on past the end, those runs, and the largest height between the roads there (追記 4 D3). */
     yieldedM: z.number().nonnegative(),
     yieldTo: z.array(z.string()),
-    yieldDzM: z.number().nonnegative(),
+    yieldPastDzM: z.number().nonnegative(),
+    yieldFootDzM: z.number().nonnegative(),
   }),
   /**
    * Such an end left without a wall (R1-1b 3.4): `tunnel` (a tunnel's section, none in the data) or
@@ -1272,6 +1273,11 @@ export const LOG_EVENTS = {
     readsPart: count,
     /** Walls counted by (b) without the faces inside the other run's own end wall (proposed, not judged). */
     pokingOffEndWalls: count,
+    /** Raw (b) (any run's road, the line before 追記 4 D6), points met under − MERGE_MAX_DZ down to − SLAB, the farthest dead end of a run not counted, the widest open gap. */
+    pokingRaw: count,
+    deepPoints: count,
+    uncountedFarthestEndM: z.number().nonnegative(),
+    openM: z.number().nonnegative(),
     lowered: count,
     covered: count,
     hidden: count,

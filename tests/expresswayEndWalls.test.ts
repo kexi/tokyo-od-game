@@ -420,6 +420,70 @@ describe("上を別の run の床版が通る端の壁（R1-1b 追記 1 A2・追
   });
 });
 
+describe("先へ続く道に譲る端の壁（R1-1b 追記 4 D3・追記 5 E3）", () => {
+  // A east to x 200 (its end open); B another run alongside, its centre 6 m to A's left, its road
+  // (half width 4.25 m) over A's left 1.75..4.25 m at A's end; `dz(x)` its road over A's at x.
+  const a = chunkAlong("A:0", (s) => [100 + s, 0], 100);
+  const besideOf = (
+    from: number,
+    length: number,
+    dz: (x: number) => number,
+    extra: Partial<XwChunk> = {},
+  ) => {
+    const b = chunkAlong("B:0", (s) => [from + s, 6], length, extra);
+    for (let i = 0; i < b.st.length; i += STATION_STRIDE) b.st[i + ST.z] += dz(from + b.st[i + ST.s]);
+    return b;
+  };
+  const goesOn = [summary("A", end("ground"), end("open")), summary("B", end("ground"), end("ground"))];
+  const endsDead = [summary("A", end("ground"), end("open")), summary("B", end("ground"), end("open"))];
+  const sameA = (s0: number, s1: number) => ({ decks: [{ with: "B", relation: "same" as const, s0, s1 }] });
+  const sameB = (s0: number, s1: number) => ({ decks: [{ with: "A", relation: "same" as const, s0, s1 }] });
+  const wallOf = (runs: XwTileRun[], chunk: XwChunk, others: XwChunk[]) =>
+    buildOf(chunk, indexOf(runs, [chunk, ...others])).endWalls.find((w) => w.end === "end")!;
+  const alone = wallOf(goesOn, a, []);
+
+  it("leaves no box over a road going on at this road's height, and the rest of the wall at its top", () => {
+    const wall = wallOf(goesOn, a, [besideOf(150, 100, () => 0.02)]);
+    expect(wall.yieldTo).toEqual(["B"]);
+    expect(wall.boxes.every((x) => x.hi <= 1.75 + 0.05 + 1e-9)).toBe(true);
+    expect(wall.boxes.every((x) => x.top === alone.boxes[0].top)).toBe(true);
+  });
+
+  it("gives way where the road past the face is level though under the box's back it is a little lower (203832847:start)", () => {
+    // −0.12 m 0.5 m past the face, −0.136 m 0.05 m past it, −0.155 m 0.5 m in.
+    const wall = wallOf(goesOn, a, [besideOf(150, 100, (x) => -0.1375 + 0.035 * (x - 200))]);
+    expect(wall.yieldTo).toEqual(["B"]);
+    expect(wall.yieldPastDzM).toBeLessThanOrEqual(0.15);
+    expect(wall.yieldFootDzM).toBeGreaterThan(0.15);
+  });
+
+  it("does not give way to a run it shares one surface with that goes on over the end: 12 m up as nothing over it, 0.7 m up down to its underside", () => {
+    const high = wallOf(goesOn, { ...a, ...sameA(0, 100) }, [besideOf(150, 100, () => 12, sameB(0, 50))]);
+    // One box across the whole face at the top of a wall with nothing over it (the merge's sides,
+    // not the wall, set its width here).
+    expect(high.yieldedM).toBe(0);
+    expect(high.boxes).toHaveLength(1);
+    expect(high.boxes[0].top).toBe(alone.boxes[0].top);
+    expect(high.widthM).toBeGreaterThanOrEqual(alone.widthM);
+    const low = wallOf(goesOn, { ...a, ...sameA(0, 100) }, [besideOf(150, 100, () => 0.7, sameB(0, 50))]);
+    expect(low.yieldedM).toBe(0);
+    expect(low.loweredM).toBeGreaterThan(2);
+  });
+
+  it("keeps the wall as before beside a run it shares one surface with that ends dead 0.54 m past the face (760596454:start)", () => {
+    const wall = wallOf(endsDead, a, [besideOf(100.54, 100, () => 0.02)]);
+    expect(wall.yieldedM).toBe(0);
+    expect(wall.boxes.map((x) => [x.lo, x.hi, x.top])).toEqual(alone.boxes.map((x) => [x.lo, x.hi, x.top]));
+  });
+
+  it("takes a run whose dead end lies within one car's length of the face as ending here, and one just past it as going on", () => {
+    const inside = wallOf(endsDead, a, [besideOf(104, 100, () => 0.02)]);
+    expect(inside.yieldedM).toBe(0);
+    const outside = wallOf(endsDead, a, [besideOf(104.6, 100, () => 0.02)]);
+    expect(outside.yieldedM).toBeGreaterThan(2);
+  });
+});
+
 describe("口（R1-1b 3.5、書かれた run に書かれない run がぶら下がる所）", () => {
   it("keeps the parent's 壁高欄 on the child's side and its edge line when the child is not loaded", () => {
     // P east; Q a ramp hung on P's left at s 50 (its start), Q's chunks not read.
