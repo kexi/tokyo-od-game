@@ -21,7 +21,7 @@
 // pavement inside the bands and under an edge line moved out, the ramps' feet beside the bands,
 // piers over the lanes, and the nodes with two segments only.
 // One JSON log line (street_bands_measured) and --out <file> for the full list.
-// Run: pnpm exec tsx scripts/measureStreetBands.ts <dir|label> [--cache <dir>] [--plateau <dir>] [--out <file>]
+// Run: pnpm exec tsx scripts/measureStreetBands.ts <dir|label> [--cache <dir>] [--plateau <dir>] [--out <file>] [--moves <file>]
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { VectorTile } from "@mapbox/vector-tile";
@@ -40,8 +40,8 @@ import { laneCentreOffset, laneWidth, STREET, streetRoom } from "../src/world/la
 import { polygonsOf, WARD_TILES, type PavementPolygon } from "../src/world/pavements.ts";
 import { isExpressway, sourceOf } from "../src/world/roadClass.ts";
 import { type RoadLine, type Segment } from "../src/world/roads.ts";
-import { ROAD_TILE_ZOOM } from "../src/world/roadTiles.ts";
-import { readTime } from "../src/time/ruleTime.ts";
+import { ROAD_TILE_ZOOM, widthBoundsOf } from "../src/world/roadTiles.ts";
+import { isAllDay, readTime } from "../src/time/ruleTime.ts";
 import { ROAD_LANES_COLUMN } from "../src/world/roadLanesData.ts";
 import { readExpresswayFiles } from "./expresswayFiles.ts";
 import { classify, type Klass, laneZero, mergeBands, offCentreLanes, type Ruling } from "./streetBands.ts";
@@ -249,6 +249,41 @@ type Move = {
   jartic: "split" | "one-way" | "none";
   /** 手順 0c の 3, for a wide street (13 m or more) GSI draws two-way but JARTIC makes one-way. */
   oneway?: OnewaySource;
+  /** R1-2b PR 2 手順 0-A: form E (move each sample by its own need, up to its cap) on this segment. */
+  e: MoveE;
+};
+/**
+ * R1-2b PR 2 手順 0-A (r1-2b-pr2-instructions.md 3 節 form E, 4 節): what moving this segment sample
+ * by sample would need and allow. `need` (m) at a sample: how far sideways, away from the site, the
+ * carriageway's edge must go to reach the band's edge (0 where the band misses the carriageway);
+ * a sample whose band straddles the centre line, or with bands on both sides, cannot move. `capM`:
+ * the most it may go, its carriageway's outer edge kept within half the 幅員 class's upper bound (the
+ * 幅員 itself for the open class and for an exact width) and within EXTENT_MARGIN_M × the slope.
+ */
+type MoveE = {
+  memoClass: string;
+  widthClassUpperM: number | null;
+  onewayFrom: "gsi" | "jartic-all-day" | "jartic-timed" | "two-way";
+  foot: string | null;
+  bridge: boolean;
+  needSamples: number;
+  needMedianM: number | null;
+  needMaxM: number | null;
+  capM: number;
+  movableSamples: number;
+  lanesNow: number;
+  /** Lanes the street's own width holds off the band (R1-2a's offCentre, 0c の 6); form E moves the whole carriageway, so a movable sample keeps lanesNow. */
+  lanesOffCentreInWidth: number;
+  verdict: "movable" | "partly movable" | "not movable";
+  reasons: string[];
+  /**
+   * On the side it would go to (the 0b option, the whole segment moved by its most): the shares of
+   * PLATEAU's pavement and islands and of this line drawn twice. Columns, not reasons: whether the
+   * pavement is newly met (not under the carriageway already) is not told here, and a doubled line
+   * does not block (追記 1 A6 4).
+   */
+  beyond: { pavement: number; twin: number };
+  junctions: { cross: number; tee: number; controlled: number };
 };
 /**
  * Where a JARTIC one-way on a two-way GSI line comes from (手順 0c の 3): the voting JARTIC line's
@@ -284,6 +319,131 @@ async function buildingsOf(x: number, y: number): Promise<number[][]> {
       );
   }
   return out;
+}
+
+/** memo 1's class of a move case (as movesSummary.byMemoClass reads it). */
+function memoClassOf(widthM: number, hasJarticOneway: boolean, shape: Move["shape"]): string {
+  if (widthM < 13) return "γ";
+  if (hasJarticOneway) return "β1";
+  if (shape === "middle") return "β2";
+  if (shape === "side") return "β3";
+  return "β1-like (one-way line)";
+}
+
+/** expresswayRoads.ts EXTENT_MARGIN_M (not exported) and memo 4.2's slope (7.5 m across in 40 m along). */
+const EXTENT_MARGIN_M = 60;
+const MOVE_SLOPE = 7.5 / 40;
+
+/** Form E on a segment (MoveE): per sample need and cap, the line's verdict and its reasons. */
+function formE(c: {
+  seg: Segment;
+  kept: Array<{ l: number; strips: Strip[] }>;
+  carriageway: number;
+  lanes: number;
+  lanesOffCentreInWidth: number;
+  options: MoveOption[];
+  isJarticWide: boolean;
+  shape: Move["shape"];
+  foot: string | null;
+  junctionAt: (node: number) => { ways: number; isControlled: boolean };
+  toJ: [number, number];
+}): MoveE {
+  const W = c.seg.line.width;
+  const bounds = widthBoundsOf(W);
+  const isOpenOrExact = !Number.isFinite(bounds.upper) || bounds.upper === bounds.lower;
+  const upper = isOpenOrExact ? W : bounds.upper;
+  const capM = Math.max(0, Math.min(upper / 2 - c.carriageway / 2, EXTENT_MARGIN_M * MOVE_SLOPE));
+  const rule = c.seg.onewayRule;
+  const onewayFrom: MoveE["onewayFrom"] =
+    c.seg.line.oneway !== 0
+      ? "gsi"
+      : rule === null
+        ? "two-way"
+        : isAllDay(rule.time)
+          ? "jartic-all-day"
+          : "jartic-timed";
+  const needs: number[] = [];
+  let movable = 0;
+  let unmovableSide = 0;
+  const dirs = new Set<number>();
+  for (const h of c.kept) {
+    const right = Math.min(...h.strips.map((b) => b.right));
+    const left = Math.max(...h.strips.map((b) => b.left));
+    const isOnLine = right < 0 && left > 0;
+    const hasBoth = h.strips.some((b) => b.right > 0) && h.strips.some((b) => b.left < 0);
+    if (isOnLine || hasBoth) {
+      unmovableSide++;
+      continue;
+    }
+    const isSiteLeft = right >= 0;
+    const need = isSiteLeft ? c.carriageway / 2 - right : left + c.carriageway / 2;
+    const isClearAlready = need <= 0;
+    if (isClearAlready) continue;
+    needs.push(need);
+    dirs.add(isSiteLeft ? -1 : 1);
+    if (need <= capM) movable++;
+  }
+  const sorted = needs.toSorted((a, b) => a - b);
+  const needMaxM = sorted.length ? sorted.at(-1)! : null;
+  const reasons: string[] = [];
+  const isJarticOneway = onewayFrom.startsWith("jartic");
+  if (isJarticOneway) reasons.push("jartic one-way");
+  if (c.foot !== null) reasons.push("foot");
+  if (c.seg.line.bridge === true) reasons.push("bridge");
+  if (unmovableSide > 0 || dirs.size > 1) reasons.push("site both sides or on the line");
+  if (needs.length > movable) reasons.push("over the cap");
+  // The side it would go to (away from the site): that option's shares of buildings and streets.
+  const side = dirs.has(1) ? "left" : "right";
+  const option = c.options.find((o) => o.side === side);
+  if ((option?.shares.site ?? 0) > 0) reasons.push("site beyond");
+  if ((option?.shares.building ?? 0) > 0) reasons.push("building beyond");
+  if ((option?.shares.street ?? 0) > 0) reasons.push("street alongside beyond");
+  const isLineBlocked = reasons.some((r) =>
+    [
+      "jartic one-way",
+      "foot",
+      "bridge",
+      "site beyond",
+      "building beyond",
+      "street alongside beyond",
+    ].includes(r),
+  );
+  const verdict: MoveE["verdict"] =
+    isLineBlocked || movable === 0
+      ? "not movable"
+      : movable < needs.length || unmovableSide > 0
+        ? "partly movable"
+        : "movable";
+  // Junctions within the stretch moved and its slope's reach: the segment's own end nodes.
+  const reach = (needMaxM ?? 0) / MOVE_SLOPE;
+  const junctions = { cross: 0, tee: 0, controlled: 0 };
+  for (const [i, node] of [c.seg.from, c.seg.to].entries()) {
+    const isInReach = c.toJ[i] <= reach;
+    if (!isInReach) continue;
+    const j = c.junctionAt(node);
+    if (j.ways >= 4) junctions.cross++;
+    else if (j.ways === 3) junctions.tee++;
+    if (j.isControlled) junctions.controlled++;
+  }
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  return {
+    memoClass: memoClassOf(W, c.isJarticWide, c.shape),
+    widthClassUpperM: isOpenOrExact ? null : bounds.upper,
+    onewayFrom,
+    foot: c.foot,
+    bridge: c.seg.line.bridge === true,
+    needSamples: needs.length,
+    needMedianM: sorted.length ? r2(sorted[Math.floor(sorted.length / 2)]) : null,
+    needMaxM: needMaxM === null ? null : r2(needMaxM),
+    capM: r2(capM),
+    movableSamples: movable,
+    lanesNow: c.lanes,
+    lanesOffCentreInWidth: c.lanesOffCentreInWidth,
+    verdict,
+    reasons,
+    beyond: { pavement: option?.shares.pavement ?? 0, twin: option?.shares.streetTwin ?? 0 },
+    junctions,
+  };
 }
 
 /** Distance from p to a polyline. */
@@ -491,15 +651,16 @@ for (const [key, focus] of groups) {
   const onPavement = (x: number, z: number, kinds: readonly string[]) =>
     pavements.some((p) => kinds.includes(p.kind) && insidePolygon(x, z, p.ring));
   // The feet's joins: a connector's node on a street.
-  const footNodes: P[] = [];
+  const footNodes: Array<P & { name: string }> = [];
   for (const seg of graph.segments) {
     const isConnector = sourceOf(seg.line) === "osm" && seg.line.structure === "ground";
     if (!isConnector) continue;
+    const name = (seg.line.nodeIds ?? []).find((id) => id.startsWith("xw:") && !id.includes("|")) ?? "?";
     for (const node of [seg.from, seg.to]) {
       const meetsStreet = (graph.nodes.get(node) ?? []).some((id) => isStreet(graph.segments[id]));
       if (!meetsStreet) continue;
       const p = node === seg.from ? seg.pts[0] : seg.pts[seg.pts.length - 1];
-      footNodes.push({ x: p.x, z: p.z });
+      footNodes.push({ x: p.x, z: p.z, name: name.replace(/^xw:/, "") });
     }
   }
   // GSI's buildings and JARTIC's one-way lines round the group, in the frame (手順 0b).
@@ -836,6 +997,31 @@ for (const [key, focus] of groups) {
           }
       }
       const jartic: Move["jartic"] = ways.size === 2 ? "split" : ways.size === 1 ? "one-way" : "none";
+      const e = formE({
+        seg,
+        kept,
+        carriageway: cw,
+        lanes,
+        lanesOffCentreInWidth: offCentre,
+        options,
+        isJarticWide: isWideRuledOneway(seg),
+        shape,
+        foot:
+          footNodes.find((f) =>
+            [seg.pts[0], seg.pts[seg.pts.length - 1]].some((p) => Math.hypot(p.x - f.x, p.z - f.z) < 0.5),
+          )?.name ?? null,
+        junctionAt: (node: number) => {
+          const ids = graph.nodes.get(node) ?? [];
+          const at = seg.from === node ? seg.pts[0] : seg.pts[seg.pts.length - 1];
+          const near5 = (p: Vector3) => Math.hypot(p.x - at.x, p.z - at.z) <= 5;
+          const isControlled =
+            (applied?.stopLines.some((sl) => near5(sl.pos)) ?? false) ||
+            (applied?.crossings.some((c) => near5(c.pos)) ?? false) ||
+            (applied?.signals.some((q) => near5(q)) ?? false);
+          return { ways: ids.filter((id) => isStreet(graph.segments[id])).length, isControlled };
+        },
+        toJ,
+      });
       moves.push({
         seg: seg.id,
         at: [round(g.lat, 1e6), round(g.lon, 1e6)],
@@ -853,6 +1039,7 @@ for (const [key, focus] of groups) {
         footJoined,
         jartic,
         ...(isWideRuledOneway(seg) ? { oneway: onewaySourceOf(seg) } : {}),
+        e,
       });
     }
     const row: Banded = {
@@ -1071,6 +1258,32 @@ const movesSummary = {
             ? "β3"
             : "β1-like (one-way line)",
   ),
+  // R1-2b PR 2 手順 0-A: form E's verdicts by memo class (count, length m), and the reasons.
+  formE: (() => {
+    const out: Record<string, Record<string, { n: number; m: number }>> = {};
+    const reasons: Record<string, Record<string, { n: number; m: number }>> = {};
+    for (const m of placed) {
+      const isTarget = ["γ", "β3", "β1"].includes(m.e.memoClass);
+      if (!isTarget) continue;
+      out[m.e.memoClass] ??= {};
+      const v = (out[m.e.memoClass][m.e.verdict] ??= { n: 0, m: 0 });
+      v.n++;
+      v.m += m.lengthM;
+      for (const r of m.e.reasons) {
+        reasons[m.e.memoClass] ??= {};
+        const w = (reasons[m.e.memoClass][r] ??= { n: 0, m: 0 });
+        w.n++;
+        w.m += m.lengthM;
+      }
+    }
+    // Where the one-way comes from, by place (the same places as the verdicts).
+    const onewayFrom: Record<string, number> = {};
+    for (const m of placed) {
+      const isTarget = ["γ", "β3", "β1"].includes(m.e.memoClass);
+      if (isTarget) onewayFrom[m.e.onewayFrom] = (onewayFrom[m.e.onewayFrom] ?? 0) + 1;
+    }
+    return { byVerdict: out, byReason: reasons, onewayFrom };
+  })(),
   // 手順 0c の 3: the β1 places (wide, JARTIC one-way on a two-way line), by OSM's say.
   onewayAtSites: tally((m) => (m.oneway ? m.oneway.osm : "-")),
   ruledOneways: (() => {
@@ -1104,3 +1317,9 @@ if (outPath !== undefined)
     outPath,
     JSON.stringify({ summary, segments: banded, jumps, piersOverLanes }, null, 1) + "\n",
   );
+// A site chunk left out for a road tile missing from the cache fails the run (exit code 1, after the
+// output is written): the counts were then of a network with a hole in it, and nothing said so
+// (central's γ read 75 for 76). Why by default and not behind a flag: a run for its numbers (--moves,
+// --out) would pass a hole again, as the lanes and hole probes would not (#128's review W1).
+const hasSkipped = skipped > 0;
+if (hasSkipped) process.exitCode = 1;

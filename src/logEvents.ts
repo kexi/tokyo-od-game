@@ -1628,6 +1628,7 @@ export const LOG_EVENTS = {
    */
   street_same_road_measured: info({
     dir: z.string(),
+    skippedForMissingTiles: count,
     lines: count,
     alphaM: count,
     extendedM: z.number().nonnegative(),
@@ -1650,6 +1651,7 @@ export const LOG_EVENTS = {
    */
   street_same_road_islands_counted: info({
     dir: z.string(),
+    missingTiles: count,
     windows: count,
     edge: z.strictObject({ count, lengthM: count }),
     inside: z.strictObject({ count, lengthM: count }),
@@ -1664,6 +1666,7 @@ export const LOG_EVENTS = {
    */
   street_same_road_stability_measured: info({
     dir: z.string(),
+    missingTiles: count,
     windows: count,
     lines: count,
     alphaLines: count,

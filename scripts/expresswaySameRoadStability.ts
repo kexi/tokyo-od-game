@@ -100,12 +100,22 @@ const keyOf = (l: RoadLine) => {
 type Answer = { window: string; answer: string; inBand: boolean };
 const answers = new Map<string, Answer[]>();
 const seen = new Set<string>();
+/**
+ * Road tiles a window wanted that the cache does not have (counted, and the run fails on any). Why
+ * not read them as empty, as before: a window with an empty tile is a network with a hole in it, and
+ * nothing said so (#128's review M1: 326 of central's 897 tiles were missing).
+ */
+const missingTiles = new Set<string>();
 let windows = 0;
 for (const tile of carTiles) {
   const [tx, ty] = tile.split("-").map(Number);
   const tiles: RoadLine[] = [];
   for (let dy = -1; dy <= 1; dy++)
-    for (let dx = -1; dx <= 1; dx++) tiles.push(...((await read(tx + dx, ty + dy)) ?? []));
+    for (let dx = -1; dx <= 1; dx++) {
+      const t = await read(tx + dx, ty + dy);
+      if (t === null) missingTiles.add(`${tx + dx}-${ty + dy}`);
+      else tiles.push(...t);
+    }
   const raw = tiles.filter(nearSite);
   for (const fx of CAR_AT)
     for (const fy of CAR_AT) {
@@ -239,6 +249,7 @@ const rows = lines.map(([line, booked]) => {
 });
 const summary = {
   dir: target,
+  missingTiles: missingTiles.size,
   windows,
   lines: rows.length,
   alphaLines: rows.filter((r) => r.isAlpha).length,
@@ -253,3 +264,6 @@ if (out !== undefined)
     out,
     JSON.stringify({ summary, differing: rows.filter((r) => distinct(r.list).size > 1) }, null, 1) + "\n",
   );
+// Fails after the output is written, as the probes do.
+const hasMissingTiles = missingTiles.size > 0;
+if (hasMissingTiles) process.exitCode = 1;

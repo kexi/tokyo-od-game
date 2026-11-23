@@ -907,6 +907,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   },
   street_same_road_measured: {
     dir: "public/data/expressway",
+    skippedForMissingTiles: 0,
     lines: 2,
     alphaM: 63,
     extendedM: 1.3,
@@ -924,6 +925,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   },
   street_same_road_islands_counted: {
     dir: "r1b-pruned-cut-central",
+    missingTiles: 0,
     windows: 121,
     edge: { count: 448, lengthM: 671442 },
     inside: { count: 655, lengthM: 358255 },
@@ -933,6 +935,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   },
   street_same_road_stability_measured: {
     dir: "public/data/expressway",
+    missingTiles: 0,
     windows: 120,
     lines: 18,
     alphaLines: 1,
