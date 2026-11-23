@@ -7,6 +7,7 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:vitest-r1-5-pr133, at: 2026-11-24T04:00:00Z }
   - { by: process:control-heights-r1-5a, at: 2026-11-24T00:40:00Z }
   - { by: process:vitest-format-main-r1-cs, at: 2026-11-24T00:45:00Z }
   - { by: process:check-street-drive-r1-5a-a1, at: 2026-11-23T15:02:00Z }
@@ -4709,8 +4710,8 @@ S6 PR 7c の街路の走行（`.qa/street-drive.mts`、git に無く古い workt
   - **種類で比べる**: 今の回の不合格の種類（数を除く）が、main の回のその場所の不合格の種類の部分集合のときだけ `known-main`。新しい種類が 1 つでもあれば不合格（main で沈んだだけの場所の respawn など）。止まった距離・帯の外の数が増えたのは、同じ種類として読む。#132 の初めの版は場所で比べ、main でも落ちる 13 か所では新しい不合格も隠れていた（レビュー M3）。
   - **baseline は main の `summary.json` の鍵と同じ鍵の結果だけを読む**（`readMainResults`）。main のフォルダに main の古いデータの結果（main の側の `stale`）が残っていても、main の結果として比べない。summary の無いフォルダ・鍵の無い summary・その回の結果で `kinds` の無い物（種類を持つ前の版）は、使えないと言って止まる: 種類が無いと、無しと読めば全部が新しい不合格になり、全部と読めば隠れる（再レビュー r1・r3）。
   - `known-main` は合格に数えず、`summary.json` の `knownMain` に分ける。main が合格・未走行・invalid の場所は、そのまま不合格。結果のファイルに main の判定・種類・`served` を写す。
-- 結果は場所ごとに `.qa/street-drive-<label>/<id>.json`（配ったデータの鍵・場所・点・判定・各回）。**再開は、配ったデータ（meta とタイルのハッシュ）・事例の一覧（ファイルの中身の SHA-256）・`--baseline`（main の summary の鍵の SHA-256）が今の回と同じ結果だけを飛ばす**。パスではなく中身なので、同じパスに書き直した一覧や、同じフォルダに走り直した main は、別の回になる（`scripts/qa/streetResults.ts`）。違う結果は走り直し、走らない場所の違う結果は `summary.json` の `stale` に出して数えない。invalid の結果も残るので、走り直すにはファイルを消す。
-- `summary.json` の `missing` は、表の場所のうち今の回の結果が無い物（`--only` で分けて走らせた途中など）。**終了コードは、不合格 1、invalid 2、missing 5、known 3、known-main だけ 4、全部合格 0**（`exitCodeOf`）。missing があると 0 にならないので、分けて走らせた途中のフォルダは緑に読めない。
+- 結果は場所ごとに `.qa/street-drive-<label>/<id>.json`（配ったデータの鍵・場所・点・判定・各回）。**再開は、配ったデータ（meta とタイルのハッシュ）・事例の一覧（ファイルの中身の SHA-256）・`--baseline`（main の summary の鍵と、読んだ main の場所ごとの判定・種類の SHA-256、`baselineSha256`）が今の回と同じ結果だけを飛ばす**。パスではなく中身なので、同じパスに書き直した一覧は別の回になる。main の判定が 1 か所でも変われば（同じフォルダに走り直して合格になった、実行時のコードだけが変わった）別の回になり、古い `known-main` は残らない（#133 のレビュー B1: main の鍵だけでは、main が合格に戻った場所の known-main が再開で残った）（`scripts/qa/streetResults.ts`）。違う結果は走り直し、走らない場所の違う結果は `summary.json` の `stale` に出して数えない。invalid の結果も残るので、走り直すにはファイルを消す。
+- `summary.json` の `missing` は、表の場所のうち今の回の結果が無い物（`--only` で分けて走らせた途中など）。**終了コードは、不合格 1、invalid 2、missing 5、known 3、known-main だけ 4、全部合格 0**（`exitCodeOf`）。missing があると 0 にならないので、分けて走らせた途中のフォルダは緑に読めない。 baseline を読めない（summary が無い: main をそこで走らせていない・途中で止まった、鍵が無い、種類が無い）ときは、走る前に終了コード 6 で止まる。配ったデータの照らし合わせ（`servedData.ts`）で止まるときは 1（床版の走行と同じ）。走りの初めに `summary.json` を消し、終わりに書くので、途中で止まった main のフォルダは baseline に使えない（#133 のレビュー o1）。
 
 ## 計測のフォルダを配る（`scripts/xwDataServe.ts`、`just serve-expressway-data <dir> [port]`）
 

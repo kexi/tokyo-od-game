@@ -25,8 +25,10 @@
 // (streetDriveVerdict.ts againstMain): S7-6's line is "no failure main's result does not have".
 //
 // Exit 1 a place failed, 2 one stayed invalid, 5 a place of the table has no result of this run
-// (driven in parts, or other data), 3 a known failure, 4 only known-main ones, else 0.
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+// (driven in parts, or other data), 3 a known failure, 4 only known-main ones, else 0; 6 the
+// baseline was refused (no summary: main not driven there or stopped midway, no key, no kinds).
+// The served data's check (servedData.ts) stops with 1 too, before any drive, as drive-deck.ts.
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { HoleLanes } from "../expresswayCases.ts";
 import { readExpresswayFiles } from "../expresswayFiles.ts";
@@ -85,14 +87,33 @@ const STEP_S = 0.25;
 const files = readExpresswayFiles();
 /** The dev server serves the same data (servedData.ts): else nothing is driven. */
 const served = await checkServedData(base);
-/** main's results of its summary's run (streetResults.ts), or none without --baseline. */
-const mainResults = baselineDir === undefined ? null : readMainResults(baselineDir);
+/**
+ * main's results of its summary's run (streetResults.ts), or none without --baseline. A baseline the
+ * tool cannot read stops the run with exit code 6 (BASELINE_REFUSED), apart from a failure's 1.
+ */
+const BASELINE_REFUSED = 6;
+function refusing<T>(read: () => T): T {
+  try {
+    return read();
+  } catch (error) {
+    process.stdout.write(`${JSON.stringify({ label, baselineRefused: String(error) })}\n`);
+    process.exit(BASELINE_REFUSED);
+  }
+}
+// main's results read from a folder of a label other than main-…: worth a look (it may be a branch's).
+const isOddBaseline =
+  baselineDir !== undefined && !/(^|[/\\])street-drive-main-[^/\\]*\/?$/.test(baselineDir);
+if (isOddBaseline)
+  process.stderr.write(
+    `${JSON.stringify({ label, warning: "the baseline folder is not .qa/street-drive-main-<label>", baselineDir })}\n`,
+  );
+const mainResults = baselineDir === undefined ? null : refusing(() => readMainResults(baselineDir));
 const key: ResultKey = {
   metaSha256: served.metaSha256,
   tilesSha256: served.tilesSha256,
   siteLanes: fileSha256(siteLanes),
   holeLanes: fileSha256(holeLanes),
-  baseline: mainResults?.keySha256 ?? null,
+  baseline: mainResults?.sha256 ?? null,
 };
 const cases = knownCasesFrom(readList<SiteLanes>(siteLanes), readList<HoleLanes>(holeLanes), files.byRun);
 const project = (run: string, lat: number, lon: number) => projectOnRun(files.byRun, run, lat, lon);
@@ -242,6 +263,10 @@ const readIfThere = <T>(file: string): T | null =>
   existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as T) : null;
 
 mkdirSync(outDir, { recursive: true });
+// No summary while the run is on: a run stopped midway (the 25 min lock, Ctrl-C) leaves none, so a
+// branch reading this folder as its baseline is refused rather than reading the older run's results
+// that were not driven again yet (PR #133 review o1).
+rmSync(join(outDir, "summary.json"), { force: true });
 for (const p of places) {
   const file = join(outDir, `${p.id}.json`);
   const isDone = isReusable(readIfThere<{ key?: ResultKey }>(file), key);

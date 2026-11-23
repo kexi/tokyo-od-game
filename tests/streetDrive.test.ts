@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { readExpresswayFiles } from "../scripts/expresswayFiles";
 import {
   againstMain,
@@ -16,12 +16,11 @@ import {
 } from "../scripts/qa/streetDriveVerdict";
 import { knownCasesFrom, projectOnRun } from "../scripts/qa/streetKnown";
 import { placeLatLon, placesOf, STREET_PLACES } from "../scripts/qa/streetPlaces";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   isReusable,
-  keySha256,
   pointsOf,
   readMainResults,
   type ResultKey,
@@ -265,7 +264,7 @@ describe("main's results (--baseline) and the logged points", () => {
   };
   /** A folder of main's results: its summary's key, and results by place. */
   function mainFolder(summaryKey: ResultKey | undefined, results: Record<string, unknown>) {
-    const dir = mkdtempSync(join(tmpdir(), "street-main-"));
+    const dir = tempDir();
     writeFileSync(join(dir, "summary.json"), JSON.stringify(summaryKey ? { key: summaryKey } : {}));
     for (const [id, r] of Object.entries(results)) writeFileSync(join(dir, `${id}.json`), JSON.stringify(r));
     return dir;
@@ -277,7 +276,17 @@ describe("main's results (--baseline) and the logged points", () => {
     ...(kinds ? { kinds } : {}),
   });
 
-  it("reads only the results of the run main's summary names, keyed by that key's hash", () => {
+  const made: string[] = [];
+  const tempDir = () => {
+    const dir = mkdtempSync(join(tmpdir(), "street-main-"));
+    made.push(dir);
+    return dir;
+  };
+  afterAll(() => {
+    for (const dir of made) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("reads only the results of the run main's summary names", () => {
     const older = { ...key, tilesSha256: "older" };
     const dir = mainFolder(key, {
       a: res("a", "fail", key, ["under"]),
@@ -286,13 +295,32 @@ describe("main's results (--baseline) and the logged points", () => {
     const main = readMainResults(dir);
     expect([...main.byPlace.keys()]).toEqual(["a"]);
     expect(main.byPlace.get("a")).toMatchObject({ verdict: "fail", kinds: ["under"] });
-    expect(main.keySha256).toBe(keySha256(key));
+  });
+
+  it("hashes the results it read, not main's key alone: the same key over another verdict or kinds is another baseline (PR #133 review B1)", () => {
+    const failed = readMainResults(mainFolder(key, { a: res("a", "fail", key, ["under"]) })).sha256;
+    const passed = readMainResults(mainFolder(key, { a: res("a", "pass", key, []) })).sha256;
+    const respawned = readMainResults(
+      mainFolder(key, { a: res("a", "fail", key, ["respawned", "under"]) }),
+    ).sha256;
+    const again = readMainResults(mainFolder(key, { a: res("a", "fail", key, ["under"]) })).sha256;
+    const otherKey = readMainResults(
+      mainFolder(
+        { ...key, metaSha256: "n" },
+        { a: res("a", "fail", { ...key, metaSha256: "n" }, ["under"]) },
+      ),
+    ).sha256;
+    expect(new Set([failed, passed, respawned, otherKey]).size).toBe(4);
+    expect(again).toBe(failed);
   });
 
   it("refuses a baseline with no summary, a summary with no key, or a result of the run with no kinds", () => {
-    const bare = mkdtempSync(join(tmpdir(), "street-main-"));
+    const bare = tempDir();
     expect(() => readMainResults(bare)).toThrow(/no summary\.json/);
     expect(() => readMainResults(mainFolder(undefined, {}))).toThrow(/no key/);
+    const nullKey = tempDir();
+    writeFileSync(join(nullKey, "summary.json"), JSON.stringify({ key: null }));
+    expect(() => readMainResults(nullKey)).toThrow(/no key/);
     expect(() => readMainResults(mainFolder(key, { a: res("a", "fail", key) }))).toThrow(/no kinds/);
   });
 
@@ -309,7 +337,12 @@ describe("main's results (--baseline) and the logged points", () => {
     expect(code).toContain("STREET_PLACES.map((p) => p.id)");
     expect(code).toContain("mainResults?.byPlace.get(p.id)");
     expect(code).toContain("fileSha256(siteLanes)");
-    expect(code).toContain("fileSha256(holeLanes)");
+    expect(code).toContain("siteLanes: fileSha256(siteLanes)");
+    expect(code).toContain("holeLanes: fileSha256(holeLanes)");
+    expect(code).toContain("baseline: mainResults?.sha256");
+    expect(code).toContain("readMainResults(baselineDir)");
+    expect(code).toContain("const BASELINE_REFUSED = 6;");
+    expect(code).toContain('rmSync(join(outDir, "summary.json")');
   });
 });
 
