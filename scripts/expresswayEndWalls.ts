@@ -85,8 +85,19 @@ const cast = (world: RAPIER.World, from: Vector3, toward: Vector3, max: number) 
 /** --raise <m>: the boxes' tops raised by this much in the check alone, to see the check catch them. */
 const RAISE_M = Number(flag("raise") ?? 0);
 
-/** Another run's chunk near an end: its world alone, its centre line in plan (from its stations), its carriageway's half width. */
-type Other = { chunk: XwChunk; world: RAPIER.World; line: Array<[number, number]>; hw: number };
+/**
+ * Another run's chunk near an end: its world alone, its centre line in plan (from its stations), its
+ * carriageway's half width, its build (rings and sides, for where its road reaches), and whether the
+ * end shares one surface with its run (DeckIndex.partnersAt: `same`, as the rule leaves it out).
+ */
+type Other = {
+  chunk: XwChunk;
+  world: RAPIER.World;
+  line: Array<[number, number]>;
+  hw: number;
+  built: Built;
+  isSame: boolean;
+};
 
 /**
  * The chunks of other runs whose station box comes within NEIGHBOUR_REACH_DEG of an end node, each
@@ -97,6 +108,7 @@ function othersAt(
   own: XwChunk,
   at: { lon: number; lat: number },
   frame: LocalFrame,
+  partners: readonly string[],
 ) {
   const r = NEIGHBOUR_REACH_DEG;
   const out: Other[] = [];
@@ -114,7 +126,14 @@ function othersAt(
       const p = frame.toLocal(c.st[i + ST.lat], c.st[i + ST.lon], 0);
       line.push([p.x, p.z]);
     }
-    out.push({ chunk: c, world, line, hw: (c.lanes * c.laneWidth + c.shoulderL + c.shoulderR) / 2 });
+    out.push({
+      chunk: c,
+      world,
+      line,
+      hw: (c.lanes * c.laneWidth + c.shoulderL + c.shoulderR) / 2,
+      built: x,
+      isSame: partners.includes(c.run),
+    });
   }
   return out;
 }
@@ -136,23 +155,103 @@ function offLine(line: Array<[number, number]>, x: number, z: number): { d: numb
   return best;
 }
 
-/** What a ray met on another run's chunk, by where in plan (its stations) and how high. */
+/**
+ * Whether a point in plan lies over a deck's road as its build reaches (R1-1b 追記 3 C3 (b)): between
+ * two of its rings, from the right side's road end to the left's (DeckSide.reach, or the 壁高欄's or
+ * 分離壁's inner face where it stands nearer), the two rings' ends taken in proportion along. Why not
+ * the stations' half width for a `same` partner: it runs on past the 分離壁 and the seam over this
+ * deck, and counts the partner's walls' tops as its road. With it, the built road's height there
+ * (the two rings' road points at that u, in proportion): to tell, in the list, a road met from the
+ * top of a wall standing over the reach.
+ */
+function onReach(built: Built, x: number, z: number): { isOn: boolean; roadY: number | null } {
+  const face = (d: Built["sides"][number]["left"]) => (d.wall ? Math.min(d.wall.inner, d.reach) : d.reach);
+  const ends = built.sides.map((sd) => ({ lo: -face(sd.right), hi: face(sd.left) }));
+  for (let i = 0; i + 1 < built.rings.length; i++) {
+    const a = built.rings[i];
+    const b = built.rings[i + 1];
+    const lx = b.c.x - a.c.x;
+    const lz = b.c.z - a.c.z;
+    const len2 = lx * lx + lz * lz;
+    // A seam's ring kept twice (one place, two sections) has no length to be between.
+    const isSeam = len2 < 1e-8;
+    if (isSeam) continue;
+    const tau = ((x - a.c.x) * lx + (z - a.c.z) * lz) / len2;
+    const isBetween = tau >= 0 && tau <= 1;
+    if (!isBetween) continue;
+    const cx = a.c.x + lx * tau;
+    const cz = a.c.z + lz * tau;
+    const tx = a.t.x + (b.t.x - a.t.x) * tau;
+    const tz = a.t.z + (b.t.z - a.t.z) * tau;
+    const tl = Math.hypot(tx, tz) || 1;
+    // Left of travel is (t.z, −t.x), as ringPoint.
+    const u = ((x - cx) * tz - (z - cz) * tx) / tl;
+    const lo = ends[i].lo + (ends[i + 1].lo - ends[i].lo) * tau;
+    const hi = ends[i].hi + (ends[i + 1].hi - ends[i].hi) * tau;
+    const isOn = u >= lo && u <= hi;
+    if (!isOn) continue;
+    const ya = ringPoint(a, u, liftAt(a, u, false)).y;
+    const yb = ringPoint(b, u, liftAt(b, u, false)).y;
+    return { isOn, roadY: ya + (yb - ya) * tau };
+  }
+  return { isOn: false, roadY: null };
+}
+
+/**
+ * Whether a point in plan lies in one of a deck's own end walls (its boxes, PARAPET_WIDTH back from
+ * its end face, lo..hi across): where two runs end on each other, a ray down meets the other's end
+ * wall first, over its road's reach, and that is a wall, not its road.
+ */
+function inEndWall(built: Built, x: number, z: number): boolean {
+  for (const w of built.endWalls) {
+    const ring = built.rings[w.end === "start" ? 0 : built.rings.length - 1];
+    const back = w.end === "start" ? 1 : -1;
+    const along = back * ((x - ring.c.x) * ring.t.x + (z - ring.c.z) * ring.t.z);
+    const u = (x - ring.c.x) * ring.t.z - (z - ring.c.z) * ring.t.x;
+    const isInDepth = along >= -1e-3 && along <= PARAPET_WIDTH.value + 1e-3;
+    const isAcross = w.boxes.some((b) => u >= b.lo - 1e-3 && u <= b.hi + 1e-3);
+    if (isInDepth && isAcross) return true;
+  }
+  return false;
+}
+
+/**
+ * What a ray met on another run's chunk, by where in plan (its stations) and how high, at `d` back
+ * from the end face, with the reads of "its road" side by side (R1-1b 追記 3 C3): `onReach` over its
+ * built road's reach (b), `level` within MERGE_MAX_DZ of this road (c). `same`: the end shares one
+ * surface with that run (DeckIndex.partnersAt), and its road is read by (b); any other by its
+ * stations' half width (追記 2 B3).
+ */
 type Touch = {
   run: string;
   chunk: string;
   u: number;
+  d: number;
   kind: "road" | "underside" | "parapet" | "retaining" | "girder" | "other";
   dyM: number;
+  /** The box's top over the face's underside (face − SLAB): over 0, it stands into that slab. */
+  overM: number;
+  /** The face over that run's built road there (on its reach), or null off its reach. */
+  overRoadM: number | null;
+  same: boolean;
+  onReach: boolean;
+  level: boolean;
+  /** The point lies in that run's own end wall (inEndWall), its box met from above or from within. */
+  inEndWall: boolean;
 };
 
 /**
  * Where an end wall's boxes stand on another run's carriageway (R1-1b 追記 2 B3): down from each box's
  * top (+ `raise`) every 0.25 m across, at the face, the middle and the back of the box, in each other
- * chunk's world alone, the first face met down to MERGE_MAX_DZ under this road. A face met within
- * that chunk's carriageway half width of its centre line (from its stations, not the rule's strip)
- * is its road: the box stands on it (or in its slab), by `top − face`. Faces met elsewhere are its
- * 壁高欄 (within PARAPET_WIDTH past the carriageway), its retaining wall or girder, or other: listed,
- * not counted. The check is the physical slab, not the rule's function.
+ * chunk's world alone, the first face met down to MERGE_MAX_DZ under this road. A face met on that
+ * chunk's road is where the box stands on it (or in its slab), by `top − face` (`pokeM`): for a run
+ * the end shares one surface with (`same`), over its road as its build reaches (追記 3 C3 (b)); for
+ * any other, within its carriageway half width of its centre line (from its stations, not the rule's
+ * strip). Faces met elsewhere are its 壁高欄 (within PARAPET_WIDTH past the carriageway), its
+ * retaining wall or girder, or other: listed, not counted. Set beside it, not judged (C3 (c)):
+ * `levelM`, the same over any face met within MERGE_MAX_DZ of this road, and `offWallM`, pokeM
+ * without the faces inside the other's own end wall (inEndWall: a read proposed, not the line). The
+ * check is the physical slab, not the rule's function.
  */
 function pokeOf(
   others: readonly Other[],
@@ -160,10 +259,12 @@ function pokeOf(
   end: "start" | "end",
   box: { lo: number; hi: number; top: number },
   raise: number,
-): { pokeM: number; touches: Touch[] } {
+): { pokeM: number; levelM: number; offWallM: number; touches: Touch[] } {
   const back = end === "start" ? 1 : -1;
   const top = box.top + raise;
   let pokeM = -Infinity;
+  let levelM = -Infinity;
+  let offWallM = -Infinity;
   const touches: Touch[] = [];
   for (const u of acrossOf(box.lo, box.hi))
     for (const d of [0.02, PARAPET_WIDTH.value / 2, PARAPET_WIDTH.value - 0.02]) {
@@ -175,7 +276,11 @@ function pokeOf(
         if (!hit) continue;
         const y = from.y - hit.timeOfImpact;
         const off = offLine(o.line, from.x, from.z);
-        const isRoad = off.isAlong && off.d <= o.hw;
+        const reached = onReach(o.built, from.x, from.z);
+        const isLevel = Math.abs(y - road.y) <= MERGE_MAX_DZ;
+        // A `same` partner's road is where its build reaches (追記 3 C3 (b)); any other's, its
+        // stations' carriageway half width (追記 2 B3).
+        const isRoad = o.isSame ? reached.isOn : off.isAlong && off.d <= o.hw;
         const kind: Touch["kind"] = isRoad
           ? "road"
           : off.d <= o.hw + PARAPET_WIDTH.value
@@ -187,14 +292,12 @@ function pokeOf(
                 : "other";
         // The faces a car meets are the road and the 壁高欄 (the slab's bottom is not solid): a road met is
         // that deck's top, its underside SLAB under it.
-        if (isRoad) pokeM = Math.max(pokeM, top - (y - SLAB));
-        touches.push({
-          run: o.chunk.run,
-          chunk: o.chunk.id,
-          u: Math.round(u * 100) / 100,
-          kind,
-          dyM: Math.round((y - road.y) * 1000) / 1000,
-        });
+        const overM = top - (y - SLAB);
+        const isEndWall = inEndWall(o.built, from.x, from.z);
+        if (isRoad) pokeM = Math.max(pokeM, overM);
+        if (isRoad && !isEndWall) offWallM = Math.max(offWallM, overM);
+        if (isLevel) levelM = Math.max(levelM, overM);
+        touches.push(touchAt(o, u, d, kind, y, road.y, overM, reached, isLevel, isEndWall));
       }
       // And up from 5 cm over this road to SLAB over the top: the road of a deck over the end, met
       // from below (its slab's bottom is not solid), its underside SLAB under it. Why both: a ray
@@ -205,47 +308,108 @@ function pokeOf(
         if (!hit) continue;
         const y = low.y + hit.timeOfImpact;
         const off = offLine(o.line, low.x, low.z);
-        const isUnderRoad = off.isAlong && off.d <= o.hw;
+        const reached = onReach(o.built, low.x, low.z);
+        const isLevel = Math.abs(y - road.y) <= MERGE_MAX_DZ;
+        const isUnderRoad = o.isSame ? reached.isOn : off.isAlong && off.d <= o.hw;
+        const overM = top - (y - SLAB);
+        if (isLevel) levelM = Math.max(levelM, overM);
         if (!isUnderRoad) continue;
-        pokeM = Math.max(pokeM, top - (y - SLAB));
-        touches.push({
-          run: o.chunk.run,
-          chunk: o.chunk.id,
-          u: Math.round(u * 100) / 100,
-          kind: "underside",
-          dyM: Math.round((y - road.y) * 1000) / 1000,
-        });
+        // A ray up from inside the other's end wall meets that box's top from within.
+        const isEndWall = inEndWall(o.built, low.x, low.z);
+        pokeM = Math.max(pokeM, overM);
+        if (!isEndWall) offWallM = Math.max(offWallM, overM);
+        touches.push(touchAt(o, u, d, "underside", y, road.y, overM, reached, isLevel, isEndWall));
       }
     }
-  return { pokeM, touches };
+  return { pokeM, levelM, offWallM, touches };
 }
 
-/** The touches of a wall summed by the run and kind met: across where, how high over this road, how many points. */
-function touchesOf(list: Touch[]) {
-  const by = new Map<
-    string,
-    { run: string; kind: string; uFrom: number; uTo: number; dyMin: number; dyMax: number; points: number }
-  >();
+/** Metres to the millimetre. */
+const mm = (v: number) => Math.round(v * 1000) / 1000;
+/** A maximum to the millimetre, or null where nothing was met. */
+const r3 = (v: number) => (Number.isFinite(v) ? mm(v) : null);
+
+/** One touch at a face met at `y` over this road at `roadY`, rounded for the list. */
+function touchAt(
+  o: Other,
+  u: number,
+  d: number,
+  kind: Touch["kind"],
+  y: number,
+  roadY: number,
+  overM: number,
+  reached: { isOn: boolean; roadY: number | null },
+  isLevel: boolean,
+  isEndWall: boolean,
+): Touch {
+  return {
+    run: o.chunk.run,
+    chunk: o.chunk.id,
+    u: Math.round(u * 100) / 100,
+    d,
+    kind,
+    dyM: mm(y - roadY),
+    overM: mm(overM),
+    overRoadM: reached.roadY === null ? null : mm(y - reached.roadY),
+    same: o.isSame,
+    onReach: reached.isOn,
+    level: isLevel,
+    inEndWall: isEndWall,
+  };
+}
+
+/** A wall's touches of one run and kind: across where, how high over this road, how many points, how many on its reach (b) and level (c). */
+type TouchGroup = {
+  run: string;
+  kind: string;
+  same: boolean;
+  uFrom: number;
+  uTo: number;
+  dyMin: number;
+  dyMax: number;
+  points: number;
+  onReach: number;
+  level: number;
+};
+
+/** The touches of a wall summed by the run and kind met. */
+function touchesOf(list: Touch[]): TouchGroup[] {
+  const by = new Map<string, TouchGroup>();
   for (const t of list) {
     const key = `${t.run}|${t.kind}`;
     const g = by.get(key) ?? {
       run: t.run,
       kind: t.kind,
+      same: t.same,
       uFrom: t.u,
       uTo: t.u,
       dyMin: t.dyM,
       dyMax: t.dyM,
       points: 0,
+      onReach: 0,
+      level: 0,
     };
     g.uFrom = Math.min(g.uFrom, t.u);
     g.uTo = Math.max(g.uTo, t.u);
     g.dyMin = Math.min(g.dyMin, t.dyM);
     g.dyMax = Math.max(g.dyMax, t.dyM);
     g.points++;
+    if (t.onReach) g.onReach++;
+    if (t.level) g.level++;
     by.set(key, g);
   }
   return [...by.values()];
 }
+
+/**
+ * The points where the reads of a `same` partner's road part (R1-1b 追記 3 C3: (b) on its reach and
+ * (c) level with this road, one but not the other), and every point counted as standing on a road,
+ * each with where (u across, d back from the face) and how high: for the one-by-one list.
+ */
+const pointsOf = (list: Touch[]) =>
+  list.filter(
+    (t) => (t.same && t.onReach !== t.level) || t.kind === "road" || t.kind === "underside" || t.inEndWall,
+  );
 
 const endChunks = files.chunks.filter((c) => c.prev === null || c.next === null);
 type WallRow = {
@@ -257,16 +421,15 @@ type WallRow = {
   noneM: number;
   boxes: number;
   pokeM: number | null;
+  /** The same over any face level with this road (追記 3 C3 (c)): set beside pokeM, not judged. */
+  levelM: number | null;
+  /** pokeM without the faces inside the other's own end wall (proposed, not judged). */
+  offWallM: number | null;
   others: string[];
-  touches: Array<{
-    run: string;
-    kind: string;
-    uFrom: number;
-    uTo: number;
-    dyMin: number;
-    dyMax: number;
-    points: number;
-  }>;
+  /** The runs the end shares one surface with (DeckIndex.partnersAt at the end node). */
+  same: string[];
+  touches: TouchGroup[];
+  points: Touch[];
   structure: string;
   rays: number;
   misses: number;
@@ -350,13 +513,17 @@ for (const c of endChunks) {
     // The other runs' chunks round this end's node, each alone, for what the wall stands on (R1-1b
     // 追記 2). Why the node and not `at`: a one-chunk run holds both ends, and `at` is its start.
     const node = w.end === "start" ? 0 : c.st.length - STATION_STRIDE;
-    const others = othersAt(builds, c, { lon: c.st[node + ST.lon], lat: c.st[node + ST.lat] }, frame);
+    // The runs it shares one surface with there, asked as the rule asks (expresswayDeck.ts decksOver).
+    const same = index.partnersAt(c, c.st[node + ST.s]);
+    const others = othersAt(builds, c, { lon: c.st[node + ST.lon], lat: c.st[node + ST.lat] }, frame, same);
     // Over each box, up to its own top (read from the box built, not from heightM: a box under
     // another deck stops at that deck's underside).
     let rays = 0;
     let misses = 0;
     let onRoad = 0;
     let pokeM = -Infinity;
+    let levelM = -Infinity;
+    let offWallM = -Infinity;
     const touches: Touch[] = [];
     for (const box of w.boxes) {
       const r = rayFace(world, b, w.end, box.lo, box.hi, box.top);
@@ -365,6 +532,8 @@ for (const c of endChunks) {
       onRoad += r.onRoad;
       const poke = pokeOf(others, ring, w.end, box, RAISE_M);
       pokeM = Math.max(pokeM, poke.pokeM);
+      levelM = Math.max(levelM, poke.levelM);
+      offWallM = Math.max(offWallM, poke.offWallM);
       touches.push(...poke.touches);
     }
 
@@ -376,9 +545,13 @@ for (const c of endChunks) {
       loweredM: w.loweredM,
       noneM: w.noneM,
       boxes: w.boxes.length,
-      pokeM: Number.isFinite(pokeM) ? Math.round(pokeM * 1000) / 1000 : null,
+      pokeM: r3(pokeM),
+      levelM: r3(levelM),
+      offWallM: r3(offWallM),
       touches: touchesOf(touches),
+      points: pointsOf(touches),
       others: others.map((x) => x.chunk.id),
+      same,
       structure: c.structure,
       rays,
       misses,
@@ -533,6 +706,11 @@ const result = {
     wallMisses: walls.reduce((n, w) => n + w.misses, 0),
     // R1-1b A3: walls whose box top stands over the underside of another deck over them.
     poking: walls.filter((w) => w.pokeM !== null && w.pokeM > 1e-3).length,
+    // 追記 3 C3: the same counted over faces level with this road (c), and the walls where (b) and
+    // (c) part on a `same` partner: set beside, not judged.
+    pokingLevel: walls.filter((w) => w.levelM !== null && w.levelM > 1e-3).length,
+    readsPart: walls.filter((w) => w.points.some((t) => t.same && t.onReach !== t.level)).length,
+    pokingOffEndWalls: walls.filter((w) => w.offWallM !== null && w.offWallM > 1e-3).length,
     lowered: walls.filter((w) => w.loweredM > 0 || w.noneM > 0).length,
     covered: skips.filter((s) => s.reason === "covered").length,
     hidden: skips.filter((s) => s.reason === "hidden").length,

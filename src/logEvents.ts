@@ -1263,6 +1263,11 @@ export const LOG_EVENTS = {
     wallMisses: count,
     /** Walls whose box top stands over another deck's underside over them, those lowered, ends left without one (A3). */
     poking: count,
+    /** The same over faces level with this road, and walls where the two reads of a same partner's road part (R1-1b 追記 3 C3). */
+    pokingLevel: count,
+    readsPart: count,
+    /** Walls counted by (b) without the faces inside the other run's own end wall (proposed, not judged). */
+    pokingOffEndWalls: count,
     lowered: count,
     covered: count,
     hidden: count,
