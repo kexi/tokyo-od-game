@@ -401,6 +401,15 @@ export function isAboveDropped(
 }
 
 /**
+ * How far a below run's centre line may be from a point of the run over it for roadUnderFromFiles to
+ * read it as the road under it (m): the half widths of two of the widest carriageways (4 lanes and
+ * both shoulders, about 15 m each). The deck the pair comes from overlaps the two carriageways, so the
+ * centre lines are nearer than that. Why not the pair's own distance: the tiles do not carry it.
+ * Farther, the road under it is not known, and T13 reads the station both ways.
+ */
+const ROAD_UNDER_REACH_M = 30;
+
+/**
  * The road of a below run under run distance `sv` of another run, from the files' chunks alone (T13's
  * reading of RoadUnder): the upper's centre line point at `sv`, the lower's centre line nearest to it
  * (stations joined by straight lines in a local plane), the lower's surface there (profile.ts), its
@@ -412,7 +421,7 @@ export function roadUnderFromFiles(
   upper: readonly XwChunk[],
   lower: readonly XwChunk[] | undefined,
   sv: number,
-  reachM = 30,
+  reachM = ROAD_UNDER_REACH_M,
 ): { z: number; ground: number; structure: XwChunk["structure"]; s: number } | null {
   const isMissing = lower === undefined || lower.length === 0 || upper.length === 0;
   if (isMissing) return null;

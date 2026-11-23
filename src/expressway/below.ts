@@ -159,8 +159,10 @@ export type BelowLinkEnd = { kind: string; parent?: string; parentS?: number };
 
 /** Rounds a PortalAt as the run summary writes it (XwEnd.portalAt): the way as parentS, the ground as a station's. */
 export function roundPortalAt(p: PortalAt): PortalAt {
-  return { offsetM: roundTo(p.offsetM, 2), z: roundTo(p.z, 2), V: p.V };
+  return { offsetM: roundTo(p.offsetM, PORTAL_AT_DIGITS), z: roundTo(p.z, PORTAL_AT_DIGITS), V: p.V };
 }
+/** The digits a lowered portal's length and ground are written to (parentS's and the stations' ground's). */
+export const PORTAL_AT_DIGITS = 2;
 /** A portal beyond a below run's end (BelowLinkRun.portalAt): `offsetM` m on, its ground `z`, the speed `V` over the way. */
 export type PortalAt = { offsetM: number; z: number; V: DesignSpeed };
 

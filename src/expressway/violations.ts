@@ -81,13 +81,17 @@ export function violationsOf(
       ground: [a[at], b[b.length - STATION_STRIDE + at]],
     });
   }
-  // S7-2 追記 3 の 1: each lowered approach's stretches, from the below runs' portalAt, for T13.
+  // S7-2 追記 3 の 1: each lowered approach's stretches and the below runs under them, from its own
+  // summary (XwEnd.lowered), for T13: the same whichever runs the folder writes (PR #130 review 必須 1).
   const stretches = loweredStretchesOf(meta.runs);
-  const belowIds = new Set(meta.runs.filter((r) => r.below === true).map((r) => r.id));
+  const writtenBelow = meta.runs.filter((r) => r.below === true).map((r) => r.id);
   const lowerOf = (id: string) => byRun.get(id);
   const loweredOf = (id: string) => {
     const own = stretches.get(id);
-    return own ? { stretches: own, belowIds, lowerOf } : undefined;
+    if (!own) return undefined;
+    const r = meta.runs.find((x) => x.id === id)!;
+    const under = [r.start, r.end].flatMap((e) => e.lowered?.belowUnder ?? []);
+    return { stretches: own, belowIds: new Set([...writtenBelow, ...under]), lowerOf };
   };
   const found = Object.fromEntries(PROPERTIES.map((p) => [p, [] as string[]])) as Record<Property, string[]>;
   const openShort = (id: string) => {
@@ -176,19 +180,21 @@ export function violationsOf(
 
 /**
  * S7-2: the lowered stretches of the approaches at grade (run distances on the approach), by approach,
- * from the summaries of the below runs seamed onto them: an end with `portalAt` whose seam's parent is
- * the approach at `parentS` (0 or its length), the stretch its `offsetM` from there. Empty without the flag.
+ * from each approach's own ends (XwEnd.lowered): from its start the stretch's length on, or to its end
+ * from that far before it. Why not from the below runs' `portalAt` (as first made): a folder that
+ * does not write the tunnel beyond an approach had no stretch for it. Empty without the flag.
  */
 export function loweredStretchesOf(runs: readonly XwRunSummary[]): Map<string, Array<[number, number]>> {
   const out = new Map<string, Array<[number, number]>>();
   for (const r of runs)
-    for (const e of [r.start, r.end]) {
-      const isLowered = e.portalAt !== undefined && e.kind === "seam" && e.parent !== undefined;
-      if (!isLowered) continue;
-      const at = e.parentS ?? 0;
-      const isAtStart = at < 1;
-      const span: [number, number] = isAtStart ? [0, e.portalAt!.offsetM] : [at - e.portalAt!.offsetM, at];
-      out.set(e.parent!, [...(out.get(e.parent!) ?? []), span]);
+    for (const [e, atStart] of [
+      [r.start, true],
+      [r.end, false],
+    ] as const) {
+      if (e.lowered === undefined) continue;
+      const L = e.lowered.lengthM;
+      const span: [number, number] = atStart ? [0, L] : [r.lengthM - L, r.lengthM];
+      out.set(r.id, [...(out.get(r.id) ?? []), span]);
     }
   return out;
 }

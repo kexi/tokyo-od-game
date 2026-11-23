@@ -441,7 +441,9 @@ function loweredOf(
   const isLowered = end.portalAt !== undefined && approach !== undefined;
   if (!isLowered) return {};
   const stations = stationsOfRun(approach);
-  const atStart = (end.parentS ?? 0) < 1;
+  // The seam is at one of the approach's two ends: the one its run distance is nearer.
+  const at = end.parentS ?? 0;
+  const atStart = Math.abs(at - stations[0].s) <= Math.abs(at - stations[stations.length - 1].s);
   const p = atStart ? stations[0] : stations[stations.length - 1];
   return { lowered: { lengthM: end.portalAt!.offsetM, approachDepthM: round(p.ground - p.z, 3) } };
 }

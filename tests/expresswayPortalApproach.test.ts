@@ -17,6 +17,7 @@ import {
   planNetwork,
   solvePlan,
 } from "../src/expressway/compile";
+import { HEIGHT_STRUCTURES } from "../src/expressway/assumptions";
 import { undergroundOf } from "../src/expressway/belowScore";
 import { packTiles } from "../src/expressway/files";
 import { STATION_STRIDE } from "../src/expressway/format";
@@ -371,6 +372,39 @@ describe("B. 短い取付け（L より短い地平 run）", () => {
     expect(Math.abs(viaductEnd.z - linesOf(resCut, g1).line[0])).toBeLessThanOrEqual(1.5 + 0.03);
   });
 
+  it("keeps the band's upper side and a ground end's grade on the design ground line, not the lowered target (追記 2 の C)", () => {
+    // At grade 0–200 m (short of L, 215 m at V60; long enough to keep its ground end's grade) from a
+    // ground end straight into the tunnel: the whole run is the stretch, its start the ground end.
+    // Flat ground: the line is flat, the lowered target goes down 1 in 30 or so.
+    const net = network([
+      { id: 2, x0: 0, x1: 200, tags: gradeTags },
+      { id: 3, x0: 200, x1: 2200, tags: tunnelTags },
+      { id: 4, x0: 2200, x1: 2503, tags: gradeTags },
+      { id: 5, x0: 2503, x1: 3003, tags: bridgeTags },
+    ]);
+    const plan = planNetwork(net, new Set(), null, [], cutOpts);
+    const res = solvePlan(plan, flat, []);
+    expect(unsolved(res)).toEqual([]);
+    const [g] = runsWhere(plan, (r) => r.ground && r.run.ways.includes(2));
+    expect(res.runs.find((r) => r.id === g)!.start.kind).toBe("ground");
+    expect(loweredApproaches(plan).byRun.get(g)![1]!.sStart).toBe(0);
+    const lines = linesOf(res, g);
+    const targetGrade = (lines.target[4] - lines.target[0]) / (lines.stations[4] - lines.stations[0]);
+    expect(targetGrade).toBeLessThan(-0.01);
+    // The ground end leaves on the line's grade (flat), not the target's.
+    const first = chunksOf(res, g)[0].st;
+    expect(Math.abs(first[6])).toBeLessThan(0.005);
+    // The short approach (120 m, describe's g1) cannot go down to its target: near the seam it stands
+    // over it by more than the band, which it may as the band's upper side is about the line.
+    const band = HEIGHT_STRUCTURES.value.ground.bandM;
+    const short = linesOf(resCut, g1);
+    const over = Array.from(short.stations, (sv, k) => roadAt(resCut, g1, sv) - short.target[k]);
+    expect(Math.max(...over)).toBeGreaterThan(band + 0.05);
+    expect(
+      Array.from(short.stations).every((sv, k) => roadAt(resCut, g1, sv) <= short.line[k] + band + 0.03),
+    ).toBe(true);
+  });
+
   it("leaves the tunnel's first station less short of cover than without", () => {
     const depth = (res: Result) => {
       const p = stationsOf(res, t)[0];
@@ -608,6 +642,21 @@ describe("D'. 下げた取付けが下の地下 run の上を越える所（追�
     expect(t13Of({ ...res, chunks: asCut }).first.join()).toMatch(/not of its structure/);
   });
 
+  it("in a box without the open cut under it, T13 still lets the crossing's viaduct stand (the road under it not known: either)", () => {
+    // The box writes the approach, its tunnel and the run after (2, 3, 4), not the cut 23 under it.
+    const [lonA, latA] = plane.toLonLat(800, -5);
+    const [lonB, latB] = plane.toLonLat(850, 5);
+    const box = { minLon: lonA, minLat: latA, maxLon: lonB, maxLat: latB };
+    const plan = planNetwork(crossNet(cutTags), new Set(), box, [], cutOpts);
+    const res = solvePlan(plan, flat, []);
+    const [lower] = runsWhere(plan, (r) => r.below && r.run.ways.includes(23));
+    expect(res.runs.some((r) => r.id === lower)).toBe(false);
+    const [g1] = runsWhere(plan, (r) => r.ground && r.run.ways.includes(2));
+    expect(chunksOf(res, g1).some((c) => c.structure === "viaduct")).toBe(true);
+    expect(res.runs.find((r) => r.id === g1)!.end.lowered?.belowUnder).toContain(lower);
+    expect(t13Of(res).count).toBe(0);
+  });
+
   it("over a covered tunnel a level down, the approach under the ground is still taken out of `above`: a cut, by the compiler and T13 alike", () => {
     const { plan, res } = solve(tunnelTags);
     expect(unsolved(res)).toEqual([]);
@@ -771,4 +820,54 @@ describe("H. 範囲に依らない（T8）", () => {
     expect(chunksOf(a, g1).map((c) => [...c.st])).toEqual(chunksOf(b, g1).map((c) => [...c.st]));
     expect(ra.groundFit).toEqual(rb.groundFit);
   });
+});
+
+describe("H'. 下げた取付けの T13 は、書かれる run に依らない（PR #130 レビューの必須 1）", () => {
+  // What must hold: a box that writes a lowered approach but not its own tunnel, or not the tunnel
+  // under it, gets T13's answer of the whole (0): the stretch and the runs under it are read from the
+  // approach's own summary (XwEnd.lowered). Before, T13 read those metres as a viaduct only.
+  const crossNet = (below: Record<string, string>) => {
+    const net = twoApproaches();
+    const [ux, uy] = [1 / Math.hypot(1, 0.2), 0.2 / Math.hypot(1, 0.2)];
+    const ways: Array<{ id: number; t0: number; t1: number; tags: Record<string, string> }> = [
+      { id: 21, t0: -1300, t1: -800, tags: bridgeTags },
+      { id: 22, t0: -800, t1: -600, tags: gradeTags },
+      { id: 23, t0: -600, t1: 600, tags: below },
+      { id: 24, t0: 600, t1: 800, tags: gradeTags },
+      { id: 25, t0: 800, t1: 1300, tags: bridgeTags },
+    ];
+    const nodeAt = (t: number) => 700000 + Math.round(t) + 2000;
+    for (const w of ways) {
+      const ts: number[] = [];
+      for (let t = w.t0; t < w.t1 - 1e-6; t += 50) ts.push(t);
+      ts.push(w.t1);
+      const ids = ts.map(nodeAt);
+      net.ways.set(w.id, normalizeWay(w.id, ids, { ...w.tags, ref: "C2" }));
+      for (const [i, t] of ts.entries()) {
+        const [lon, lat] = plane.toLonLat(700 + ux * t, uy * t);
+        net.nodes.set(ids[i], normalizeNode(ids[i], lon, lat, {}));
+      }
+    }
+    return net;
+  };
+  for (const [name, x0, x1, y] of [
+    ["the approach's own tunnel outside the box", 600, 760, 20],
+    ["the tunnel under the approach outside the box", 800, 850, 5],
+  ] as const)
+    it(`T13 is the whole's with ${name}`, () => {
+      const net = crossNet(tunnelTags);
+      const [lonA, latA] = plane.toLonLat(x0, -y);
+      const [lonB, latB] = plane.toLonLat(x1, y);
+      const box = { minLon: lonA, minLat: latA, maxLon: lonB, maxLat: latB };
+      const a = solvePlan(planNetwork(net, new Set(), box, [], cutOpts), flat, []);
+      const b = solvePlan(planNetwork(net, new Set(), null, [], cutOpts), flat, []);
+      // The chunks are the whole's (T8 holds for the compiler).
+      for (const r of a.runs)
+        expect(chunksOf(a, r.id).map((c) => [c.structure, ...c.st])).toEqual(
+          chunksOf(b, r.id).map((c) => [c.structure, ...c.st]),
+        );
+      expect(violationsOf(b, b.chunks, () => undefined, true).T13.count).toBe(0);
+      // Before XwEnd.lowered: 1 ("2:1: stations at 153–247 m are not of its structure over 20 m or more").
+      expect(violationsOf(a, a.chunks, () => undefined, true).T13.first).toEqual([]);
+    });
 });

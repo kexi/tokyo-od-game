@@ -57,6 +57,7 @@ import {
   type PortalReach,
   portalApproachLength,
   portalReaches,
+  PORTAL_AT_DIGITS,
   roundPortalAt,
   belowStructure,
   ceilingAt,
@@ -655,7 +656,7 @@ export function loweredApproaches(plan: Plan): LoweredApproaches {
     const atStart = end === "start";
     const isOpen = endPlan(plan, rp, atStart).kind === "open";
     if (!isOpen) continue;
-    const beyond = seamedBelowAt(plan, rp, atStart ? 0 : rp.length);
+    const beyond = seamedBelowAt(plan, rp, atStart);
     if (beyond === null) continue;
     const hasTunnel = beyond.rp.tunnelAt.includes(1);
     if (!hasTunnel) continue;
@@ -707,14 +708,23 @@ export function loweredApproaches(plan: Plan): LoweredApproaches {
   return out;
 }
 
-/** The below run seamed onto run `rp` at its run distance `here` (an end of it), and which of its ends; else null. */
-function seamedBelowAt(plan: Plan, rp: RunPlan, here: number): { rp: RunPlan; atStart: boolean } | null {
+/**
+ * The below run seamed onto run `rp` at its start or end (the seam's node is that end's node), and
+ * which of its ends; else null.
+ */
+function seamedBelowAt(
+  plan: Plan,
+  rp: RunPlan,
+  atRpStart: boolean,
+): { rp: RunPlan; atStart: boolean } | null {
+  const endSample = atRpStart ? rp.i0 : rp.i1;
   for (const other of [...plan.runs.values()].toSorted((a, b) => (a.run.id < b.run.id ? -1 : 1))) {
-    if (!other.below || other === rp) continue;
+    const isOtherBelow = other.below && other !== rp;
+    if (!isOtherBelow) continue;
     for (const atStart of [true, false]) {
       const e = endPlan(plan, other, atStart);
       const isSeamedHere =
-        e.kind === "seam" && e.parent === rp.run.id && Math.abs(nodeS(rp, e.parentNodeIndex) - here) <= 0.5;
+        e.kind === "seam" && e.parent === rp.run.id && rp.align.vertexSample[e.parentNodeIndex] === endSample;
       if (isSeamedHere) return { rp: other, atStart };
     }
   }
@@ -5970,10 +5980,10 @@ export function solveRoutes(
   return part.routeGroups.map((group) => solveRoute(part, group, setups));
 }
 
-/** A run's end as written: a piece's end moved back onto the runs (the parent's run, run distance). */
 /**
- * A written run's start and end for its summary, a below run's end on a lowered approach (S7-2 3.7)
- * carrying `portalAt` as belowLinksOf made it (the same rounded numbers). The ends as solved elsewhere.
+ * A written run's start and end for its summary (S7-2 3.7): a below run's end on a lowered approach
+ * carrying `portalAt` as belowLinksOf made it (the same rounded numbers), a lowered approach's end its
+ * stretch and the below runs under it (XwEnd.lowered). The ends as solved elsewhere.
  */
 function endsWithPortals(
   plan: Plan,
@@ -5982,6 +5992,17 @@ function endsWithPortals(
   end: XwEnd,
   ground: GroundSampler,
 ): { start: XwEnd; end: XwEnd } {
+  const ownEnds = loweredApproaches(plan).byRun.get(id);
+  if (ownEnds) {
+    const withLowered = (e: XwEnd, a: LoweredApproach | null): XwEnd =>
+      a === null
+        ? e
+        : {
+            ...e,
+            lowered: { lengthM: roundTo(a.lengthM, PORTAL_AT_DIGITS), belowUnder: belowUnderOf(plan, a) },
+          };
+    return { start: withLowered(start, ownEnds[0]), end: withLowered(end, ownEnds[1]) };
+  }
   const isLoweredBeyond = loweredApproaches(plan).byBelow.has(id);
   if (!isLoweredBeyond) return { start, end };
   const portalAt = belowLinksOf(plan, ground).get(id)?.portalAt;
@@ -5990,6 +6011,23 @@ function endsWithPortals(
   return { start: withPortal(start, portalAt[0]), end: withPortal(end, portalAt[1]) };
 }
 
+/**
+ * The below runs a lowered approach stands "above" within its stretch (the plan's pairs, the chunks'
+ * decks), sorted: what T13 cannot tell from a folder that does not write them (XwEnd.lowered).
+ */
+function belowUnderOf(plan: Plan, a: LoweredApproach): string[] {
+  const ids = new Set<string>();
+  for (const p of plan.pairs) {
+    const isMineAbove = p.a === a.run && p.relation === "above";
+    if (!isMineAbove) continue;
+    const isInStretch = a.atStart ? p.sa <= a.sStart + GRID_M / 2 : p.sa >= a.sStart - GRID_M / 2;
+    const isBelow = plan.runs.get(p.b)?.below === true;
+    if (isInStretch && isBelow) ids.add(p.b);
+  }
+  return [...ids].toSorted();
+}
+
+/** A run's end as written: a piece's end moved back onto the runs (the parent's run, run distance). */
 function runEnd(plan: Plan, rp: RunPlan, atStart: boolean, end: XwEnd): XwEnd {
   const isJoined = end.parent !== undefined;
   if (!isJoined) return end;

@@ -81,7 +81,10 @@ const cls = z.enum(["expressway", "ramp", "street"]);
  * `underground.unplanned` (the chains with tunnel ways and no viaduct, never compiled). Version 8
  * reports still parse. 10 (S7-2): `underground.portals.lowered` and `loweredCoverShort` (the portal
  * ends whose approach at grade was lowered by --portal-approach cut, and those still short of cover:
- * 0 without the flag), and per end its lowered stretch and approach depth or why it was left at grade.
+ * 0 without the flag), and per end its lowered stretch and approach depth or why it was left at grade;
+ * with the flag only, `ground.openEnds.lowered` (the lowered ends off their lowered target, out of the
+ * fields above it) and `underground.overApproach.besideLowered` (two lowered approaches going down
+ * side by side on one surface, out of `list`).
  * Version 9 reports still parse.
  */
 export const REPORT_VERSION = 10;
