@@ -79,6 +79,7 @@ import {
   aboveKept,
   afterSpanning,
   isAboveDropped,
+  type RoadUnder,
   clearsOnThinGirder,
   isLowSpanWindow,
   isWindowOver,
@@ -6658,18 +6659,52 @@ function overDeck(
   heightAt: HeightAt,
   ground: GroundSampler,
 ): Array<[number, number]> {
-  const isOpenBelow = (p: DeckPair) => {
-    const lower = plan.runs.get(p.b)!;
-    if (!lower.below) return true;
-    if (belowAt(lower, p.sb) === "cut") return true;
-    const done = heightAt(p.b, p.sb);
-    if (!done) return false;
-    const pose = poseAt(lower, p.sb);
-    return isHoleAt("tunnel", done.z, ground(pose.lon, pose.lat));
-  };
+  const isOpenBelow = (p: DeckPair) =>
+    isOpenRoadAt(plan.runs.get(p.b)!, p.sb, heightAt(p.b, p.sb)?.z ?? null, ground);
   return plan.pairs
     .filter((p) => p.a === id && p.relation === "above" && isOpenBelow(p))
     .map((p) => [p.sa - 6, p.sa + 6]);
+}
+
+/**
+ * Whether a run's road at run distance s is open to the sky (overDeck's piers, and S7-2 追記 6 の 1's
+ * RoadUnder): any road not below; a below run's cut; a tunnel whose ground is cut away at a portal
+ * (expresswayBore.ts isHoleAt's rule) at its solved road `z`, closed where that is not known.
+ */
+function isOpenRoadAt(lower: RunPlan, s: number, z: number | null, ground: GroundSampler): boolean {
+  if (!lower.below) return true;
+  if (belowAt(lower, s) === "cut") return true;
+  if (z === null) return false;
+  const pose = poseAt(lower, s);
+  return isHoleAt("tunnel", z, ground(pose.lon, pose.lat));
+}
+
+/**
+ * The road of a below run `other` under run distance `sv` of the run the pairs are of (S7-2 追記 6 の 1,
+ * heightStructures RoadUnder): the lower's run distance linear between the plan's "above" pairs of the
+ * two bracketing sv (the nearest past their ends), whether its solved road is open there
+ * (isOpenRoadAt), and `zUpper` over it. Null where the lower is not solved or no pair holds the two.
+ * Why the plan's pairs: they are what made the deck's stretch (deckStretches); T13 reads the same road
+ * from the files' centre lines (roadUnderFromFiles), within its rounding.
+ */
+function roadUnderOf(
+  pairs: readonly DeckPair[],
+  sv: number,
+  zUpper: number,
+  other: Solved | undefined,
+  ground: GroundSampler,
+): RoadUnder | null {
+  const isUnknown = other === undefined || pairs.length === 0;
+  if (isUnknown) return null;
+  let k = 0;
+  while (k + 1 < pairs.length && pairs[k + 1].sa <= sv) k++;
+  const a = pairs[k];
+  const b = pairs[Math.min(k + 1, pairs.length - 1)];
+  const span = b.sa - a.sa;
+  const t = span > 0 ? Math.max(0, Math.min(1, (sv - a.sa) / span)) : 0;
+  const sb = a.sb + (b.sb - a.sb) * t;
+  const z = evalRun(other, sb).z;
+  return { isOpen: isOpenRoadAt(other.rp, sb, z, ground), dz: zUpper - z };
 }
 
 /** The solved runs' structures at a run distance (chunkRun's structureAt): a below run's by its tags, another's by height. */
@@ -6851,19 +6886,36 @@ function structuresByHeight(
   // S7-2 追記 3 の 1 (`--portal-approach cut`): a lowered approach's metres under the ground over a below
   // run leave `above` and are classed by their height (isAboveDropped, as T13 reads it). Without a
   // lowered stretch the spans as before.
+  // 追記 6 の 1: only where the below run under it is covered, or open on one surface with it (RoadUnder,
+  // from the plan's pairs of the two).
   const isLowered = loweredApproaches(plan).byRun.has(rp.run.id);
   const cutBelowM = HEIGHT_STRUCTURES.value.ground.cutBelowM;
+  const pairsWith = new Map<string, DeckPair[]>();
+  for (const p of plan.pairs) {
+    const isMineAbove = isLowered && p.a === rp.run.id && p.relation === "above";
+    if (isMineAbove) pairsWith.set(p.b, [...(pairsWith.get(p.b) ?? []), p]);
+  }
+  for (const list of pairsWith.values()) list.sort((p, q) => p.sa - q.sa);
   const above = isLowered
     ? aboveKept(
         decks.filter((d) => d.relation === "above"),
-        (sv, other) =>
-          isAboveDropped(
-            isInLoweredStretch(plan, rp.run.id, sv),
-            plan.runs.get(other)?.below === true,
-            samples[Math.min(samples.length - 1, Math.round(sv))].z -
-              samples[Math.min(samples.length - 1, Math.round(sv))].ground,
+        (sv, other) => {
+          const at = samples[Math.min(samples.length - 1, Math.round(sv))];
+          const isInLowered = isInLoweredStretch(plan, rp.run.id, sv);
+          const isLowerBelow = plan.runs.get(other)?.below === true;
+          const under =
+            isInLowered && isLowerBelow
+              ? roadUnderOf(pairsWith.get(other) ?? [], sv, at.z, solved.get(other), ground)
+              : null;
+          return isAboveDropped(
+            isInLowered,
+            isLowerBelow,
+            at.z - at.ground,
             cutBelowM,
-          ),
+            under,
+            SAME_SURFACE_ALLOWED_DZ_M,
+          );
+        },
       )
     : spans("above");
   const ctxOf = (ends?: readonly [boolean, boolean]) => ({

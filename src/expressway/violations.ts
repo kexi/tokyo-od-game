@@ -84,9 +84,10 @@ export function violationsOf(
   // S7-2 追記 3 の 1: each lowered approach's stretches, from the below runs' portalAt, for T13.
   const stretches = loweredStretchesOf(meta.runs);
   const belowIds = new Set(meta.runs.filter((r) => r.below === true).map((r) => r.id));
+  const lowerOf = (id: string) => byRun.get(id);
   const loweredOf = (id: string) => {
     const own = stretches.get(id);
-    return own ? { stretches: own, belowIds } : undefined;
+    return own ? { stretches: own, belowIds, lowerOf } : undefined;
   };
   const found = Object.fromEntries(PROPERTIES.map((p) => [p, [] as string[]])) as Record<Property, string[]>;
   const openShort = (id: string) => {

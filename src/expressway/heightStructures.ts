@@ -17,6 +17,8 @@ import {
   type XwChunk,
   type XwPortal,
 } from "./format";
+import { SAME_SURFACE_ALLOWED_DZ_M } from "./allowlist";
+import { isHoleAt } from "./below";
 import { surfaceAt } from "./profile";
 
 /**
@@ -358,12 +360,27 @@ export function deckSpans(list: readonly XwChunk[], relation: "above" | "same"):
 }
 
 /**
- * S7-2 追記 3 の 1 (`--portal-approach cut`): whether a station of a run "above" another deck (the
- * plan's layer order) is taken out of `above`, so its height decides it: the run is a lowered approach
- * in its stretch there, the run under it is a below run, and the road is under the ground there
- * (`over` < `cutBelow`, a cut by height). Why: two carriageways going down side by side into their
- * tunnels are "above" each other's tunnel by OSM's layers alone, and the approach's last metres were a
- * viaduct 6.6 m under the ground, with no wall and no hole. The compiler (compile.ts
+ * The below run's road under a station of a lowered approach (S7-2 追記 6 の 1): whether it is open to
+ * the sky there (a cut, or a tunnel whose ground is cut away at a portal: below.ts isHoleAt, as
+ * compile.ts overDeck reads it for the piers), and the approach's road over it (upper − lower, m).
+ */
+export type RoadUnder = { isOpen: boolean; dz: number };
+
+/**
+ * S7-2 追記 3 の 1・追記 6 の 1 (`--portal-approach cut`): whether a station of a run "above" another
+ * deck (the plan's layer order) is taken out of `above`, so its height decides it: the run is a lowered
+ * approach in its stretch there, the run under it is a below run, the road is under the ground there
+ * (`over` < `cutBelow`, a cut by height), and the road under it is covered (a buried tunnel: the
+ * approach is a cut over its roof) or, open, on one surface with it (within `sameDz`, the ledger's
+ * SAME_SURFACE_ALLOWED_DZ_M: the two carriageways going down side by side). `under` null: not known
+ * (the road under it not solved), taken out as before 追記 6. Why: two carriageways going down side by
+ * side into their tunnels are "above" each other's tunnel by OSM's layers alone, and the approach's last
+ * metres were a viaduct 6.6 m under the ground, with no wall and no hole. Why not every open station
+ * (追記 3 as first made): over an open cut a level down (5204787 over 5204891, 6.7–10.1 m) the approach
+ * really crosses it and needs a bridge; taken out, it was a cut floating over the open cut. Why the
+ * covered stations stay taken out: `above` holds every pair of the layers, a buried tunnel's too (the
+ * piers alone skip those, overDeck), and over its roof the approach under the ground is a cut
+ * (331692344 over 331922709, 6.9–7.2 m), not a buried viaduct. The compiler (compile.ts
  * structuresByHeight) and T13 (checkHeightStructures) both ask this.
  */
 export function isAboveDropped(
@@ -371,8 +388,86 @@ export function isAboveDropped(
   isLowerBelow: boolean,
   over: number,
   cutBelow: number,
+  under: RoadUnder | null,
+  sameDz: number,
 ): boolean {
-  return isInLowered && isLowerBelow && over < cutBelow;
+  const isUnderGroundOverBelow = isInLowered && isLowerBelow && over < cutBelow;
+  if (!isUnderGroundOverBelow) return false;
+  const isUnknown = under === null;
+  if (isUnknown) return true;
+  const isCovered = !under.isOpen;
+  const isOneSurface = Math.abs(under.dz) <= sameDz;
+  return isCovered || isOneSurface;
+}
+
+/**
+ * The road of a below run under run distance `sv` of another run, from the files' chunks alone (T13's
+ * reading of RoadUnder): the upper's centre line point at `sv`, the lower's centre line nearest to it
+ * (stations joined by straight lines in a local plane), the lower's surface there (profile.ts), its
+ * ground (linear between stations) and its chunk's structure. Null without the lower's chunks or where
+ * its centre line is farther than `reachM` (not under it). Why not the compiler's way (the plan's pair
+ * stations): the tiles carry the decks' stretches, not the stations paired in the plan.
+ */
+export function roadUnderFromFiles(
+  upper: readonly XwChunk[],
+  lower: readonly XwChunk[] | undefined,
+  sv: number,
+  reachM = 30,
+): { z: number; ground: number; structure: XwChunk["structure"]; s: number } | null {
+  const isMissing = lower === undefined || lower.length === 0 || upper.length === 0;
+  if (isMissing) return null;
+  const at = pointOnChunks(upper, sv);
+  if (at === null) return null;
+  const kx = 111320 * Math.cos((at.lat * Math.PI) / 180);
+  const ky = 110574;
+  let best: { d: number; c: XwChunk; s: number; ground: number } | null = null;
+  for (const c of lower)
+    for (let i = 0; i + STATION_STRIDE < c.st.length; i += STATION_STRIDE) {
+      const j = i + STATION_STRIDE;
+      const ax = (c.st[i + ST.lon] - at.lon) * kx;
+      const ay = (c.st[i + ST.lat] - at.lat) * ky;
+      const bx = (c.st[j + ST.lon] - at.lon) * kx;
+      const by = (c.st[j + ST.lat] - at.lat) * ky;
+      const len2 = (bx - ax) ** 2 + (by - ay) ** 2;
+      const t = len2 > 0 ? Math.max(0, Math.min(1, -(ax * (bx - ax) + ay * (by - ay)) / len2)) : 0;
+      const d = Math.hypot(ax + (bx - ax) * t, ay + (by - ay) * t);
+      const isCloser = best === null || d < best.d;
+      if (!isCloser) continue;
+      const s = c.st[i + ST.s] + (c.st[j + ST.s] - c.st[i + ST.s]) * t;
+      const ground = c.st[i + ST.ground] + (c.st[j + ST.ground] - c.st[i + ST.ground]) * t;
+      best = { d, c, s, ground };
+    }
+  const isFar = best === null || best.d > reachM;
+  if (isFar) return null;
+  return {
+    z: surfaceAt(best!.c.st, best!.s).z,
+    ground: best!.ground,
+    structure: best!.c.structure,
+    s: best!.s,
+  };
+}
+
+/** A run's road at run distance `sv` on its chunks' surface (profile.ts), or null off them. */
+function surfaceAtChunks(list: readonly XwChunk[], sv: number): number | null {
+  const c = list.find((x) => x.st[0] <= sv + 1e-9 && sv <= x.st[x.st.length - STATION_STRIDE] + 1e-9);
+  return c === undefined ? null : surfaceAt(c.st, sv).z;
+}
+
+/** A run's centre line point at run distance `sv` from its chunks (linear between stations), or null off them. */
+function pointOnChunks(list: readonly XwChunk[], sv: number): { lon: number; lat: number } | null {
+  for (const c of list)
+    for (let i = 0; i + STATION_STRIDE < c.st.length; i += STATION_STRIDE) {
+      const j = i + STATION_STRIDE;
+      const isWithin = c.st[i + ST.s] <= sv + 1e-9 && sv <= c.st[j + ST.s] + 1e-9;
+      if (!isWithin) continue;
+      const span = c.st[j + ST.s] - c.st[i + ST.s];
+      const t = span > 0 ? (sv - c.st[i + ST.s]) / span : 0;
+      return {
+        lon: c.st[i + ST.lon] + (c.st[j + ST.lon] - c.st[i + ST.lon]) * t,
+        lat: c.st[i + ST.lat] + (c.st[j + ST.lat] - c.st[i + ST.lat]) * t,
+      };
+    }
+  return null;
 }
 
 /**
@@ -429,9 +524,14 @@ export function checkHeightStructures(
   decisions: readonly StructureDecision[] = STRUCTURE_DECISIONS,
   /**
    * S7-2 (`--portal-approach cut`): the run's lowered stretches (run distances, from the summaries'
-   * XwEnd.portalAt: violations.ts loweredStretchesOf) and the below runs, for isAboveDropped. Absent: none.
+   * XwEnd.portalAt: violations.ts loweredStretchesOf), the below runs, and a run's chunks (for the road
+   * under it, 追記 6 の 1), for isAboveDropped. Absent: none.
    */
-  lowered?: { stretches: ReadonlyArray<readonly [number, number]>; belowIds: ReadonlySet<string> },
+  lowered?: {
+    stretches: ReadonlyArray<readonly [number, number]>;
+    belowIds: ReadonlySet<string>;
+    lowerOf: (id: string) => readonly XwChunk[] | undefined;
+  },
 ): string[] {
   const out: string[] = [];
   const isEmpty = list.length === 0;
@@ -474,27 +574,44 @@ export function checkHeightStructures(
       pts.push({ s, over: surfaceAt(c.st, s).z - g, k, first: s - a < 1 });
     }
   });
-  // S7-2 追記 3 の 1: a lowered approach's metres under the ground over a below run are out of `above`,
-  // as the compiler takes them out (isAboveDropped). Within the files' rounding of the threshold either
-  // way (`nearCut`): taken out here, and a viaduct still allowed there (allowed()).
+  // S7-2 追記 3 の 1・追記 6 の 1: a lowered approach's metres under the ground over a below run that is
+  // covered, or open on one surface with it, are out of `above`, as the compiler takes them out
+  // (isAboveDropped). The road under it is read from its chunks (roadUnderFromFiles), not the plan's
+  // pair stations as the compiler does. Within the files' rounding of each threshold either way: taken
+  // out where any reading takes it out (`loose`), and a viaduct still allowed where any reading keeps
+  // it (`strict` not taken out, allowed()).
   const overAt = (sv: number) => {
     const p = pts.reduce((best, q) => (Math.abs(q.s - sv) < Math.abs(best.s - sv) ? q : best), pts[0]);
     return p.over;
   };
-  const above = lowered
-    ? aboveKept(
-        list.flatMap((c) => c.decks.filter((d) => d.relation === "above")),
-        (sv, other) =>
-          isAboveDropped(
-            isIn(lowered.stretches as Array<[number, number]>, sv),
-            lowered.belowIds.has(other),
-            overAt(sv),
-            cutBelow + T13_TOLERANCE_M,
-          ),
-      )
-    : aboveAll;
-  const isNearCut = (s: number, over: number) =>
-    lowered !== undefined && Math.abs(over - cutBelow) < T13_TOLERANCE_M && isIn(aboveAll, s);
+  const sameDz = SAME_SURFACE_ALLOWED_DZ_M;
+  const isDroppedAt = (sv: number, other: string, isLoose: boolean): boolean => {
+    if (lowered === undefined) return false;
+    const tol = isLoose ? T13_TOLERANCE_M : -T13_TOLERANCE_M;
+    const isInLowered = isIn(lowered.stretches as Array<[number, number]>, sv);
+    const isLowerBelow = lowered.belowIds.has(other);
+    const road = isInLowered && isLowerBelow ? roadUnderFromFiles(list, lowered.lowerOf(other), sv) : null;
+    const isUnknown = road === null;
+    // Not known (the lower's chunks not in the folder): taken out by the loose reading only.
+    if (isUnknown && !isLoose) return false;
+    const zUpper = isUnknown ? 0 : (surfaceAtChunks(list, sv) ?? 0);
+    const under: RoadUnder | null = isUnknown
+      ? null
+      : {
+          // The hole's threshold (below.ts isHoleAt) moved by the rounding: covered where it may be (loose),
+          // open where it may be (strict).
+          isOpen: road.structure === "cut" || isHoleAt("tunnel", road.z - tol, road.ground),
+          dz: Math.max(0, Math.abs(zUpper - road.z) - tol),
+        };
+    return isAboveDropped(isInLowered, isLowerBelow, overAt(sv), cutBelow + tol, under, sameDz);
+  };
+  const aboveDecks = list.flatMap((c) => c.decks.filter((d) => d.relation === "above"));
+  const above = lowered ? aboveKept(aboveDecks, (sv, other) => isDroppedAt(sv, other, true)) : aboveAll;
+  const isMaybeAbove = (s: number) => {
+    if (lowered === undefined) return false;
+    const others = aboveDecks.filter((d) => s >= d.s0 && s <= d.s1).map((d) => d.with);
+    return others.some((other) => !isDroppedAt(s, other, false)) && !isIn(above, s);
+  };
   // A stretch under the viaduct's height that never comes within EMBANKMENT_REACH_M of the ground may
   // be drawn as a viaduct (the floating embankment). Why by stretch and not by station: a station 3 m
   // up on an embankment that reaches the ground elsewhere is the embankment's.
@@ -534,7 +651,7 @@ export function checkHeightStructures(
     // embankment (S6 PR 7c, structureDecisions.ts).
     const isWindow = isIn(windows, s);
     const isDecided = isIn(decided, s) && out.has("embankment");
-    if (isHigh || isFloating || isWindow || isDecided || isNearCut(s, over)) out.add("viaduct");
+    if (isHigh || isFloating || isWindow || isDecided || isMaybeAbove(s)) out.add("viaduct");
     return out;
   };
   let open: { chunk: string; s0: number; s1: number } | null = null;

@@ -536,6 +536,91 @@ describe("D. 並ぶ 2 本の取付け（S7-2 3.6）", () => {
   });
 });
 
+describe("D'. 下げた取付けが下の地下 run の上を越える所（追記 6 の 1）", () => {
+  /**
+   * twoApproaches, and a second road crossing under the first approach at a slant (1 in 5, through
+   * x 700 on the first line, in its lowered stretch from x 588, 103 m before the portal), so the two
+   * carriageways overlap over some 90 m: viaduct → at grade → `below` 1200 m (a cut or a tunnel,
+   * layer −1, the approach "above" it by the layers) → at grade → viaduct. Why at a slant and not
+   * square: a square crossing overlaps one station, and its viaduct, shorter than smoothM, is merged.
+   */
+  const crossNet = (below: Record<string, string>) => {
+    const net = twoApproaches();
+    const [ux, uy] = [1 / Math.hypot(1, 0.2), 0.2 / Math.hypot(1, 0.2)];
+    const ways: Array<{ id: number; t0: number; t1: number; tags: Record<string, string> }> = [
+      { id: 21, t0: -1300, t1: -800, tags: bridgeTags },
+      { id: 22, t0: -800, t1: -600, tags: gradeTags },
+      { id: 23, t0: -600, t1: 600, tags: below },
+      { id: 24, t0: 600, t1: 800, tags: gradeTags },
+      { id: 25, t0: 800, t1: 1300, tags: bridgeTags },
+    ];
+    const nodeAt = (t: number) => 700000 + Math.round(t) + 2000;
+    for (const w of ways) {
+      const ts: number[] = [];
+      for (let t = w.t0; t < w.t1 - 1e-6; t += 50) ts.push(t);
+      ts.push(w.t1);
+      const ids = ts.map(nodeAt);
+      net.ways.set(w.id, normalizeWay(w.id, ids, { ...w.tags, ref: "C2" }));
+      for (const [i, t] of ts.entries()) {
+        const [lon, lat] = plane.toLonLat(700 + ux * t, uy * t);
+        net.nodes.set(ids[i], normalizeNode(ids[i], lon, lat, {}));
+      }
+    }
+    return net;
+  };
+  const solve = (below: Record<string, string>) => {
+    const plan = planNetwork(crossNet(below), new Set(), null, [], cutOpts);
+    return { plan, res: solvePlan(plan, flat, []) };
+  };
+  /** The approach's stations over the crossing below run (the files' pairs): s, height over it, the level, its chunk's structure. */
+  const overOf = (plan: Plan, res: Result) => {
+    const [g1] = runsWhere(plan, (r) => r.ground && r.run.ways.includes(2));
+    const [lower] = runsWhere(plan, (r) => r.below && r.run.ways.includes(23));
+    const structureAt = (s: number) =>
+      chunksOf(res, g1).find((c) => c.st[0] <= s + 1e-9 && s <= c.st[c.st.length - STATION_STRIDE] + 1e-9)!
+        .structure;
+    const over = pairStations(res.chunks)
+      .filter((p) => p.a === g1 && p.b === lower)
+      .map((p) => ({ s: p.sa, under: p.sb, dz: p.dz, level: p.levelApart, structure: structureAt(p.sa) }));
+    return { g1, lower, over, structureAt };
+  };
+  const t13Of = (res: Result) => violationsOf(res, res.chunks, () => undefined, true).T13;
+
+  it("over an open cut a level down, the approach under the ground stays `above` it: a viaduct there, a cut away from it", () => {
+    const { plan, res } = solve(cutTags);
+    expect(loweredApproaches(plan).byRun.size).toBeGreaterThan(0);
+    expect(unsolved(res)).toEqual([]);
+    const { g1, over, structureAt } = overOf(plan, res);
+    expect(over.length).toBeGreaterThan(0);
+    // A real crossing: a level apart, past one surface (SAME_SURFACE_ALLOWED_DZ_M).
+    expect(over.every((p) => p.dz >= p.level - 0.01)).toBe(true);
+    expect(over.map((p) => p.structure)).toEqual(over.map(() => "viaduct"));
+    // Under the ground there, and a cut away from the crossing in the stretch.
+    for (const p of over) expect(roadAt(res, g1, p.s)).toBeLessThan(3 - 0.3);
+    expect(structureAt(250)).toBe("cut");
+    expect(t13Of(res).count).toBe(0);
+    // T13 reads the same rule from the files: the crossing's viaduct drawn a cut (as before 追記 6) is a violation.
+    const asCut = res.chunks.map((c) =>
+      c.run === g1 && c.structure === "viaduct"
+        ? { ...c, structure: "cut" as const, piers: [], cross: [], girder: 0 }
+        : c,
+    );
+    expect(t13Of({ ...res, chunks: asCut }).first.join()).toMatch(/not of its structure/);
+  });
+
+  it("over a covered tunnel a level down, the approach under the ground is still taken out of `above`: a cut, by the compiler and T13 alike", () => {
+    const { plan, res } = solve(tunnelTags);
+    expect(unsolved(res)).toEqual([]);
+    const { lower, over } = overOf(plan, res);
+    expect(over.length).toBeGreaterThan(0);
+    expect(over.every((p) => p.dz >= p.level - 0.01)).toBe(true);
+    // The tunnel is covered there (no hole: below.ts isHoleAt).
+    for (const p of over) expect(3 - roadAt(res, lower, p.under)).toBeGreaterThan(TUNNEL_DEPTH_M);
+    expect(over.map((p) => p.structure)).toEqual(over.map(() => "cut"));
+    expect(t13Of(res).count).toBe(0);
+  });
+});
+
 /** Viaduct → tunnel 1000 m → at grade `between` m → tunnel 1000 m → viaduct: both ends of the run at grade are portals. */
 const betweenTunnels = (between: number) =>
   network([
