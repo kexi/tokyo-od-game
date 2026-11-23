@@ -43,6 +43,7 @@
 // as viaduct, embankment or cut from its solved height (src/expressway/heightStructures.ts) and names
 // "height-structures" in meta's features; --structures tags (comparing, --out) draws them by the tags.
 import {
+  belowCeilingsRefusal,
   belowJoinsRefusal,
   districtsRefusal,
   portalApproachRefusal,
@@ -330,6 +331,12 @@ const portalApproachArg = arg("portal-approach") ?? "off";
 const portalApproachReason = portalApproachRefusal(portalApproachArg, belowJoinsArg);
 if (portalApproachReason) throw new Error(portalApproachReason);
 const isPortalApproachCut = portalApproachArg === "cut";
+// S7-3c: --below-ceilings points holds a below run's ceilings between the grid's rows too (grid, the
+// default, keeps the 5 m rows and the thresholds); measuring only until S7-6.
+const belowCeilingsArg = arg("below-ceilings") ?? "grid";
+const belowCeilingsReason = belowCeilingsRefusal(belowCeilingsArg, structuresMode);
+if (belowCeilingsReason) throw new Error(belowCeilingsReason);
+const isBelowCeilingsPoints = belowCeilingsArg === "points";
 const districtsArg = arg("districts");
 const districtsReason = districtsRefusal(districtsArg, scope === "ship", isRunBordersCut, DISTRICTS);
 if (districtsReason) throw new Error(districtsReason);
@@ -354,6 +361,7 @@ const refusal = shippedFolderRefusal({
   isRunBordersCut,
   isBelowJoinsCompile,
   isPortalApproachCut,
+  isBelowCeilingsPoints,
 });
 if (refusal) throw new Error(refusal);
 const stagesMs: Record<string, number> = {};
@@ -422,6 +430,7 @@ const planOptions: Parameters<typeof planNetwork>[4] = {
   ...(isRunBordersCut ? { runBorders: "cut" as const } : {}),
   ...(isBelowJoinsCompile ? { belowJoins: "compile" as const } : {}),
   ...(isPortalApproachCut ? { portalApproach: "cut" as const } : {}),
+  ...(isBelowCeilingsPoints ? { belowCeilings: "points" as const } : {}),
 };
 // Planned again with the ramps moved (--ramp-shift) once the first solve says where.
 // With --ground compile the plan is made again once the roads are read (S6 PR 7c2, below): the

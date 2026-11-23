@@ -35,6 +35,8 @@ export type BuildFlags = {
   isBelowJoinsCompile?: boolean;
   /** --portal-approach cut (S7-2: the runs at grade before a tunnel's portal lowered as cuts). */
   isPortalApproachCut?: boolean;
+  /** --below-ceilings points (S7-3c: a below run's ceilings held between the grid's rows too). */
+  isBelowCeilingsPoints?: boolean;
 };
 
 const MEASURE = "give --out (just measure-expressway-area)";
@@ -93,6 +95,9 @@ export function shippedFolderRefusal(f: BuildFlags): string | null {
   // S7-2: lowering the approaches moves the decks over them; S7-6 makes it the default.
   if (f.isPortalApproachCut)
     return `--portal-approach cut is for measuring until S7-6 makes it the default: ${MEASURE}`;
+  // S7-3c: the rows added between the grid's move the tunnels' decks; S7-6 makes it the default.
+  if (f.isBelowCeilingsPoints)
+    return `--below-ceilings points is for measuring until S7-6 makes it the default: ${MEASURE}`;
   // S6 PR 7c: the network's flags are the default; the values before them are for comparing.
   if (f.isTags) return `--structures tags is for comparing with the structures by height: ${MEASURE}`;
   if (f.isGroundSkip) return `--ground skip is for comparing with the runs at grade compiled: ${MEASURE}`;
@@ -136,5 +141,19 @@ export function portalApproachRefusal(mode: string, belowJoins: string): string 
   const isOff = mode === "off";
   if (isOff) return null;
   if (belowJoins !== "compile") return "--portal-approach cut needs --below-junctions compile";
+  return null;
+}
+
+/**
+ * The reason `--below-ceilings` cannot be taken, or null (S7-3c 3.1): grid or points, and points only
+ * with the structures by height. Why only there: the rows it adds go beside thresholdStations', which a
+ * build by the tags never had; a build that quietly kept the grid would read as the flag's.
+ */
+export function belowCeilingsRefusal(mode: string, structures: string): string | null {
+  const isKnown = mode === "grid" || mode === "points";
+  if (!isKnown) return `unknown --below-ceilings ${mode} (grid, points)`;
+  const isGrid = mode === "grid";
+  if (isGrid) return null;
+  if (structures !== "height") return "--below-ceilings points needs --structures height";
   return null;
 }

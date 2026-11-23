@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { belowCeilingsRefusal, shippedFolderRefusal } from "../scripts/expresswayGuards";
 import { MAX_GRADE } from "../src/law/roadStandards";
 import {
   CUT_TOLERANCE_M,
@@ -319,5 +320,23 @@ describe("格子の測点の間の土被り（T12、S7-3 レビュー 0 の崖�
     const v = violationsOf(res, res.chunks, () => undefined, true);
     expect(v.T12.count).toBe(1);
     expect(v.T12.first[0]).toMatch(/^20:\d+: tunnel road -3\.\d+ above -3\.60 at s=5\d\d\.\d+$/);
+  });
+});
+
+describe("G. 番人（S7-3c 3.1、--below-ceilings）", () => {
+  const plain = { isBelowAll: false, isBlocks: false, isV1: false, v2Flags: [] };
+  it("points stops without --out and is taken with it", () => {
+    expect(shippedFolderRefusal({ ...plain, hasOut: false, isBelowCeilingsPoints: true })).toMatch(
+      /below-ceilings points/,
+    );
+    expect(shippedFolderRefusal({ ...plain, hasOut: true, isBelowCeilingsPoints: true })).toBeNull();
+  });
+
+  it("points needs --structures height; grid takes either; an unknown value stops", () => {
+    expect(belowCeilingsRefusal("points", "height")).toBeNull();
+    expect(belowCeilingsRefusal("points", "tags")).toMatch(/structures height/);
+    expect(belowCeilingsRefusal("grid", "tags")).toBeNull();
+    expect(belowCeilingsRefusal("grid", "height")).toBeNull();
+    expect(belowCeilingsRefusal("rows", "height")).toMatch(/unknown/);
   });
 });

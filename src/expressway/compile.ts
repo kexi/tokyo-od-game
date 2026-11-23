@@ -486,6 +486,13 @@ export type Plan = {
    */
   portalApproach?: "cut";
   /**
+   * `--below-ceilings points` (S7-3c 3.2): a height build's below run holds its ceilings between the
+   * grid's rows too, where checks.checkCover would ask them of a station of the files (rows added where
+   * a point's ceiling is under the line of the rows either side). Absent: grid, the 5 m rows and the
+   * thresholds alone, as before.
+   */
+  belowCeilings?: "points";
+  /**
    * S6 PR 7c: the stretches a decision made viaducts where their height made embankments (run, run
    * distances), for the scorecard. Absent when none was.
    */
@@ -1196,6 +1203,8 @@ export type PlanOptions = {
   belowJoins?: "defer" | "compile";
   /** `--portal-approach` (S7-2, Plan.portalApproach); `off` by default. */
   portalApproach?: "off" | "cut";
+  /** `--below-ceilings` (S7-3c, Plan.belowCeilings); `grid` by default. */
+  belowCeilings?: "grid" | "points";
   /** `--run-borders` (R1-1a, Plan.runBorders); `keep` (by structure alone) by default. */
   runBorders?: "keep" | "cut";
 };
@@ -1385,6 +1394,7 @@ export function planNetwork(
     ...(isBorderCut ? { runBorders: "cut" as const } : {}),
     ...(options.belowJoins === "compile" ? { belowJoins: "compile" as const } : {}),
     ...(options.portalApproach === "cut" ? { portalApproach: "cut" as const } : {}),
+    ...(options.belowCeilings === "points" ? { belowCeilings: "points" as const } : {}),
     ...(options.structures === "height" ? { structures: "height" as const } : {}),
     ...(isGroundMode ? { ground: "compile" as const } : {}),
     ...(options.touchdown === "all" ? { touchdown: "all" as const } : {}),
