@@ -91,9 +91,19 @@ const PASS_SPEED = 4.5; // m/s while beside the obstacle (16 km/h: 側方間隔 
 export const LINED_UP = 0.5;
 /** Slower than this (m/s) the car stands: for passing() and for the slant of the front's band. */
 export const STANDING_SPEED = 0.3;
-/** How far back along the path the nose's drift across it is measured from (m). */
+/**
+ * How far back along the path the nose's drift across it is measured from (m). Why not shorter:
+ * 3–5 m take in the passing drift at a turn's entry and exit (0.8–1.0 s later through the turns of
+ * the D4 v2 trial; 8 m is the shortest at 0.3 s or under). Why not longer: 12 m notices a car
+ * leaving its path 6.7 m later (a 6° slant leaves a car 52 m on only 0.3 m over a stopping distance).
+ */
 export const DRIFT_SPAN_M = 8;
-/** The least run along the path a drift is taken over (m); shorter, the last value holds. */
+/**
+ * The least run along the path a drift is taken over (m); shorter, the last value holds. Why not
+ * longer: a slant from the start is noticed that much later (0.5 m costs T-f7 0.5 m of its gap).
+ * Why not shorter: over a few centimetres a sway of the nose is a large drift (the heading's slant,
+ * the smaller of the two, holds it while the heading is along the path).
+ */
 export const DRIFT_MIN_M = 0.5;
 
 /**

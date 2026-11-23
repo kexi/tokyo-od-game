@@ -416,9 +416,62 @@ describe("the car in front where the autopilot follows its path round turns and 
 
   it("T-h7: a left turn past an oncoming car 2.3 m from its path (8 m street) still arrives", () => {
     const r = drive(leftTurn(8), fromSouth, north, west, [{ x: -16, y: 200.7, hx: 1, hy: 0 }]);
+    // How late is not held to a line (32.7 s against main's 28.3 s, +4.37 s on d03d94d): the gap
+    // between the bodies there is under 0.5 m, and slowing for it is accepted (D4 v2-5).
     expect(Number.isNaN(r.arrived)).toBe(false);
-    // Reported, not held to a line (the v2 trial was 4.4 s later than main): the gap between the
-    // bodies there is under 0.5 m, and slowing for it is accepted (D4 v2-5).
-    expect(r.arrived - MAIN.nearOncoming).toBeLessThan(90);
+  });
+});
+
+/**
+ * The car of T-f7b (3.5° off its path, the wheel held, 55 km/h) for `metres`: the driver, the
+ * world, and where the car is and heads; the drift its pick last used is then under 0.
+ */
+function slantFor(metres: number) {
+  const { driver, world, route } = plannedDriver();
+  const start = along(route, 60);
+  const slant = (3.5 * Math.PI) / 180;
+  const right = new Vector3(-start.dir.z, 0, start.dir.x);
+  const heading = start.dir.clone().multiplyScalar(Math.cos(slant)).addScaledVector(right, Math.sin(slant));
+  const yaw = Math.atan2(heading.x, heading.z);
+  const v = 55 / 3.6;
+  const pos = start.pos.clone();
+  for (let run = 0; run < metres; run += v * DT) {
+    driver.update(DT, world, { position: pos, yaw, speed: v });
+    pos.addScaledVector(heading, v * DT);
+  }
+  expect(driver.frontPick!.drift).toBeLessThan(-0.03);
+  return { driver, world, pos, yaw, v, heading };
+}
+
+describe("the nose's drift starts afresh where it was measured along another path or with a gap (D4 v2)", () => {
+  it("after place(): the next pick's drift is 0", () => {
+    const { driver, world, pos, yaw, v } = slantFor(20);
+    driver.place(pos, yaw);
+    driver.update(DT, world, { position: pos, yaw, speed: v });
+    expect(driver.frontPick!.drift).toBe(0);
+  });
+
+  it("after plan() (a new route): the next pick's drift is 0", () => {
+    const { driver, world, pos, yaw, v } = slantFor(20);
+    // From the street's start, 20 m behind where the first route began: the car's place along the
+    // new route runs on past the old one's, so only plan()'s reset tells the two paths apart (a
+    // place further back starts afresh by itself, and place() resets on its own).
+    expect(driver.plan(world, at(0, 590), { seg: world.graph.segments[0], s: 0, dir: 1 })).toBe(true);
+    driver.update(DT, world, { position: pos, yaw, speed: v });
+    expect(driver.frontPick!.drift).toBe(0);
+  });
+
+  it("after an update whose look did not run (held for being off its lane): the next pick's drift is 0", () => {
+    const { driver, world, pos, yaw, v, heading } = slantFor(20);
+    // 6 m to the right of where it is: over OFF_LANE (4.5 m), the update holds before the look.
+    const right = new Vector3(-heading.z, 0, heading.x);
+    const tick = driver.frontPickTick;
+    driver.update(DT, world, { position: pos.clone().addScaledVector(right, 6), yaw, speed: v });
+    expect(driver.lostWhy).toBe("offLane");
+    expect(driver.frontPickTick).toBe(tick);
+    driver.update(DT, world, { position: pos, yaw, speed: v });
+    expect(driver.lostWhy).toBeNull();
+    expect(driver.frontPickTick).toBe(driver.ticks);
+    expect(driver.frontPick!.drift).toBe(0);
   });
 });
