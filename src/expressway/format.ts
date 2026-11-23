@@ -275,6 +275,24 @@ export type XwEnd = {
   bank?: number;
   /** For a ground or portal end: the ground elevation there (T.P. m). */
   ground?: number;
+  /**
+   * S7-2 (`--portal-approach cut`), a below run's end seamed onto a lowered approach at grade: its
+   * portal stands at the lowered stretch's start, `offsetM` m beyond the end (the stretch's length), at
+   * the ground there (`z`, T.P. m), over the way at `V` (the faster planV of the two runs). T12 reads
+   * its ceilings from it as the compiler did (compile.ts belowLinksOf, below.ts portalReaches). Absent
+   * elsewhere (every file without the flag).
+   */
+  portalAt?: { offsetM: number; z: number; V: number };
+  /**
+   * S7-2 (`--portal-approach cut`), an approach at grade's end at a lowered portal: the lowered
+   * stretch's length from this end (L′, the number its below run's `portalAt.offsetM` carries) and the
+   * below runs the approach stands "above" (its chunks' decks) within the stretch, by id. T13 reads
+   * the stretch and which runs under it are below runs from here (violations.ts loweredStretchesOf).
+   * Why on the approach and not only on the below run beyond it: a folder may write the approach and
+   * not its tunnel, or not the tunnel under it (a box, the ship range's edge), and T13 read those
+   * metres as a viaduct where the compiler had made a cut (PR #130 review, 必須 1). Absent elsewhere.
+   */
+  lowered?: { lengthM: number; belowUnder: string[] };
 };
 
 export type XwRunSummary = {

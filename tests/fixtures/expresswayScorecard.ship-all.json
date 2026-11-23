@@ -1,6 +1,6 @@
 {
- "version": 10,
- "label": "r1b10-ship-all",
+ "version": 11,
+ "label": "s7p-all-off5",
  "range": "ship",
  "below": "all",
  "objective": {
@@ -8169,6 +8169,8 @@
    "ends": 80,
    "coverShort": 64,
    "maxShortM": 7.869,
+   "lowered": 0,
+   "loweredCoverShort": 0,
    "list": [
     {
      "id": "1304022054:start",

@@ -42,7 +42,12 @@
 // P2.7-6 PR 1: --structures height (the default since S6 PR 7c) draws a viaduct-tagged run's stretches
 // as viaduct, embankment or cut from its solved height (src/expressway/heightStructures.ts) and names
 // "height-structures" in meta's features; --structures tags (comparing, --out) draws them by the tags.
-import { belowJoinsRefusal, districtsRefusal, shippedFolderRefusal } from "./expresswayGuards";
+import {
+  belowJoinsRefusal,
+  districtsRefusal,
+  portalApproachRefusal,
+  shippedFolderRefusal,
+} from "./expresswayGuards";
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -85,6 +90,7 @@ import {
   mainLineHoles,
   planNetwork,
   portalApproachEnds,
+  loweredApproaches,
   unplannedChains,
   untiedPairs,
   solveWithRampShift,
@@ -318,6 +324,12 @@ const belowJoinsArg = arg("below-junctions") ?? "defer";
 const belowJoinsReason = belowJoinsRefusal(belowJoinsArg, structuresMode, groundMode, partitionMode);
 if (belowJoinsReason) throw new Error(belowJoinsReason);
 const isBelowJoinsCompile = belowJoinsArg === "compile";
+// S7-2: --portal-approach cut lowers the runs at grade before a tunnel's portal as cuts (off, the
+// default, leaves them on the ground's band); measuring only until S7-6.
+const portalApproachArg = arg("portal-approach") ?? "off";
+const portalApproachReason = portalApproachRefusal(portalApproachArg, belowJoinsArg);
+if (portalApproachReason) throw new Error(portalApproachReason);
+const isPortalApproachCut = portalApproachArg === "cut";
 const districtsArg = arg("districts");
 const districtsReason = districtsRefusal(districtsArg, scope === "ship", isRunBordersCut, DISTRICTS);
 if (districtsReason) throw new Error(districtsReason);
@@ -341,6 +353,7 @@ const refusal = shippedFolderRefusal({
   isLowSpanSweep: lowSpanSoffitM !== null,
   isRunBordersCut,
   isBelowJoinsCompile,
+  isPortalApproachCut,
 });
 if (refusal) throw new Error(refusal);
 const stagesMs: Record<string, number> = {};
@@ -408,6 +421,7 @@ const planOptions: Parameters<typeof planNetwork>[4] = {
   ...(isShip ? { wanted: (p) => shipWanted(p) } : {}),
   ...(isRunBordersCut ? { runBorders: "cut" as const } : {}),
   ...(isBelowJoinsCompile ? { belowJoins: "compile" as const } : {}),
+  ...(isPortalApproachCut ? { portalApproach: "cut" as const } : {}),
 };
 // Planned again with the ramps moved (--ramp-shift) once the first solve says where.
 // With --ground compile the plan is made again once the roads are read (S6 PR 7c2, below): the
@@ -807,6 +821,14 @@ function openEndsOf(groundRuns: typeof result.runs): NonNullable<NonNullable<Rep
   const cap = HEIGHT_STRUCTURES.value.ground.approachMaxM;
   const byCause = { climbToViaduct: 0, downToPortal: 0, overPortal: 0, childLow: 0, childUnwritten: 0 };
   const offs: number[] = [];
+  // S7-2 (`--portal-approach cut`): a lowered end is off its target by what its approach could not go
+  // down (L short, the ground rising to the seam, a grade at its cap): counted apart (`lowered`), so the
+  // fields above read the ends at grade as without the flag. Why not left in: 28 lowered ends past the
+  // approach cap read as overPortal, the cause of a road standing over the portal, which they are not.
+  const lowered = loweredApproaches(plan).byRun;
+  const isLoweredEnd = (id: string, atStart: boolean) =>
+    (lowered.get(id) ?? []).some((a) => a !== null && a.atStart === atStart);
+  const loweredOffs: number[] = [];
   for (const r of groundRuns) {
     const list = result.chunks.filter((c) => c.run === r.id).sort((a, b) => a.k - b.k);
     const isEmpty = list.length === 0;
@@ -825,6 +847,10 @@ function openEndsOf(groundRuns: typeof result.runs): NonNullable<NonNullable<Rep
       const e = atStart ? r.start : r.end;
       if (e.kind !== "open") continue;
       const off = signedAt(atStart);
+      if (isLoweredEnd(r.id, atStart)) {
+        loweredOffs.push(Math.abs(off));
+        continue;
+      }
       offs.push(Math.abs(off));
       const isOver = Math.abs(off) > cap + 1e-9;
       if (!isOver) continue;
@@ -855,6 +881,16 @@ function openEndsOf(groundRuns: typeof result.runs): NonNullable<NonNullable<Rep
     maxM: Math.round(Math.max(0, ...offs) * 100) / 100,
     overApproach: offs.filter((d) => d > cap + 1e-9).length,
     byCause,
+    ...(lowered.size > 0
+      ? {
+          lowered: {
+            count: loweredOffs.length,
+            overBand: loweredOffs.filter((d) => d > band + 1e-9).length,
+            maxM: Math.round(Math.max(0, ...loweredOffs) * 100) / 100,
+            overApproach: loweredOffs.filter((d) => d > cap + 1e-9).length,
+          },
+        }
+      : {}),
   };
 }
 
@@ -1200,6 +1236,7 @@ if (reportPath) {
     belowDeferrals: plan.belowDeferrals.map(({ chain: _chain, ...d }) => d),
     // S7-1 review 2: the approaches from the plan, so one whose below run is not written still counts.
     approachEnds: portalApproachEnds(plan),
+    notLowered: loweredApproaches(plan).skipped,
     // S7-3: the chains planNetwork never compiles (no viaduct), with tunnel ways.
     unplanned: unplannedChains(plan),
   };

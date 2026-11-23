@@ -81,9 +81,14 @@ const cls = z.enum(["expressway", "ramp", "street"]);
  * `underground.unplanned` (the chains with tunnel ways and no viaduct, never compiled). Version 8
  * reports still parse. 10 (R1-1b N1): in `ends`, the ends' `kind`, `onward` and `beyond`, the ramps'
  * ends (`rampEnds`), the mouths' `side` and `at`, and a child at a listed end's node no longer a mouth
- * too. Version 9 reports still parse.
+ * too. Version 9 reports still parse. 11 (S7-2): `underground.portals.lowered` and `loweredCoverShort`
+ * (the portal ends whose approach at grade was lowered by --portal-approach cut, and those still short
+ * of cover: 0 without the flag), and per end its lowered stretch and approach depth or why it was left
+ * at grade; with the flag only, `ground.openEnds.lowered` (the lowered ends off their lowered target,
+ * out of the fields above it) and `underground.overApproach.besideLowered` (two lowered approaches
+ * going down side by side on one surface, out of `list`). Version 10 reports still parse.
  */
-export const REPORT_VERSION = 10;
+export const REPORT_VERSION = 11;
 
 const blockSize = { runs: count, pieces: count, variables: count };
 
@@ -114,6 +119,7 @@ export const ReportSchema = z.strictObject({
     z.literal(7),
     z.literal(8),
     z.literal(9),
+    z.literal(10),
     z.literal(REPORT_VERSION),
   ]),
   label: z.string(),
@@ -331,6 +337,12 @@ export const ReportSchema = z.strictObject({
               childUnwritten: count,
             })
             .optional(),
+          /**
+           * S7-2 (version 11, `--portal-approach cut`): the lowered ends (compile.ts loweredApproaches,
+           * written or not beyond), off their lowered target (approachTargetOf), counted here and not in
+           * the fields above. Absent without the flag.
+           */
+          lowered: z.strictObject({ count, overBand: count, maxM: m, overApproach: count }).optional(),
         })
         .optional(),
       /**
@@ -716,6 +728,8 @@ export type ReportInput = {
   belowDeferrals?: readonly DeferredBelow[];
   /** The portals' approaches (compile.ts portalApproachEnds), into `underground.overApproach`. */
   approachEnds?: readonly ApproachEnd[];
+  /** S7-2: the approaches the plan left at grade (compile.ts loweredApproaches' skipped), into `underground.portals`. */
+  notLowered?: ReadonlyArray<{ below: string; belowAtStart: boolean; reason: "both-portals" }>;
   /** The chains with tunnel ways and no viaduct (compile.ts unplannedChains), into `underground.unplanned`. */
   unplanned?: readonly UnplannedBelow[];
 };
@@ -1531,6 +1545,7 @@ export function buildReport(input: ReportInput): Report {
     underground: undergroundOf({
       deferred: input.belowDeferrals ?? [],
       approachEnds: input.approachEnds ?? [],
+      notLowered: input.notLowered ?? [],
       unplanned: input.unplanned ?? [],
       chunks: input.chunks,
       runs: input.runs,

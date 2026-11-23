@@ -16,7 +16,7 @@ import {
   checkSeamHeading,
 } from "./checks";
 import { ST, STATION_STRIDE, type XwChunk, type XwDiagnostic, type XwRunSummary } from "./format";
-import { type BelowLinkRun, isEndUnder, portalReaches } from "./below";
+import { type BelowLinkRun, hasPortalsBeyond, type PortalAt, portalReaches } from "./below";
 import type { DesignSpeed } from "../law/roadStandards";
 import { checkHeightStructures } from "./heightStructures";
 
@@ -65,7 +65,11 @@ export function violationsOf(
     const a = list[0].st;
     const b = list[list.length - 1].st;
     const at = isHeight ? ST.ground : ST.z;
+    // S7-2 3.3: a portal beyond an end on a lowered approach, from the below run's own summary (the
+    // numbers the compiler used), never interpolated from the approach's stations.
+    const portalAt = portalAtOfSummary(r);
     links.set(r.id, {
+      ...(portalAt ? { portalAt } : {}),
       id: r.id,
       lengthM: r.lengthM,
       planV: r.planV as DesignSpeed,
@@ -77,6 +81,18 @@ export function violationsOf(
       ground: [a[at], b[b.length - STATION_STRIDE + at]],
     });
   }
+  // S7-2 追記 3 の 1: each lowered approach's stretches and the below runs under them, from its own
+  // summary (XwEnd.lowered), for T13: the same whichever runs the folder writes (PR #130 review 必須 1).
+  const stretches = loweredStretchesOf(meta.runs);
+  const writtenBelow = meta.runs.filter((r) => r.below === true).map((r) => r.id);
+  const lowerOf = (id: string) => byRun.get(id);
+  const loweredOf = (id: string) => {
+    const own = stretches.get(id);
+    if (!own) return undefined;
+    const r = meta.runs.find((x) => x.id === id)!;
+    const under = [r.start, r.end].flatMap((e) => e.lowered?.belowUnder ?? []);
+    return { stretches: own, belowIds: new Set([...writtenBelow, ...under]), lowerOf };
+  };
   const found = Object.fromEntries(PROPERTIES.map((p) => [p, [] as string[]])) as Record<Property, string[]>;
   const openShort = (id: string) => {
     const d = meta.diagnostics.find(
@@ -136,8 +152,9 @@ export function violationsOf(
       : { z0: first[3], z1: last[last.length - STATION_STRIDE + 3] };
     // S7-3 3.4: an end going on under the ground is measured from the portals beyond it, as setupBelow
     // does (the same below.ts functions, read from the files' ends and end stations).
-    const isUnder = isEndUnder(links, r.id, 0) || isEndUnder(links, r.id, 1);
-    const ends = isUnder ? { ...plainEnds, reaches: portalReaches(links, r.id) } : plainEnds;
+    const ends = hasPortalsBeyond(links, r.id)
+      ? { ...plainEnds, reaches: portalReaches(links, r.id) }
+      : plainEnds;
     const isTunnelFree = isHeight && isTunnelFreeRun(list, r, ends);
     // A run at grade's cuts are T13's (its road is within a band of the ground, no ceiling). A viaduct
     // -tagged run's cuts keep T12 (review W10): they are deeper than the dead band by what they are.
@@ -145,13 +162,50 @@ export function violationsOf(
     if (isJudgedCover) for (const c of list) found.T12.push(...checkCover(c, r, ends, isTunnelFree));
     if (isHeight)
       found.T13.push(
-        ...checkHeightStructures(list, r.below === true, r.ground === true, groundEndsOf(r, runs)),
+        ...checkHeightStructures(
+          list,
+          r.below === true,
+          r.ground === true,
+          groundEndsOf(r, runs),
+          undefined,
+          loweredOf(r.id),
+        ),
       );
     if (isHeight) found.T4.push(...checkClearanceWindows(list));
   }
   return Object.fromEntries(
     PROPERTIES.map((p) => [p, { count: found[p].length, first: found[p].slice(0, FIRST) }]),
   ) as Violations;
+}
+
+/**
+ * S7-2: the lowered stretches of the approaches at grade (run distances on the approach), by approach,
+ * from each approach's own ends (XwEnd.lowered): from its start the stretch's length on, or to its end
+ * from that far before it. Why not from the below runs' `portalAt` (as first made): a folder that
+ * does not write the tunnel beyond an approach had no stretch for it. Empty without the flag.
+ */
+export function loweredStretchesOf(runs: readonly XwRunSummary[]): Map<string, Array<[number, number]>> {
+  const out = new Map<string, Array<[number, number]>>();
+  for (const r of runs)
+    for (const [e, atStart] of [
+      [r.start, true],
+      [r.end, false],
+    ] as const) {
+      if (e.lowered === undefined) continue;
+      const L = e.lowered.lengthM;
+      const span: [number, number] = atStart ? [0, L] : [r.lengthM - L, r.lengthM];
+      out.set(r.id, [...(out.get(r.id) ?? []), span]);
+    }
+  return out;
+}
+
+/** A run summary's portals on lowered approaches (XwEnd.portalAt) as below.ts reads them, or null where it has none. */
+export function portalAtOfSummary(r: XwRunSummary): [PortalAt | null, PortalAt | null] | null {
+  const read = (e: XwRunSummary["start"]): PortalAt | null =>
+    e.portalAt ? { offsetM: e.portalAt.offsetM, z: e.portalAt.z, V: e.portalAt.V as DesignSpeed } : null;
+  const ends: [PortalAt | null, PortalAt | null] = [read(r.start), read(r.end)];
+  const hasAny = ends.some((p) => p !== null);
+  return hasAny ? ends : null;
 }
 
 /**

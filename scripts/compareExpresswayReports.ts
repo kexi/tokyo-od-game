@@ -84,6 +84,7 @@ const undergroundLine =
         `underground: deferred +${ids(under.deferred.added)} / −${ids(under.deferred.removed)} / reason ${ids(under.deferred.reasonChanged)} / range ${ids(under.deferred.inRangeChanged)}`,
         `portals +${ids(under.portals.added)} / −${ids(under.portals.removed)} / changed ${ids(under.portals.changed)}`,
         `overApproach +${ids(under.overApproach.added)} / −${ids(under.overApproach.removed)}`,
+        `besideLowered +${ids(under.besideLowered.added)} / −${ids(under.besideLowered.removed)}`,
         `approaches +${ids(under.approaches.added)} / −${ids(under.approaches.removed)}`,
         `joins +${ids(under.joins.added)} / −${ids(under.joins.removed)} / changed ${ids(under.joins.changed)}`,
         `unplanned +${ids(under.unplanned.added)} / −${ids(under.unplanned.removed)} / changed ${ids(under.unplanned.changed)}`,
