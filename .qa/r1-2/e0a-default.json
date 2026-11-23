@@ -141,6 +141,9 @@
             "m": 38
           }
         }
+      },
+      "onewayFrom": {
+        "jartic-all-day": 7
       }
     },
     "onewayAtSites": {
@@ -219,6 +222,10 @@
         "lanesOffCentreInWidth": 2,
         "verdict": "not movable",
         "reasons": ["site both sides or on the line"],
+        "beyond": {
+          "pavement": 0,
+          "twin": 0
+        },
         "junctions": {
           "cross": 0,
           "tee": 0,
@@ -272,6 +279,10 @@
         "lanesOffCentreInWidth": 2,
         "verdict": "not movable",
         "reasons": ["site both sides or on the line"],
+        "beyond": {
+          "pavement": 0,
+          "twin": 0
+        },
         "junctions": {
           "cross": 0,
           "tee": 0,
@@ -325,6 +336,10 @@
         "lanesOffCentreInWidth": 2,
         "verdict": "not movable",
         "reasons": ["site both sides or on the line"],
+        "beyond": {
+          "pavement": 0,
+          "twin": 0
+        },
         "junctions": {
           "cross": 0,
           "tee": 1,
@@ -378,6 +393,10 @@
         "lanesOffCentreInWidth": 3,
         "verdict": "not movable",
         "reasons": ["site both sides or on the line"],
+        "beyond": {
+          "pavement": 0,
+          "twin": 0
+        },
         "junctions": {
           "cross": 0,
           "tee": 0,
@@ -431,6 +450,10 @@
         "lanesOffCentreInWidth": 2,
         "verdict": "not movable",
         "reasons": ["site both sides or on the line"],
+        "beyond": {
+          "pavement": 0,
+          "twin": 0
+        },
         "junctions": {
           "cross": 0,
           "tee": 0,
@@ -503,6 +526,10 @@
         "lanesOffCentreInWidth": 3,
         "verdict": "not movable",
         "reasons": ["jartic one-way", "site both sides or on the line"],
+        "beyond": {
+          "pavement": 0.08,
+          "twin": 0
+        },
         "junctions": {
           "cross": 0,
           "tee": 0,
@@ -575,6 +602,10 @@
         "lanesOffCentreInWidth": 3,
         "verdict": "not movable",
         "reasons": ["jartic one-way", "site both sides or on the line"],
+        "beyond": {
+          "pavement": 0.1,
+          "twin": 0
+        },
         "junctions": {
           "cross": 0,
           "tee": 0,
@@ -628,6 +659,10 @@
         "lanesOffCentreInWidth": 2,
         "verdict": "not movable",
         "reasons": ["site both sides or on the line"],
+        "beyond": {
+          "pavement": 0,
+          "twin": 0
+        },
         "junctions": {
           "cross": 0,
           "tee": 1,
@@ -700,6 +735,10 @@
         "lanesOffCentreInWidth": 3,
         "verdict": "not movable",
         "reasons": ["jartic one-way", "site both sides or on the line"],
+        "beyond": {
+          "pavement": 0.14,
+          "twin": 0
+        },
         "junctions": {
           "cross": 0,
           "tee": 0,
@@ -772,6 +811,10 @@
         "lanesOffCentreInWidth": 3,
         "verdict": "not movable",
         "reasons": ["jartic one-way", "site both sides or on the line"],
+        "beyond": {
+          "pavement": 0.13,
+          "twin": 0
+        },
         "junctions": {
           "cross": 0,
           "tee": 1,
@@ -844,6 +887,10 @@
         "lanesOffCentreInWidth": 3,
         "verdict": "not movable",
         "reasons": ["jartic one-way", "site both sides or on the line"],
+        "beyond": {
+          "pavement": 0.12,
+          "twin": 0
+        },
         "junctions": {
           "cross": 0,
           "tee": 0,
@@ -897,6 +944,10 @@
         "lanesOffCentreInWidth": 3,
         "verdict": "not movable",
         "reasons": ["site both sides or on the line"],
+        "beyond": {
+          "pavement": 0,
+          "twin": 0
+        },
         "junctions": {
           "cross": 0,
           "tee": 0,
@@ -950,6 +1001,10 @@
         "lanesOffCentreInWidth": 2,
         "verdict": "not movable",
         "reasons": ["site both sides or on the line"],
+        "beyond": {
+          "pavement": 0,
+          "twin": 0
+        },
         "junctions": {
           "cross": 0,
           "tee": 0,
@@ -1017,6 +1072,10 @@
         "lanesOffCentreInWidth": 0,
         "verdict": "not movable",
         "reasons": ["jartic one-way", "bridge", "site both sides or on the line", "over the cap"],
+        "beyond": {
+          "pavement": 0.67,
+          "twin": 0.04
+        },
         "junctions": {
           "cross": 0,
           "tee": 0,
@@ -1084,6 +1143,10 @@
         "lanesOffCentreInWidth": 0,
         "verdict": "not movable",
         "reasons": ["jartic one-way", "foot", "bridge", "site both sides or on the line"],
+        "beyond": {
+          "pavement": 0.24,
+          "twin": 0.06
+        },
         "junctions": {
           "cross": 0,
           "tee": 0,
