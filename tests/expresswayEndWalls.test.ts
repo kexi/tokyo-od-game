@@ -572,6 +572,131 @@ describe("先へ続く道に譲る端の壁（R1-1b 追記 4 D3・追記 5 E3）
   });
 });
 
+describe("端の壁の細かい所（R1-1b #129 のレビュー）", () => {
+  // A east to x 200 (its end open), as above.
+  const a = chunkAlong("A:0", (s) => [100 + s, 0], 100);
+  const up = new Vector3(0, 1, 0);
+  /**
+   * At each box's four corners (both ends across, 2 cm in from the face and from the back), the
+   * other deck's road met by a ray up from 5 cm over this road in its world alone: the box's top is
+   * under that road − SLAB (with 0.1 mm for the collider's float32), where the deck is over the end.
+   */
+  const intoSlab = (own: Built, other: Built, drawn = false) => {
+    // `drawn`: the other's drawn triangles (its slab's bottom out to the slab edge, under its 壁高欄
+    // too), met from below at its underside itself; else its collider (the road and the 壁高欄).
+    const world = drawn ? drawnWorldOf(other) : worldOf([other]);
+    const ring = own.rings[own.rings.length - 1];
+    const wall = own.endWalls.find((w) => w.end === "end")!;
+    const over: string[] = [];
+    for (const x of wall.boxes)
+      for (const u of [x.lo + 1e-3, x.hi - 1e-3])
+        for (const d of [0.02, PARAPET_WIDTH.value - 0.02]) {
+          const road = ringPoint(ring, u, liftAt(ring, u, false)).addScaledVector(ring.t, -d);
+          const from = road.clone().setY(road.y + 0.05);
+          const hit = cast(world, from, up, 3);
+          if (!hit) continue;
+          const y = from.y + hit.timeOfImpact;
+          // Met from below: the road's surface (collider), or the slab's bottom itself (drawn).
+          const underside = drawn ? y : y - SLAB;
+          const isOver = underside + SLAB > road.y + 0.15;
+          const isInto = isOver && x.top > underside + 1e-4;
+          if (isInto) over.push(`u ${u.toFixed(2)} d ${d}: ${((x.top - underside) * 1000).toFixed(2)} mm`);
+        }
+    return { over, wall };
+  };
+  /** A world of a build's drawn triangles (every face, both windings as Rapier's trimesh meets them). */
+  const drawnWorldOf = (b: Built) => {
+    const position = b.arrays.position;
+    const index = new Uint32Array(position.length / 3).map((_, i) => i);
+    return worldOf([{ ...b, collider: { position, index }, piers: [] }]);
+  };
+  const twoRuns = [summary("A", end("ground"), end("open")), summary("B", end("ground"), end("ground"))];
+
+  it("stops the wall under a curving, climbing deck over it, read with the deck's own triangles (no top into its slab)", () => {
+    // B curves (radius 40 m) and climbs 6 % over A's left at its end, 0.6 m up there: its quads twist.
+    const r = 40;
+    const b = chunkAlong("B:0", (s) => [200 - r * Math.sin(1 - s / r), 6 - r + r * Math.cos(1 - s / r)], 80);
+    for (let i = 0; i < b.st.length; i += STATION_STRIDE)
+      b.st[i + ST.z] += 0.6 + 0.06 * (b.st[i + ST.s] - 40);
+    const index = indexOf(twoRuns, [a, b]);
+    const { over, wall } = intoSlab(buildOf(a, index), buildOf(b, index));
+    expect(wall.loweredM).toBeGreaterThan(0);
+    expect(over).toEqual([]);
+  });
+
+  it("stops the wall under a deck whose edge crosses the box obliquely, at its back and its corners too", () => {
+    // B 0.5 m up at 25° to A, its right slab edge crossing A's foot about 1.5 m left of A's centre and
+    // moving 0.23 m across over the box's depth; shifted across by fractions of a cut so that its edge
+    // falls inside a cut, past the cut's middle, once at least.
+    const tilt = (25 * Math.PI) / 180;
+    for (const shift of [0, 0.011, 0.023, 0.034]) {
+      const b = chunkAlong(
+        "B:0",
+        (s) => [150 + s * Math.cos(tilt), 4.8 + shift - (54.6 - s) * Math.sin(tilt)],
+        100,
+        // A slab with no girder under it: its drawn bottom is its underside all across (the rule reads road − SLAB).
+        { girder: 0 },
+      );
+      for (let i = 0; i < b.st.length; i += STATION_STRIDE) b.st[i + ST.z] += 0.5;
+      const index = indexOf(twoRuns, [a, b]);
+      const { over, wall } = intoSlab(buildOf(a, index), buildOf(b, index), true);
+      expect(wall.loweredM, `shift ${shift}`).toBeGreaterThan(0);
+      expect(over, `shift ${shift}`).toEqual([]);
+    }
+  });
+});
+
+describe("先へ続く道に譲るのは面の先の 2 点の両方に路面がある所（R1-1b #129 のレビュー）", () => {
+  it("keeps the box over each cut where a level road going on lies 0.05 m past the face but not 0.5 m past it nor under the foot", () => {
+    // A east to x 200 (its end open). B level, heading 45° to A, starting just past A's face with its
+    // road's right corner about 0.15 m out: its start face and right edge open a 90° wedge to the
+    // left, so a line out of A's face just left of the corner crosses B's road over a short stretch,
+    // 0.05 m past the face and not 0.5 m past it nor at the foot, for about one cut across. The corner
+    // is moved across a cut's width in steps, so that such a cut falls whole between the samples.
+    const a = chunkAlong("A:0", (s) => [100 + s, 0], 100);
+    const hw = (2 * 3.25 + 1.25 + 0.75) / 2;
+    const k = Math.SQRT1_2;
+    const runs = [summary("A", end("ground"), end("open")), summary("B", end("ground"), end("ground"))];
+    let nearOnly = 0;
+    for (let shift = 0; shift < 0.05; shift += 0.005) {
+      const [cx, cy] = [200.15 - hw * k, 1.9 + shift + hw * k];
+      const b = chunkAlong("B:0", (s) => [cx + s * k, cy + s * k], 60);
+      for (let i = 0; i < b.st.length; i += STATION_STRIDE) b.st[i + ST.z] += 0.02;
+      const index = indexOf(runs, [a, b]);
+      const own = buildOf(a, index);
+      const wall = own.endWalls.find((w) => w.end === "end")!;
+      expect(wall.yieldTo, `shift ${shift}`).toEqual(["B"]);
+      // B's road at a point (its collider alone): a road within 0.15 m of A's there.
+      const onlyB = worldOf([buildOf(b, index)]);
+      const ring = own.rings[own.rings.length - 1];
+      const isOnB = (u: number, d: number) => {
+        const road = ringPoint(ring, u, liftAt(ring, u, false));
+        const above = road
+          .clone()
+          .addScaledVector(ring.t, d)
+          .setY(road.y + 0.6);
+        const hit = cast(onlyB, above, down, 1.2);
+        return hit !== null && Math.abs(above.y - hit.timeOfImpact - road.y) < 0.15;
+      };
+      // The cuts of the wall's face (OPEN_SAMPLE_M from its right end): at its ends and middle, B
+      // under the foot or at both points past the face nowhere, and at the near point alone somewhere.
+      for (let from = -4.25; from < 4.25 - 1e-9; from += 0.05) {
+        const us = [from, from + 0.025, from + 0.05];
+        const isFoot = us.some((u) => isOnB(u, 0) || isOnB(u, -PARAPET_WIDTH.value));
+        const isBoth = us.some((u) => isOnB(u, 0.05) && isOnB(u, PARAPET_WIDTH.value));
+        const isNear = us.some((u) => isOnB(u, 0.05));
+        const isNearOnly = !isFoot && !isBoth && isNear;
+        if (!isNearOnly) continue;
+        nearOnly++;
+        const u = from + 0.025;
+        const isBoxed = wall.boxes.some((x) => u >= x.lo - 1e-9 && u <= x.hi + 1e-9);
+        expect(isBoxed, `shift ${shift.toFixed(3)} cut ${from.toFixed(3)}`).toBe(true);
+      }
+    }
+    expect(nearOnly).toBeGreaterThan(0);
+  });
+});
+
 describe("口（R1-1b 3.5、書かれた run に書かれない run がぶら下がる所）", () => {
   it("keeps the parent's 壁高欄 on the child's side and its edge line when the child is not loaded", () => {
     // P east; Q a ramp hung on P's left at s 50 (its start), Q's chunks not read.
