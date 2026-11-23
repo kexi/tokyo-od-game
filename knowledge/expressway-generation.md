@@ -4685,6 +4685,38 @@ S7-3 の `openings` を読み、トンネル・掘割の分合流の側の壁を
 
 **trust signal**: `scripts/measureStreetBands.ts --moves`（既定範囲と central、2026-11-23、build df58235 + この節の道具の差分。結果は枝 `feat/expressway-street-moves-e` の commit 0e015d3 の `.qa/r1-2/e0a-*.json`）、飛ばしたチャンク 0・終了コード 0。central の探り 3 本・島（`scripts/expresswaySameRoadIslands.ts`）・安定（`scripts/expresswaySameRoadStability.ts`）・`just check-same-road-pieces` を、欠けを埋めた網で測り直した（2026-11-23。無いタイル 0・終了コード 0）。設計の判定は scratchpad の `r1-2b-pr2-instructions.md` 追記 1（消える）。
 
+# P2.7 R1-5 PR A: 街路の走行の道具と、計測のフォルダを配る方法（道具、既定データ不変、2026-11-23）
+
+S6 PR 7c の街路の走行（`.qa/street-drive.mts`、git に無く古い worktree に 1 つだけ在った）を `scripts/qa/street-drive.ts` と `just check-street-drive` に上げ、計測のフォルダを開発サーバーから配る口を足した。S7-6 の街路の走行と、R1-7 の地区の走行はこれで走らせる[^r1-5a]。
+
+## 道具
+
+- 場所の表 `scripts/qa/streetPlaces.ts`: 7c の 18 か所（7c の 13・決定で高架に戻した 2・対照 3）を、id・文言・数のまま移した。場所は run と run 距離（壁際は横の m `left`）か、緯度経度（床版から遠い対照）。点の求め方は控えの式のまま（`placeLatLon`。既定のデータで 18 か所とも控えと差 0 を確かめた）。生成する表（PR B）は同じ形の別ファイル。
+- 判定 `scripts/qa/streetDriveVerdict.ts`: 控えの式と数のまま（到着が終点から 10 m 以内、地面からの車体の高さ 0.4〜1.3 m を 0.25 秒ごと、落下・建物との交差・止まり・respawn 0）。
+  - **地面は DEM**: `__game.groundY(x, z)` は高さを渡さないと DEM（川の上は橋の床版）を返す。掘割の穴に落ちた車は DEM の数 m 下になり、帯の下で落ちる。7c1 の「落ちても到着と読んだ」例（車を幅 40 m の街路の中心線に置いて P9 の掘割に落とした、7c の前の版）は、今の式では不合格になる。
+  - **街路では効かない 2 項**: `stop()` の `fell` は床版の上の測りだけから出し、`expressway_car_stalled` も床版の上でしか出ない。街路の落下は高さの帯と respawn（DEM の 6 m 下で出る）、止まりは到着の距離だけが捕まえる。
+  - **穴埋め（線の変更ではない）**: 測った数が 0（自動運転が経路を引けず動かない）は、帯の検査が空のまま通り、到着の距離だけが不合格にしていた。測った数 0 を、それだけで不合格と書く。
+  - 事故・小突かれ・検挙・逮捕の回は invalid にし、3 回まで走り直す（床版の走行と同じ `scripts/qa/driveInvalid.ts`。`drive-deck.ts` から中身を変えずに移した）。控えは事故を数えず、合否にも入れていなかった。
+  - **known**: 探りの事例の一覧（`--site-lanes`: `check-expressway-lanes --cases`、`--hole-lanes`: `check-hole-lanes --cases`）を渡すと、不合格の点（帯を外れた最初の点・respawn の点・止まった点）が全部どれかの事例の内にあるとき `known`（事例の key つき）。合格には数えず、結果の `summary.json` で pass・fail・known・invalid を分ける。事例の届く幅は探りと同じ（lane-in-site は床版の半幅 + 壁高欄 `PARAPET_WIDTH`、street-lane-over-cut は穴の半幅 `holeHalfM` + 探りの余裕 `HOLE_SITE_MARGIN_M` 1 m を掘割のチャンクの区間で。余裕は `expresswayHoleLanes.ts` から `expresswaySiteLanes.ts` へ移して共有した）。
+- 結果は場所ごとに `.qa/street-drive-<label>/<id>.json`（配ったフォルダ・場所・点・判定・各回）。ファイルの在る場所は飛ばす（再開）。終了コードは不合格 1、invalid 2、known だけ 3。
+
+## 計測のフォルダを配る（`scripts/xwDataServe.ts`、`just serve-expressway-data <dir> [port]`）
+
+- 開発サーバーだけ: `XW_DATA_DIR` が在ると、`<base>data/expressway/<file>` をそのフォルダから配り（無いファイルは 404。public のファイルで埋めない）、`<base>__xw-data` がフォルダと meta.json の SHA-256 を返す。起動のログ `xw_data_served`。
+- **vitest も `configureServer` を呼ぶ**（`apply: "serve"` でも。小さい config で実測）。データテストは `XW_DATA_DIR` を付けて走るので、`VITEST` のときは何もしない。変数が無いときも何も足さない。`vite build`（`apply: "serve"`）と `vite preview`（`just serve-qa-bundle`、`dist-qa` の写しを配る）は対象外。
+- 道具の確かめ（`scripts/qa/servedData.ts`、`drive-deck.ts` と `street-drive.ts`）: 走る前に、ページが取る `data/expressway/meta.json` の SHA-256 を、自分の読むフォルダ（`XW_DATA_DIR` か既定）の meta.json と比べ、違えば走らない。結果のファイルに `served`（サーバーの名乗るフォルダ・道具のフォルダ・ハッシュ）を書く。フォルダの名前で比べないのは、別の worktree の開発サーバーも同じ名前の `public/data/expressway` を配り、写した物は別の名前でも同じデータだから。
+- Why not 別の worktree の `public/data/expressway` へ写す（R1-1b の `r1b_qa_setup2.sh`、7c1）: 写し忘れ・戻し忘れが起きる。7c1 は済んでから両方を main に手で戻していた。
+- 落とし穴: Vite は無いパスにも `index.html` を 200 で返す（`__xw-data` の無い既定のサーバーで `text/html`）。道具は `application/json` のときだけ答えと読む。
+
+## 確かめ（trust signal、2026-11-23、M2 Max、48dc699 + この節の差分）
+
+- A4: `vite build` を変数あり（r1b-g3）・なしで 2 回、`dist` 全体が `diff -r` で一致、`dist/data/expressway` は `public/data/expressway` と一致。開発サーバー（変数なし）の既定のタイル 14551-6452.json と meta.json は public の物とバイト一致、`__xw-data` は `text/html`（Vite の HTML の代わり）。
+- A5: G3（r1b-g3）と S7 の形の central（`r1-cs-48dc699`、`--below-junctions compile --portal-approach cut --run-borders cut --districts central`）を配って、既定のデータに無い run 756785283 の経路 `onward-756785283-by-203832847` を `drive-deck.ts` で走らせた。どちらも車が 756785283:0 に置かれ、結果の `served` にそのフォルダが出た。G3 は合格。**central では不合格**（756785283:0 で目標から 41 km/h 落ち込み、17 m で止まる、drops 1）: 経路の不合格として R1-4・R1-7 へ渡す（直していない）。
+- A1: 下の表（既定のデータ、新しい道具と控えの両方、1 本ずつ鍵）。
+- テスト: `tests/xwDataServe.test.ts`（変数なし・vitest の下で何も足さない、build・preview のフックが無い、配るファイル・404・`__xw-data`、meta の比べ）、`tests/streetDrive.test.ts`（7c の数、掘割に落ちて 10 m 以内に止まった・respawn した・測った数 0 の走行は不合格、known と外、known は合格でない、事例の届く幅、場所の表が既定のデータの run に解ける）。
+
+A1_TABLE_PLACEHOLDER
+
 # 未対応・既知の欠落
 
 - S7-3c（S7-3 の判定 0 から）: 格子の測点の間で地表が半ステップの内に大きく下がると、T12 が出る。コンパイラは 5 m の格子の測点でだけ、3 点の最低の地表で天井を守り、検査はファイルの測点ごとに、その測点の地表で見るため。
@@ -4796,3 +4828,5 @@ S7-3 の `openings` を読み、トンネル・掘割の分合流の側の壁を
 [^r1-1b]: 指示は scratchpad の p27/s7r/r1-1b-instructions.md と r1-1b-review0.md（追記を含む、設計 Fable）。計測は `just check-expressway-ends`・`just check-expressway-end-walls`、`.cache/expressway-area/r1b-*`・`.qa/expressway/end-walls-*.json`・`ends-*.json`・`.qa/r1b/`（ローカル、git 管理外）。
 
 [^r1-1a-review1]: レビューは scratchpad の p27/s7r/r1a-review1.md（Fable、2026-11-18）と s7-notes.md、ユーザーの決定 U3（2026-11-18）。計測は `.cache/expressway-area/r1-*`・`r1b-*`、`.qa/expressway/r1*`（ローカル、git 管理外）。生成は devshell の node（`just measure-expressway-area`）。
+
+[^r1-5a]: 指示は scratchpad の p27/s7r/r1-5-instructions.md（設計 Fable、2026-11-23）とコーディネーターの返事（配り方・事故の扱い・測った数 0・場所の表の型）。控えは `.qa/street-drive.mts`（7c、SHA-256 feae73bc…、git 管理外）。走行の記録は `.qa/street-drive-a1-new/`・`.qa/r15-runs/`（ローカル、git 管理外）。計測のフォルダは R1-1b の `.cache/expressway-area/r1b-g3` と R1-3 の `r1-cs-48dc699`（読むだけ）。

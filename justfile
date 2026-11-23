@@ -10,6 +10,10 @@ install-deps:
 serve-dev:
     pnpm exec vite
 
+# 開発サーバを、data/expressway を計測のフォルダ dir（.cache/expressway-area/<label> など）から配って起動する（XW_DATA_DIR。道具も同じ変数で同じフォルダを読む。本番のビルドと serve-qa-bundle は public/data/expressway のまま）
+serve-expressway-data dir port="5173":
+    XW_DATA_DIR={{ dir }} pnpm exec vite --port {{ port }} --strictPort
+
 # 本番ビルドを dist/ に出力する
 build-app:
     pnpm exec vite build
@@ -435,6 +439,10 @@ measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
 # 床版の走行の経路表 scripts/qa/deckRoutes.ts の経路（省くと入口ランプから C1 内回り・汐留出口への一定速、all で全経路）を走らせ、建物との交差・停止・落下・|dy|・大きな減速・終点への到達（自動運転は到着と違反）を .qa/drive-deck-<label>[-<route>].json に書く（out を渡せばそのフォルダに <route>.json、throttle で CPU を N 倍遅くして走る、失敗は終了コード 1、invalid は 2）
 check-deck-drive label="run" route="" base="http://localhost:5173/tokyo-od-game/" out="" throttle="1":
     pnpm exec tsx scripts/qa/drive-deck.ts --label {{ label }} --base {{ base }} {{ if route != "" { "--route " + route } else { "" } }} {{ if out != "" { "--out " + out } else { "" } }} --cpu-throttle {{ throttle }}
+
+# 街路の場所の表 scripts/qa/streetPlaces.ts（ids をカンマで渡せばその場所だけ）で、車をいちばん近い街路の車線へ 40 m 手前に置き、自動運転で 40 m 先まで走らせ、到着（10 m 以内）・地面からの高さ 0.4〜1.3 m・落下・建物・止まり・置き直しを .qa/street-drive-<label>/<id>.json に書く（済んだ場所は飛ばす、事故・検挙の回は撮り直す、flags に --site-lanes <file>・--hole-lanes <file> で探りの事例の内の不合格を known に分ける、データは XW_DATA_DIR で開発サーバーと揃える、失敗は終了コード 1・invalid は 2・known だけなら 3）
+check-street-drive label="run" ids="" base="http://localhost:5173/tokyo-od-game/" flags="":
+    pnpm exec tsx scripts/qa/street-drive.ts --label {{ label }} --base {{ base }} {{ if ids != "" { "--only " + ids } else { "" } }} {{ flags }}
 
 # 交通と雨が動く通常プレイで夜雨の従来・改善後を交互に各4回計測する
 measure-perf-night:

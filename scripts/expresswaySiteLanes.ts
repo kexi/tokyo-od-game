@@ -16,6 +16,12 @@ export { JOIN_GAP_M, MIN_LENGTH_M };
  * end and the distance is to the end face, not to the slab beside the lane: not counted (m).
  */
 export const END_FACE_M = 0.5;
+/**
+ * How far past a cut's hole edge a lane's centre counts as over the site (m): half a car's width and a
+ * margin (the hole lanes probe's, scripts/expresswayHoleLanes.ts; here so the street drive's known
+ * cases reach as far, R1-5 PR A).
+ */
+export const HOLE_SITE_MARGIN_M = 1;
 
 /** An embankment's slab: its centre line (points and their run distances) and the edge's offset. */
 export type SiteLine = { centre: readonly Vector3[]; s: readonly number[]; edgeM: number };
