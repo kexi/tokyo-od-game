@@ -4725,6 +4725,7 @@ S6 PR 7c の街路の走行（`.qa/street-drive.mts`、git に無く古い workt
 
 - A4: `vite build` を変数あり（r1b-g3）・なしで 2 回、`dist` 全体が `diff -r` で一致、`dist/data/expressway` は `public/data/expressway` と一致。開発サーバー（変数なし）の既定のタイル 14551-6452.json と meta.json は public の物とバイト一致、`__xw-data` は `text/html`（Vite の HTML の代わり）。
 - A5: G3（r1b-g3）と S7 の形の central（`r1-cs-48dc699`、`--below-junctions compile --portal-approach cut --run-borders cut --districts central`）を配って、既定のデータに無い run 756785283 の経路 `onward-756785283-by-203832847` を `drive-deck.ts` で走らせた。どちらも車が 756785283:0 に置かれ、結果の `served` にそのフォルダが出た。G3 は合格。**central では不合格**（756785283:0 で目標から 41 km/h 落ち込み、17 m で止まる、drops 1）: 経路の不合格として R1-4・R1-7 へ渡す（直していない）。
+- レビューの直しの後（63fba1c、2026-11-23 16:00〜16:26Z、鍵 R15）: 既定のデータで wall-45068169-left・control-narrow を走らせ（合格・`under` の不合格）、その結果を `--baseline` にもう一度走らせて、control-narrow が `known-main`（種類 `under` が main に在る）、終了コードはまだ結果の無い 16 か所の missing で 5 になった。照らし合わせは meta とタイル 0 枚の差で通った（既定のサーバー、`servedDir` null）。
 - A1: 下の表（既定のデータ、新しい道具と控えの両方、1 本ずつ鍵）。両方で同じ合否。7c の記録の在る 13 か所のうち 7 か所が違い、対照 2 か所も帯の下で落ちる（理由は確かめていない）。
 - データテストを `XW_DATA_DIR`（r1-cs-48dc699）で走らせても `xw_data_served` は出ない（vitest の下で何もしない）。
 - `XW_DATA_DIR`（r1-cs-48dc699、`--districts central`）で `tests/expresswayFormat.test.ts` を走らせると、meta の欄の検査が `districts` で 1 件落ちる。**main（48dc699 のきれいな worktree）でも同じに落ちる**（地区のフォルダの meta に `districts` が在り、`META_FIELDS` に無い。この PR とは別）。全テスト 207 files・2,898 passed（変数なし）。
