@@ -1,6 +1,6 @@
 {
- "version": 9,
- "label": "s73-pruned-off",
+ "version": 10,
+ "label": "s7p-pruned-off3",
  "range": "ship",
  "below": "pruned",
  "objective": {
@@ -8516,6 +8516,8 @@
    "ends": 38,
    "coverShort": 28,
    "maxShortM": 7.869,
+   "lowered": 0,
+   "loweredCoverShort": 0,
    "list": [
     {
      "id": "1304022054:start",

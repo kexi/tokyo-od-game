@@ -1,6 +1,6 @@
 {
- "version": 9,
- "label": "s73-all-off",
+ "version": 10,
+ "label": "s7p-all-off3",
  "range": "ship",
  "below": "all",
  "objective": {
@@ -6700,13 +6700,13 @@
  "size": {
   "tiles": 131,
   "raw": {
-   "total": 5552100,
+   "total": 5550910,
    "median": 35913,
    "p90": 83538,
    "max": 248529
   },
   "gzip": {
-   "total": 1443538,
+   "total": 1443347,
    "median": 9539,
    "p90": 21240,
    "max": 61770
@@ -6729,7 +6729,7 @@
   },
   "record": {
    "raw": 572774,
-   "gzip": 75693
+   "gzip": 75692
   },
   "ledger": null,
   "gzipEnv": {
@@ -6740,7 +6740,7 @@
  "budget": {
   "totalGzipMaxBytes": 1600000,
   "tileGzipMaxBytes": 72000,
-  "totalGzipBytes": 1443538,
+  "totalGzipBytes": 1443347,
   "maxTileGzipBytes": 61770,
   "maxTile": "14553-6451",
   "ok": true
@@ -6756,7 +6756,7 @@
    "inKm": 196.994,
    "outKm": 49.866,
    "tiles": 64,
-   "gzipBytes": 580643,
+   "gzipBytes": 580611,
    "maxTileGzipBytes": 32631,
    "maxTile": "14553-6454"
   },
@@ -6771,7 +6771,7 @@
    "inKm": 366.479,
    "outKm": 79.141,
    "tiles": 122,
-   "gzipBytes": 1050861,
+   "gzipBytes": 1050670,
    "maxTileGzipBytes": 60725,
    "maxTile": "14553-6451"
   },
@@ -6787,7 +6787,7 @@
    "inKm": 405.677,
    "outKm": 79.594,
    "tiles": 126,
-   "gzipBytes": 1118254,
+   "gzipBytes": 1118063,
    "maxTileGzipBytes": 60725,
    "maxTile": "14553-6451"
   },
@@ -6804,7 +6804,7 @@
    "inKm": 500.912,
    "outKm": 143.188,
    "tiles": 131,
-   "gzipBytes": 1443538,
+   "gzipBytes": 1443347,
    "maxTileGzipBytes": 61770,
    "maxTile": "14553-6451"
   }
@@ -7919,6 +7919,8 @@
    "ends": 80,
    "coverShort": 64,
    "maxShortM": 7.869,
+   "lowered": 0,
+   "loweredCoverShort": 0,
    "list": [
     {
      "id": "1304022054:start",
