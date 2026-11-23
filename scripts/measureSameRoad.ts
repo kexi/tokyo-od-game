@@ -13,7 +13,7 @@
 // from the other build's lists (--before <dir>: the lanes and hole probes' --cases, the feet probe's
 // --joins, a sections dump, each from a checkout without the rule), the probe cases, the feet and
 // the lanes as they were. One JSON log line (street_same_road_measured) and --out <file>.
-// Run: pnpm exec tsx scripts/measureSameRoad.ts <dir|label> --before <prefix> --after <prefix> [--out <file>] [--check]
+// Run: pnpm exec tsx scripts/measureSameRoad.ts <dir|label> --before <prefix> --after <prefix> [--out <file>]
 // (<prefix>-pl.json / -ph.json / -joins.json / -sec.json: written by the probes and the dump).
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -290,6 +290,8 @@ for (const c of siteChunks) {
   groups.set(key, [...(groups.get(key) ?? []), c]);
 }
 
+/** Windows left out because a road tile of theirs is not in the cache (counted, and the run fails on any). */
+let skippedForMissingTiles = 0;
 for (const [key] of groups) {
   const [cx, cy] = key.split("-").map(Number);
   const tiles: RoadLine[] = [];
@@ -300,7 +302,10 @@ for (const [key] of groups) {
       if (t === null) isMissing = true;
       else tiles.push(...t);
     }
-  if (isMissing) continue;
+  if (isMissing) {
+    skippedForMissingTiles++;
+    continue;
+  }
   const lat = tileYToLat(cy + 0.5, ROAD_TILE_ZOOM);
   const lon = tileXToLon(cx + 0.5, ROAD_TILE_ZOOM);
   const near = files.chunks.filter((c) => {
@@ -732,6 +737,7 @@ const tally = (pick: (r: Row) => string) => {
 };
 const summary = {
   dir: target,
+  skippedForMissingTiles,
   lines: list.length,
   alphaM: Math.round(list.reduce((n, r) => n + r.takenM, 0)),
   extendedM: round(list.reduce((n, r) => n + r.extendedM, 0)),
@@ -755,10 +761,12 @@ log("street_same_road_measured", summary);
 const out = flag("out");
 if (out !== undefined)
   await writeFile(out, JSON.stringify({ summary, rows: list, kept: [...kept.values()] }, null, 1) + "\n");
-// --check (just check-same-road-pieces): a piece left of an alpha line inside the band and not at the
-// foot fails (exit code 1). Why a check and not only the column: R2 and R3's data are read by no one
-// line by line, and the shape the rule lets through (the foot's edge and the band's edge between the
-// same two samples) is in no data yet.
-const isChecked = args.includes("--check");
+// Fails (exit code 1, after the output is written; just check-same-road-pieces) on a piece left of an
+// alpha line inside the band and not at the foot: R2 and R3's data are read by no one line by line, and
+// the shape the rule lets through (the foot's edge and the band's edge between the same two samples) is
+// in no data yet. And on a window left out for a road tile missing from the cache: its sites were not
+// looked at, so a pass would say nothing of them (#127's review). Why by default and not behind a flag:
+// a run for its numbers (--out) would pass a hole again, as the probes would not (#128's review W1).
 const hasPiecesInBand = summary.leftInBandNotFoot > 0;
-if (isChecked && hasPiecesInBand) process.exitCode = 1;
+const hasSkipped = skippedForMissingTiles > 0;
+if (hasPiecesInBand || hasSkipped) process.exitCode = 1;
