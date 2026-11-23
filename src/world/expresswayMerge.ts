@@ -767,8 +767,10 @@ export class DeckMerge {
    *
    * The opened side's floor runs out: where this deck is cut at the other's edge (it is the child)
    * to its seam there, as the merge put it; where it is the master, inside the stretch or where the
-   * merge ran its road out, to its slab edge (the child's seam lies on it); past those (the tip) to
-   * halfway between the two carriageways' edges, as the other does from its side. Why not a bore's
+   * merge ran its road out, to its slab edge (the child's seam lies on it); an opened side floors its
+   * wall band too (to its slab edge, unless it ends on a seam). An open tip runs out to the farther of
+   * that and the other carriageway's edge + STEP_TUCK (rule C); only a 分離壁 (the two roads more than
+   * MERGE_MAX_DZ apart) stops at halfway between the two carriageways' edges. Why not a bore's
    * own rule for the floor inside the stretch: the seam and its probes would be two (joinSameWay is
    * the viaduct's, tested and measured).
    */
@@ -857,15 +859,16 @@ export class DeckMerge {
       // different places, and a floor stopped halfway left a strip under neither). Only the 分離壁
       // stops at the middle. Why not halfway for both, as before: each side computed where the other
       // would stop and the two lines did not meet (28127106:0 s 114.43, 4849055:1 s 92.61).
-      const tipReach = Math.max(stretchReach, near + STEP_TUCK, own.hw);
+      // Rule B (never short of its own carriageway's edge) needs no term here: a tip and a 分離壁 come
+      // only where near ≥ hw (else rule A or apartOverlap), so near + STEP_TUCK and the middle are past
+      // hw already. Why not keep max(…, hw) to be safe: it never acted (review of #120, a dead term).
+      const tipReach = Math.max(stretchReach, near + STEP_TUCK);
       // Addendum 5: an opened side floors its wall band too, at road height, out to its slab edge (a
       // groove under the removed wall where the other's floor did not reach), unless it ends on a seam.
       // Not on a seam's side: its reach is the seam's, which lies past this centre where the other covers
       // it (negative), and a floor at 0 there dropped the seam (98848277:0 under 331922709).
       const bandReach = isCutHere ? -Infinity : own.edge;
-      const reach = isDivider
-        ? Math.max(middle, own.hw)
-        : Math.max(isTip ? tipReach : stretchReach, bandReach);
+      const reach = isDivider ? middle : Math.max(isTip ? tipReach : stretchReach, bandReach);
       const keepsSeam = isCutHere && reach <= side.reach + 1e-9;
       out[key] = {
         ...side,
@@ -1310,7 +1313,7 @@ export type MergeSkip = {
 const SIDE_SURE_M = 1;
 
 /**
- * How finely an opening's tip is followed back to its stretch (DeckMerge.isTipUnbroken), m: a gap
+ * How finely an opening's tip is followed back to its stretch (DeckMerge.tipBreak), m: a gap
  * shorter than this between two stretches inside the band is taken as none. Why 1 m: the merge's own
  * probe step (SLIDE_PROBE_M); a crossing ramp leaves the band for metres, not centimetres.
  */

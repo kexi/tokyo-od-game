@@ -993,9 +993,12 @@ function tunnelExtras(
     const isMouth = (portal.from === "tunnel") !== (portal.to === "tunnel");
     if (!isMouth) continue;
     const atEnd = Math.abs(portal.s - ss[ss.length - 1]) < Math.abs(portal.s - ss[0]);
-    const r = rings[atEnd ? rings.length - 1 : 0];
+    const k = atEnd ? rings.length - 1 : 0;
+    const r = rings[k];
     const at = (u: number, v: number) => ringPoint(r, u, v).toArray();
-    for (const q of headwallQuads(hw, at, r.groundY - r.c.y)) pushQuad(q, HEADWALL, solid);
+    // No post on a side whose wall the portal ring has taken away (headwallQuads).
+    const open = { left: isOpen(k, "left"), right: isOpen(k, "right") };
+    for (const q of headwallQuads(hw, at, r.groundY - r.c.y, open)) pushQuad(q, HEADWALL, solid);
   }
   // No lamp hangs over an opened side (S7-4a): the ceiling there runs on over the other run's road.
   // Why not lamps of their own there: the wall they light is gone. Read at the ring interval holding

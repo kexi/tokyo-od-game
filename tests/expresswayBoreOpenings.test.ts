@@ -519,10 +519,10 @@ describe("S7-4a チャンクの境と開口の端（F・G）", () => {
 });
 
 describe("S7-4a 先端はデータの区間から途切れずに続く間だけ（レビュー 1 の必須 1）", () => {
-  it("keeps M's wall where C, having left M's wall band, comes back into it 200 m on at another height", () => {
-    // C leaves as in CUT (0.12 a metre) to 12 m north of M's centre by x 160, climbs 6 m over x 130–200,
-    // then from x 300 to 340 comes back to 6.4 m north (its right carriageway edge 4.0 m, inside M's
-    // band of 4.75 m) and runs on level beside M to x 420: as a ramp that turns back over the main line.
+  // C leaves as in CUT (0.12 a metre) to 12 m north of M's centre by x 160, then from x 300 to 340
+  // comes back to 6.4 m north (its right carriageway edge 4.0 m, inside M's band of 4.75 m) and runs
+  // on beside M to x 420: as a ramp that turns back over or beside the main line. `zOf`: C's road.
+  const comeBack = (zOf: (x: number) => number) => {
     const shape: Shape = { structure: "cut", drift: 0.12, mBreaks: [200, 400], mEnd: 500 };
     const { m, runs, apartX } = pair(shape);
     const yOf = (x: number) => {
@@ -531,7 +531,6 @@ describe("S7-4a 先端はデータの区間から途切れずに続く間だけ�
       if (x <= 340) return 12 - ((x - 300) / 40) * 5.6;
       return 6.4;
     };
-    const zOf = (x: number) => ROAD + RAMP_DZ + Math.min(6, Math.max(0, (x - 130) / 70) * 6);
     const stations: Array<[number, number, number, number]> = [];
     let sC = 0;
     let last: [number, number] | null = null;
@@ -550,15 +549,36 @@ describe("S7-4a 先端はデータの区間から途切れずに続く間だけ�
     });
     const index = indexOf([...m, c], runs);
     const { world, built: b } = worldOf([...m, c], index);
+    const opened = [...b.values()]
+      .flatMap((x) => x.openings?.opened ?? [])
+      .filter((x) => x.with === "C" && x.side === "left");
+    return { world, b, apartX, opened };
+  };
+
+  it("keeps M's wall where C, having left M's wall band, comes back into it 200 m on at another height", () => {
+    // C climbs 6 m over x 130–200 and stays up.
+    const { world, apartX, opened } = comeBack(
+      (x) => ROAD + RAMP_DZ + Math.min(6, Math.max(0, (x - 130) / 70) * 6),
+    );
     // M's left wall stands where C is back inside the band: a level ray from 1 m inside meets it 1 m on.
     for (let x = 345.3; x < 398; x += 3.7) {
       const d = ray(world, onM(x, HW_M - 1, 0.5), LEFT, 6);
       expect(d, `x ${x.toFixed(1)}`).toBeCloseTo(1, 1);
     }
     // And M's opening (its tip included) ends near the stretch, nowhere near x 300–420.
-    const opened = [...b.values()]
-      .flatMap((x) => x.openings?.opened ?? [])
-      .filter((x) => x.with === "C" && x.side === "left");
+    expect(opened.length).toBeGreaterThan(0);
+    expect(Math.max(...opened.map((x) => x.s1))).toBeLessThan(apartX + 10);
+  });
+
+  it("keeps M's side unopened where C comes back into M's wall band at its own height (the tip is broken there, not the heights apart)", () => {
+    // C at M's height all along: only the tip's break keeps M from opening past the stretch (by height
+    // the two are one surface there; the test above also walls by apartOverlap). Why not its level ray:
+    // at one height it meets C's own wall 0.77 m on, before M's.
+    const { b, apartX, opened } = comeBack(() => ROAD + RAMP_DZ);
+    const m1 = b.get("M:1")!;
+    const back = m1.rings.flatMap((r, i) => (r.frame.s >= 345 && r.frame.s <= 398 ? [m1.sides[i].left] : []));
+    expect(back.length).toBeGreaterThan(0);
+    expect(back.every((sd) => !sd.opening)).toBe(true);
     expect(opened.length).toBeGreaterThan(0);
     expect(Math.max(...opened.map((x) => x.s1))).toBeLessThan(apartX + 10);
   });
@@ -590,6 +610,54 @@ describe("S7-4a 坑門（I）", () => {
     expect(count([{ s: 0, from: "tunnel", to: "tunnel" }])).toBe(none);
     expect(count([{ s: 0, from: "cut", to: "cut" }])).toBe(none);
     expect(count([{ s: 0, from: "cut", to: "tunnel" }])).toBeGreaterThan(none);
+  });
+});
+
+describe("S7-4a 開けた側の坑門（#120 のレビューの必須 1、追記 9）", () => {
+  it("draws no 坑門 post on a portal ring's opened side, so C's lane meets nothing at M's mouth, and keeps the other post, the lintel and the boxes closed beside it", () => {
+    // M is a cut to x 100 and a tunnel past it (its 坑門 at x 100, inside the opening's stretch to
+    // x 115.2); C is a tunnel all along. At x 100 C's centre is 4.8 m north of M's, where M's left post
+    // (5.0–6.8 m) stood across C's lane.
+    const shape: Shape = { structure: "tunnel", drift: 0.12, mBreaks: [100], mEnd: 300 };
+    const net = pair(shape);
+    const m = [
+      { ...net.m[0], structure: "cut" as const },
+      { ...net.m[1], portals: [{ s: 100, from: "cut" as const, to: "tunnel" as const }] },
+    ];
+    const index = indexOf([...m, net.c], net.runs);
+    const { world, built: b } = worldOf([...m, net.c], index);
+    // Not an empty pass: M's portal ring is opened on the left, and walled on the right.
+    expect(b.get("M:1")!.sides[0].left.opening).toBeTruthy();
+    expect(b.get("M:1")!.sides[0].right.opening ?? null).toBeNull();
+    const cAt = (x: number, du: number, v: number) => onM(x, (x - NOSE) * 0.12 + du, RAMP_DZ + v);
+    // Along C's lane through M's mouth (its centre and 1 m either side, 0.5 m over its road): nothing.
+    for (const du of [-1, 0, 1]) {
+      const p = cAt(96, du, 0.5);
+      const q = cAt(104, du, 0.5);
+      const dir = q.clone().sub(p);
+      expect(ray(world, p, dir.clone().normalize(), dir.length()), `du ${du}`).toBeNull();
+    }
+    // The right post (behind M's right wall) and the lintel over M's road still stand at x 100.
+    const post = ray(world, onM(97, -(HW_M + 0.75 + 0.9), 1), ALONG, 6);
+    expect(post).not.toBeNull();
+    expect(post!).toBeCloseTo(3, 1);
+    const lintel = ray(world, onM(97, 0, H + 0.3), ALONG, 6);
+    expect(lintel).not.toBeNull();
+    expect(lintel!).toBeCloseTo(3, 1);
+    // No gap beside the mouth with the post gone: just inside it, a level ray from M's centre towards
+    // C meets C's far wall (by its lining, 3.125 m past C's centre square to C), at 1 m and under the
+    // ceiling; and over the floor between the two carriageways a ceiling within the box's height.
+    const x = 100.4;
+    const farWall = (x - NOSE) * 0.12 + (HW_C + 0.75) * Math.hypot(1, 0.12);
+    for (const v of [1, H - 0.5]) {
+      const d = ray(world, onM(x, 0, v), LEFT, 12);
+      expect(d, `v ${v}`).not.toBeNull();
+      expect(d!, `v ${v}`).toBeLessThanOrEqual(farWall + 0.2);
+    }
+    for (let u = HW_M; u <= farWall - 0.2; u += 0.25) {
+      const d = ray(world, onM(x, u, 0.5), UP, H + 1);
+      expect(d, `u ${u.toFixed(2)}`).not.toBeNull();
+    }
   });
 });
 
@@ -670,6 +738,21 @@ describe("S7-4a 探り（3.6、scripts/expresswaySeams.ts）", () => {
       expect(out.bore.wallHits, shape.structure).toBe(0);
       expect(out.bore.noPartner.length + out.bore.sideMismatch.length, shape.structure).toBe(0);
     }
+  });
+
+  it("meets no wall of its own where both rings round a ray are open, with a 分離壁 in the same opened stretch (review of #120, must 2)", () => {
+    // C climbs at 3 % from x 116: the tip opens, then a 分離壁 stands within the stretch the probe
+    // reads (opened s0–s1 spans both). Rays only where the side is open count; the 分離壁 is no hit.
+    const rise = (x: number) => Math.max(0, x - 116) * 0.03;
+    const grade = (x: number) => (x > 116 ? 0.03 : 0);
+    const { m, c, runs } = pair(TUNNEL, { cRise: rise, cRiseGrade: grade });
+    const index = indexOf([...m, c], runs);
+    const { built: b } = worldOf([...m, c], index);
+    // Not an empty pass: the net has 分離壁 rings on M.
+    expect(openedRings(b.get("M:0")!, "left").some((x) => x.side.opening?.isDivider)).toBe(true);
+    const out = probe([...m, c], runs);
+    expect(out.bore.wallRays).toBeGreaterThan(50);
+    expect(out.bore.wallHits).toBe(0);
   });
 
   it("counts an opening with no chunk of its other run and one on the data's wrong side", () => {

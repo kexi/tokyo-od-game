@@ -7,7 +7,7 @@ import { frameAt } from "../src/expressway/profile.ts";
 import { LocalFrame } from "../src/geo/frame.ts";
 import { boreWallBand } from "../src/world/expresswayBore.ts";
 import { createDeckBody, deckArraySteps } from "../src/world/expresswayDeck.ts";
-import { DeckIndex, MERGE_PAD_M, roleOf } from "../src/world/expresswayMarkings.ts";
+import { DeckIndex, MERGE_PAD_M, type RingSides, roleOf } from "../src/world/expresswayMarkings.ts";
 import {
   type Divider,
   type DividerJog,
@@ -86,9 +86,10 @@ export type BareDrop = { chunk: string; with: string; s: number; dzM: number; ga
  * probed in their own frames: the opened stretches (per chunk, other run and side) with their tip
  * past the data's stretch, the other runs with no chunk (N1) and the stretches whose data side is the
  * other one (both left walled), and `wallHits`: level rays every metre along each opened stretch,
- * 0.5 m over the road from 1 m inside the carriageway's edge towards the opened side, that meet a
- * face of the chunk's own within the wall band (boreWallBand) past that edge (0: no wall of its own
- * stands in an opening; the other deck's far walls stand where the merge leaves them).
+ * where the rings either side are both open on that side (no 分離壁, not walled again), 0.5 m over
+ * the road from 1 m inside the carriageway's edge towards the opened side, that meet a face of the
+ * chunk's own within the wall band (boreWallBand) past that edge (0: no wall of its own stands in an
+ * opening; the other deck's far walls stand where the merge leaves them).
  */
 export type BoreProbe = {
   opened: Array<{
@@ -234,7 +235,14 @@ function probeIn(
   const noseSteps: ChunkNoseStep[] = [];
   const jogs: ChunkJog[] = [];
   const bore: BoreProbe = { opened: [], noPartner: [], sideMismatch: [], wallRays: 0, wallHits: 0 };
-  const openedOf: Array<{ chunk: XwChunk; side: "left" | "right"; s0: number; s1: number }> = [];
+  const openedOf: Array<{
+    chunk: XwChunk;
+    side: "left" | "right";
+    s0: number;
+    s1: number;
+    rings: ReadonlyArray<{ frame: { s: number } }>;
+    sides: ReadonlyArray<RingSides>;
+  }> = [];
   /** Each own chunk's colliders: an opening's rays count its own walls only (the other deck's stand where they may). */
   const handlesOf = new Map<string, Set<number>>();
   for (const c of chunks) {
@@ -249,7 +257,14 @@ function probeIn(
     if (openings) {
       for (const x of openings.opened) {
         bore.opened.push({ chunk: c.id, with: x.with, side: x.side, s0: x.s0, s1: x.s1, tipM: x.tipM });
-        openedOf.push({ chunk: c, side: x.side, s0: x.s0, s1: x.s1 });
+        openedOf.push({
+          chunk: c,
+          side: x.side,
+          s0: x.s0,
+          s1: x.s1,
+          rings: r.value.rings,
+          sides: r.value.sides,
+        });
       }
       bore.noPartner.push(...openings.noPartner.map((w) => ({ chunk: c.id, with: w })));
       bore.sideMismatch.push(
@@ -420,12 +435,26 @@ function probeIn(
     if (hit === null) bare.push({ chunk: p.chunk.id, with: p.with, s: p.s, dzM: Math.abs(p.dz), gapM: gap });
   }
   // The opened stretches' level rays (BoreProbe.wallHits), square to the chunk at each metre.
-  for (const { chunk: c, side, s0, s1 } of openedOf) {
+  for (const { chunk: c, side, s0, s1, rings, sides } of openedOf) {
     const sign = side === "left" ? 1 : -1;
+    // Only where the rings either side of s are both open on that side (no 分離壁, no wall): the
+    // stretch's s0–s1 spans every opened ring, and between them a 分離壁 or a ring walled again
+    // (apartOverlap, near the nose) stands by design. Why not count those too: then the count is
+    // not 0 on a sound build (534 of 5,081 on ship/all) and says nothing.
+    const isOpenAt = (s: number) => {
+      let i = 0;
+      while (i < rings.length - 2 && rings[i + 1].frame.s < s) i++;
+      const isOpen = (k: number) => {
+        const o = sides[k][side].opening;
+        return o !== undefined && o !== null && !o.isDivider;
+      };
+      return isOpen(i) && isOpen(i + 1);
+    };
     const hw = carriagewayWidth(c) / 2;
     const band = boreWallBand(c.structure as "tunnel" | "cut");
     const last = c.st[c.st.length - STATION_STRIDE];
     for (let s = s0 + 0.25; s <= s1 - 0.25; s += 1) {
+      if (!isOpenAt(s)) continue;
       const f = frameAt(c.st, s);
       const g1 = frameAt(c.st, Math.max(c.st[0], s - 0.25));
       const g2 = frameAt(c.st, Math.min(last, s + 0.25));

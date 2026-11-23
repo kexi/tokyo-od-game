@@ -1776,7 +1776,8 @@ export const LOG_EVENTS = {
     /**
      * The tunnels' and cuts' openings as built (S7-4a, expresswaySeams.ts BoreProbe): stretches
      * opened (by chunk), named runs with no chunk (N1), stretches on the data's wrong side, and the
-     * level rays along the opened stretches and those that met a wall (0 expected).
+     * level rays along the opened stretches where both rings round them are open (no 分離壁, not
+     * walled again) and those that met a wall of the chunk's own (0 expected).
      */
     boreOpenings: z.strictObject({
       opened: count,

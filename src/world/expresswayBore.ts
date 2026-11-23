@@ -108,14 +108,6 @@ export const BORE_FACES: Readonly<Record<"tunnel" | "cut", readonly BoreFace[]>>
 export type BoreOpen = { reach: number; seam: number[] | null; isDivider?: boolean };
 
 /**
- * The faces of `boreLoop` that stand across an opened side (left, right): a tunnel's lining from
- * the floor to the ceiling and its outer wall from the floor's bottom to the roof's top. The loop
- * keeps them (its corners run round the section), so the deck leaves them out between two rings
- * both open on that side. Why not corners that give them no area: the ceiling's corner is over the
- * floor's, so the face between them is a wall at the reach whatever is done with the others. A
- * cut's opened side has its wall's corners on the road's end, its faces of no area.
- */
-/**
  * The faces of `boreLoop` on a side whose opening has a 分離壁 at its reach (S7-4 review 1, addendum
  * 2): `draw`, the face from the floor's bottom to the box's top at the reach (a tunnel's outer wall
  * there, a cut's wall face to its top), drawn and solid from both sides; `skip`, the face over the same
@@ -133,6 +125,14 @@ export const BORE_DIVIDER_FACES: Readonly<
   cut: { left: { draw: [4], skip: [2] }, right: { draw: [6], skip: [8] } },
 };
 
+/**
+ * The faces of `boreLoop` that stand across an opened side (left, right): a tunnel's lining from
+ * the floor to the ceiling and its outer wall from the floor's bottom to the roof's top. The loop
+ * keeps them (its corners run round the section), so the deck leaves them out between two rings
+ * both open on that side. Why not corners that give them no area: the ceiling's corner is over the
+ * floor's, so the face between them is a wall at the reach whatever is done with the others. A
+ * cut's opened side has its wall's corners on the road's end, its faces of no area.
+ */
 export const BORE_OPEN_FACES: Readonly<Record<"tunnel" | "cut", { left: number[]; right: number[] }>> = {
   tunnel: { left: [4, 12], right: [6, 10] },
   cut: { left: [], right: [] },
@@ -208,21 +208,26 @@ export function boreLoop(
 
 /**
  * A tunnel's 坑門 at a portal ring: a frame round the bore from the floor to above the ground (so the
- * cut-away terrain's edge is behind it), as quads [a, b, c, d] in loop order.
+ * cut-away terrain's edge is behind it), as quads [a, b, c, d] in loop order. `open`: the sides whose
+ * wall the ring has taken away (S7-4a, opened or a 分離壁, as openBore left the ring): no post there,
+ * the lintel kept. Why: the post stands 0.75–2.55 m past the carriageway's edge, which on an opened
+ * side is the other run's carriageway, and it stood square across that run's lanes (review of #120,
+ * must 1: 4848940:5 | 4849055:1). Why not the other run's side read again here: the ring's own state
+ * is the one its walls and floor follow.
  */
 export function headwallQuads(
   hw: number,
   at: (u: number, v: number) => number[],
   groundV: number,
+  open: { left: boolean; right: boolean } = { left: false, right: false },
 ): number[][][] {
   const w = hw + WALK;
   const o = w + TUNNEL_WALL + HEAD_SIDE;
   const top = Math.max(H + ROOF + HEAD_OVER_GROUND, groundV + HEAD_OVER_GROUND);
-  return [
-    [at(w, -FLOOR), at(o, -FLOOR), at(o, top), at(w, top)],
-    [at(-o, -FLOOR), at(-w, -FLOOR), at(-w, top), at(-o, top)],
-    [at(-w, H), at(w, H), at(w, top), at(-w, top)],
-  ];
+  const left = [at(w, -FLOOR), at(o, -FLOOR), at(o, top), at(w, top)];
+  const right = [at(-o, -FLOOR), at(-w, -FLOOR), at(-w, top), at(-o, top)];
+  const lintel = [at(-w, H), at(w, H), at(w, top), at(-w, top)];
+  return [...(open.left ? [] : [left]), ...(open.right ? [] : [right]), lintel];
 }
 
 /**
