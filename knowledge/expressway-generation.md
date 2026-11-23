@@ -9,7 +9,8 @@ generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
   - { by: process:measure-expressway-area-s7-2-cut2, at: 2026-11-23T03:02:00Z }
   - { by: process:measure-expressway-area-s7-2-baselines, at: 2026-11-23T07:26:00Z }
-  - { by: process:vitest-s7-2, at: 2026-11-23T08:00:00Z }
+  - { by: process:vitest-s7-2, at: 2026-11-23T07:32:00Z }
+  - { by: process:vitest-s7-2-review1, at: 2026-11-23T08:10:00Z }
   - { by: process:measure-bore-openings-s7-4a, at: 2026-11-23T00:12:00Z }
   - { by: process:seam-probe-fine-s7-4a, at: 2026-11-23T00:14:00Z }
   - { by: process:check-deck-drive-yamate-s7-4a, at: 2026-11-23T00:45:00Z }
@@ -3953,23 +3954,23 @@ S7（地下全面）の合否を数で決めるための土台。スコアカー
   - 長さ L は `below.ts portalApproachLength(V)`: `descentWithin(V, d)` が `TUNNEL_DEPTH_M + REACH_MARGIN_M` に届く最小の d を 5 m に切り上げた値（V40 135 m、V60 215 m、V80 305 m）。V は地平 run と地下 run の `planV` の大きい方。run より長ければ run の全部。
   - 終わりの側の区間の始まりは外側の格子の測点（`floor((S − L) / 5) × 5`）。区間の長さ L′ は L 以上 L + 5 未満。
   - 両端が対象で区間が重なる run は、中ほどの格子の測点 m = `floor(S / 2 / 5) × 5` を共通の始まりにし、`descentWithin(V, m)` と `descentWithin(V, S − m)` が両方正のときだけ両端を下げる（片方だけは作らない）。ship/all で 5204787・5204789・59613969 を下げ、203832846・211286459 は下げない（スコアカードの `notLowered: both-portals`）。
-- **坑口の高さの定義**（3.3）: 下げた端では、坑口は区間の始まりにある（道のり L′、高さはその点の地表）。`below.ts portalReaches` の坑口の項に入れ、地下で続く端（S7-3）の道のりの先に足す。値は地下 run の要約の端の `XwEnd.portalAt`（`offsetM`・`z`・`V`。丸めた値をコンパイラも使う）に書き、T12 はそれを読む。
+- **坑口の高さの定義**（3.3）: 下げた端では、坑口は区間の始まりにある（道のり L′、高さはその点の地表）。`below.ts portalReaches` の坑口の項に入れ、地下で続く端（S7-3）の道のりの先に足す。値は地下 run の要約の端の `XwEnd.portalAt`（`offsetM`・`z`・`V`。丸めた値をコンパイラも使う）に書き、T12 はそれを読む。取付けの側の端には `XwEnd.lowered`（区間の長さ L′ と、区間の内で取付けが `above` になる地下 run の id）を書き、T13 は下げた区間と下の地下 run をそこから読む（取付けの先のトンネルや下のトンネルが書かれない箱でも、同じ答え）。
 - **取付けの側**（`setupGround`、`approachTargetOf`）: 区間の内だけ、帯の下側を外す（区間の始まりの測点は両側を残す）。目標は、区間の始まりの設計地盤線の値から、継ぎ目の地下 run の目標（その端の測点の、地表の下の包絡 − 6.6 m、`belowEndTarget`）まで直線。帯の上側と地表端の勾配は元の線から取る。`groundFit` は下げた線に対して測る（取付けの長さは L′）。同一面の相手の線へは、下げた線を混ぜない（追記 2 の C。追記 7 で、2 組の離れの原因ではないと確かめた）。
 - **先のトンネルが書かれない端の継ぎ目の目標**: `belowEndTarget` がその地下 run の格子の全部の測点の地表（±2.5 m の最低を含む）を読み、`setupBelow` と同じ `belowTargetOf` で出す。地下 run は取付けに seam でつながるので同じ成分にあり、`plan.needed` に入る。`groundPoints` が全部の点を先に読むので、範囲によらず同じ値（テスト H、取付けだけの箱）。
 - **上を通る床版**（3.5）: 下げる区間の測点を含む組は `untied` にしない（`markSharedTouchdowns`）。取付けが上で相手が地下 run の組（ship/all の計画で 16 組・238 測点）は、off でも触地の規則で結ばれている（`touchdownsNear` は地下 run の端を触地に数えない）。直す前のコードで落ちるテストが書けないので、結ぶ組を絞る直しは入れていない。
 - **構造**（`structuresByHeight`）
   - 区間の内の同一面の相手も地表の下（下げた取付けか地下 run で、掘割かトンネル）なら、C2 の例外で掘割のまま。両方のチャンクに `openings`（相手の側、同一面の区間）。相手が地表なら C2 のまま。
-  - `ctx.above` から外すのは（`heightStructures.ts isAboveDropped`、コンパイラと T13 が同じ関数）: 上が下げた区間の内、下が地下 run、上が地表の下（`cutBelowM` 0.3 m）、かつ下の路面が覆われている（掘割でなく `isHoleAt` が偽）か、開いていて高さの差が `SAME_SURFACE_ALLOWED_DZ_M`（0.14 m）以内。開いているかは橋脚と同じ `compile.ts isOpenRoadAt`。コンパイラは下の路面を計画の above の組の `sb` から、T13 はファイルの中心線から引く（`roadUnderFromFiles`、丸め 0.02 m の内はどちらも通す）。
+  - `ctx.above` から外すのは（`heightStructures.ts isAboveDropped`、コンパイラと T13 が同じ関数）: 上が下げた区間の内、下が地下 run、上の路面が地表 + `cutBelowM`（0.3 m）より低い（高さの分類が掘割。地表の上 0.3 m 未満も入る）、かつ下の路面が覆われている（掘割でなく `isHoleAt` が偽）か、開いていて高さの差が `SAME_SURFACE_ALLOWED_DZ_M`（0.14 m）以内。開いているかは橋脚と同じ `compile.ts isOpenRoadAt`。コンパイラは下の路面を計画の above の組の `sb` から、T13 はファイルの中心線から引く（`roadUnderFromFiles`、丸め 0.02 m の内はどちらも通す）。
   - **誤りの訂正（追記 6 → 7）**: 「下が覆われたトンネルは S7-3 の `isOpenBelow` で `above` に入らない」は誤り。`isOpenBelow` は橋脚（`overDeck`）の中だけで、構造の `above` は layer の組の全部（`deckStretches`）から作られ、覆われたトンネルの組も入る。331692344 は `on` で全長が高架（`above` 331922709）、`cut` で 0〜215.5 m が掘割。覆われた 58 測点を外していたのは追記 3 の規則。下げていない run は今も、覆われたトンネルの上で高架になる（下の「数え」）。
 - **坑口の記録**: 下げた端の外は、取付けのその点の構造を書く（掘割なら `cut` → `tunnel`）。実行時は片方だけが tunnel なら坑門を作る。
 - **口の規則と T12**: 下げた端では、T12 はトンネルの最初の測点を掘割として読み（`checkCover` の `mouths`）、天井を求めない。コンパイラはそこにも天井を置く（厳しい向き）。その 1 測点の土被りはスコアカードの `coverShortM`（線 3）が見る。
-- **スコアカード（版 10、S7-2 が上げた）**: `underground.portals` に `lowered`・`loweredCoverShort`、端ごとの `lowered`（長さ・端の深さ）と `notLowered`。`ground.openEnds.lowered`（下げた端を下げた線に対して数え、今の欄からは外す）。`underground.overApproach.besideLowered`（2 本とも下げた区間の内で同一面の組、`list` から外す）。フラグなしではどれも書かない。
+- **スコアカード（版 10、S7-2 が上げた）**: `underground.portals` に `lowered`・`loweredCoverShort`、端ごとの `lowered`（長さ・端の深さ）と `notLowered`。`ground.openEnds.lowered`（下げた端を下げた線に対して数え、今の欄からは外す）。`underground.overApproach.besideLowered`（2 本とも下げた区間の内で同一面の組、`list` から外す）。フラグなしでも `portals.lowered`・`loweredCoverShort` は 0 として書く。書かないのは、端ごとの `lowered`・`notLowered`、`openEnds.lowered`、`besideLowered`。
 
 ## 計測（trust signal、M2 Max、devshell、node v24.21.0・zlib 1.3.2）
 
-ship/all、`--below-junctions compile` の off（`s7p-all-on`）→ cut（`s7p-all-cut2`、木 e08e2da、431.5 s、最大メモリ 3.65 GB）。既定の 5 箱は `s7p-default-cut2`（a5b361d）。フラグなしの ship/pruned・ship/all と `--below-junctions compile` だけの ship/all（a5b361d）は、土台（6200995）の生成と `diff -rq` で一致した。
+ship/all、`--below-junctions compile` の off（`s7p-all-on`）→ cut（`s7p-all-cut2`、木 e08e2da、431.5 s、最大 RSS 6.56 GB（`time -l` の maximum resident set size。off は 5.38 GB、compile だけは 5.71 GB））。既定の 5 箱は `s7p-default-cut2`（a5b361d）。フラグなしの ship/pruned・ship/all と `--below-junctions compile` だけの ship/all（a5b361d）は、土台（6200995）の生成と `diff -rq` で一致した。
 
-- 違反 T1〜T13 0、未収束 0、ぶら下がり 0、閉鎖は増えない。T8: 既定の 5 箱と ship の両方にあるチャンク 406 が、`signs` を除いて一致（run の端・長さ・`groundFit` も一致）。箱の中で、下げた区間の `above` の相手の地下 run のチャンクが無い所（T13 の読みが緩くなる所）は 12 か所のうち 0。
+- 違反 T1〜T13 0、未収束 0、ぶら下がり 0、閉鎖は増えない。T8: 既定の 5 箱と ship の両方にあるチャンク 406 が、`signs` を除いて一致（run の端・長さ・`groundFit` も一致）。T13 は、下げた区間と下の地下 run を取付けの要約の `XwEnd.lowered` から読む（PR #130 レビューの必須 1 の直しの後。前は書かれた地下 run の要約だけから読み、取付けの先のトンネルか下のトンネルが書かれない箱では、`above` の内を高架だけと読んで、コンパイラの掘割と食い違った。合成網の 2 つの箱で再現し、直した）。下の地下 run のチャンクがフォルダに無い所は、開いているか・高さの差が読めないので、掘割も高架も通す。
 - 坑口の端の土被りが足りない端 79 → 61、不足の最大 7.869 → 7.802 m。下げた端 55（書かれる）+ 7（先のトンネルが書かれない）、うち足りない 26。`tunnel_cover_short` 未許可 28 → 16。
 - **線 3**（確定: (A) 天井を置く端は不足 0、(B) 置かない端は `off` より悪くなく理由 B1〜B4、不足 0 なら理由を問わない、掘割の端は外す）。`off` → `cut` の不足（m）:
   - A（7 端）: 165913317:start（2.042 → 0）、165913327:start（2.022 → 0）、42751503:end（5.854 → 0）、42751503:start（3.281 → 0）、42751507:end（3.579 → 0）、42751507:start（5.754 → 0）、45180402:end（4.763 → 0）
@@ -4020,7 +4021,7 @@ ship/all、`--below-junctions compile` の off（`s7p-all-on`）→ cut（`s7p-a
   - 地平 run 6 本・10 区間・372 m: 331692344（0〜13・19〜70・85〜97・234〜236・237〜276、計 117 m、下は 331922709）、190617380（0〜88、28127108・331922709）、190617387（0〜68、331922709）、190617385（23〜68、28127108）、1308572351（0〜27、331922709）、381950205（0〜27、331922709）。
   - 高架の tag の run 7 本・9 区間・318 m: 190617382（0〜132、331922709）、190617394（0〜61・62〜80、331922709）、24402018（4〜41・42〜44、737538573）、28993448（83〜120、331922709）、45138860（95〜115、4848940）、23974979（0〜10、24636595）、78334079（420〜421、28127108）。
   - 23705286:0 はこの数えに入らない。`on` では下の 4848883・4848906 の口が s 0〜40 の全部で開いている（`isHoleAt` が真）と読めるため。
-- スコアカード（`on` → `cut`）: `ground.openEnds` 357 端・`overApproach` 19 → 下げていない端 295・16（下げた端 62 は `lowered`、`overApproach` 30、最大 10.74 m）。`underground.overApproach` 15 → 16（`besideLowered` 7 組: 203832849|203832847、23704469|27155730、24636427|45420940、45068169|45068170、45420940|24636427、78334078|80581134、80581134|78334078）。
+- スコアカード（`on` → `cut`）: `ground.openEnds` 357 端・`overApproach` 19 → 下げていない端 295・16（下げた端 62 は `lowered`、`overApproach` 30、最大 10.74 m）。`underground.overApproach` 15 → 14（`besideLowered` 9 行・6 組。上下が入れ替わった同じ組が 3 つ: 203832849|203832847、23704469|27155730、24636427|45420940 と 45420940|24636427、45068169|45068170、5204789|59613969 と 59613969|5204789、78334078|80581134 と 80581134|78334078。5204789|59613969 は、先のトンネルが書かれない 2 本の端の組で、区間を取付けの要約から読むようにしてから `besideLowered` に入った（`s7p-all-cut3`、PR #130 レビューの直しの後。高さは `s7p-all-cut2` と同じ））。
 
 ## テスト
 
