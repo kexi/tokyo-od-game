@@ -13,7 +13,7 @@
 // from the other build's lists (--before <dir>: the lanes and hole probes' --cases, the feet probe's
 // --joins, a sections dump, each from a checkout without the rule), the probe cases, the feet and
 // the lanes as they were. One JSON log line (street_same_road_measured) and --out <file>.
-// Run: pnpm exec tsx scripts/measureSameRoad.ts <dir|label> --before <prefix> --after <prefix> [--out <file>]
+// Run: pnpm exec tsx scripts/measureSameRoad.ts <dir|label> --before <prefix> --after <prefix> [--out <file>] [--check]
 // (<prefix>-pl.json / -ph.json / -joins.json / -sec.json: written by the probes and the dump).
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -755,3 +755,10 @@ log("street_same_road_measured", summary);
 const out = flag("out");
 if (out !== undefined)
   await writeFile(out, JSON.stringify({ summary, rows: list, kept: [...kept.values()] }, null, 1) + "\n");
+// --check (just check-same-road-pieces): a piece left of an alpha line inside the band and not at the
+// foot fails (exit code 1). Why a check and not only the column: R2 and R3's data are read by no one
+// line by line, and the shape the rule lets through (the foot's edge and the band's edge between the
+// same two samples) is in no data yet.
+const isChecked = args.includes("--check");
+const hasPiecesInBand = summary.leftInBandNotFoot > 0;
+if (isChecked && hasPiecesInBand) process.exitCode = 1;

@@ -1408,13 +1408,18 @@ export function siteBand(
  * band (over 30°, so no sample along it) goes with the rest. Leaving the band, the gap ends at the
  * first sample outside it (K2 3: the line is kept from there), so the piece left starts outside the
  * band; stopping at the foot, it ends at the last sample taken (the foot's samples stay). Reaching
- * the line's end takes it out to the end. Why the first sample outside and not the last inside: the
- * last inside lies up to a metre within the band's edge, 0.1–0.6 m off the slab, less than the metre
- * cutAtSites leaves a crossing (re-review A1). Why carry on only after a sample was taken: a gap whose
- * next sample is already outside ends a SITE_CLEARANCE_M past the line's last sample along the site,
- * as before. Why not past the foot: siteCrossings keeps a crossing within SITE_END_REACH_M of an end
- * as the ramp's own street, and there a street running into the ramp's mouth is the right shape
- * (what the foot joins to).
+ * the line's end takes it out to the end. So a gap always ends at one of three: the first sample
+ * outside the band, the foot's edge (the last sample taken), or the line's end. The scan starts at the
+ * gap's own end (the stretch's last sample ± SITE_CLEARANCE_M): already outside the band, it ends
+ * there. Why the first sample outside and not the last inside: the last inside lies up to a metre
+ * within the band's edge, 0.1–0.6 m off the slab, less than the metre cutAtSites leaves a crossing
+ * (re-review A1). Why not keep ± SITE_CLEARANCE_M when the next sample is already outside (as #121
+ * did): the samples along the site lie inside the band's edge, so a metre past them can still be
+ * inside it, and the piece left began in the band (re-review 追記 2, up to 3.2 m off the centre line
+ * with the band at 3.875 m). Why not past the foot: siteCrossings keeps a crossing within
+ * SITE_END_REACH_M of an end as the ramp's own street, and there a street running into the ramp's
+ * mouth is the right shape (what the foot joins to); where the foot's edge and the band's edge fall
+ * between the same two samples, the piece left keeps under a metre in the band (knowledge).
  */
 function intoBand(
   street: RoadLine,
@@ -1428,37 +1433,31 @@ function intoBand(
     const [lon, lat] = pointAlong(street, along, l);
     return band(...xy(lon, lat));
   };
-  /** The gap's end carried from `from` by `step` over samples `ls` (in order), as the comment says. */
+  /** The gap's end carried from `from` over samples `ls` (in order, `from` first), as the comment says. */
   const carry = (from: number, ls: number[]) => {
     let end = from;
-    let hasTaken = false;
     for (const l of ls) {
       const place = placeAt(l);
       const isTaken = place.isInside && !place.isAtFoot;
       if (isTaken) {
         end = l;
-        hasTaken = true;
         continue;
       }
-      const isLeavingBand = hasTaken && !place.isInside && !place.isAtFoot;
-      if (isLeavingBand) end = l;
+      const isOutside = !place.isInside && !place.isAtFoot;
+      if (isOutside) end = l;
       return end;
     }
     return end;
   };
   const isAfterStart = g0 > 0;
-  const lo = isAfterStart
-    ? carry(
-        g0,
-        Array.from({ length: Math.ceil(g0) }, (_, i) => Math.ceil(g0) - 1 - i),
-      )
-    : g0;
+  const below = Array.from({ length: Math.ceil(g0) }, (_, i) => Math.ceil(g0) - 1 - i);
+  const lo = isAfterStart ? carry(g0, [g0, ...below]) : g0;
   const isBeforeEnd = g1 < total;
   const first = Math.floor(g1) + 1;
   const ahead = Array.from({ length: Math.max(0, Math.floor(total) - first + 1) }, (_, i) => first + i);
   // The last part under a metre past the last whole sample: the line's end, as a sample of its own.
   const hasTail = total > Math.floor(total);
-  const hi = isBeforeEnd ? carry(g1, hasTail ? [...ahead, total] : ahead) : g1;
+  const hi = isBeforeEnd ? carry(g1, [g1, ...ahead, ...(hasTail ? [total] : [])]) : g1;
   return [lo, hi];
 }
 

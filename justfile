@@ -335,6 +335,10 @@ check-expressway-terrain dir="public/data/expressway" flags="":
 check-expressway-lanes dir="public/data/expressway" flags="":
     pnpm exec tsx scripts/expresswayLanesProbe.ts {{ dir }} {{ flags }}
 
+# 同じ道の規則（R1-2b M1、α）が外した線の切れ端が、帯の内で足もとでない所に残っていないかを確かめる（ゲームと同じ切り方の道路網、地理院タイルは .cache/gsi-vector のものだけ、1 行の JSON ログの leftInBandNotFoot が 0 でなければ終了コード 1）
+check-same-road-pieces dir="public/data/expressway":
+    pnpm exec tsx scripts/measureSameRoad.ts {{ dir }} --check
+
 # 高速道路の掘割の敷地（擁壁の外面 + 1 m）に中心が掛かる一般道の車線を、ゲームと同じ道路網（地理院タイル、.cache/gsi-vector のものだけ。高速道路を結んで敷地で切り、public/data の規制を当てた車線）で run ごとに数える（台帳の street-lane-over-cut、1 行の JSON ログ、flags に --cases <file> で台帳の道具の --lanes に渡す一覧）
 check-hole-lanes dir="public/data/expressway" flags="":
     pnpm exec tsx scripts/expresswayHoleLanes.ts {{ dir }} {{ flags }}
