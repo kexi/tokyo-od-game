@@ -2,6 +2,7 @@ import { z } from "zod";
 import { BELOW_DEFER_REASONS, type BelowDeferReason, TUNNEL_DEPTH_M } from "./below";
 import { STATION_STRIDE, ST, type XwChunk, type XwClass, type XwRunSummary } from "./format";
 import { pairStations, SAME_SURFACE_M } from "./overlap";
+import { loweredStretchesOf } from "./violations";
 
 /**
  * The scorecard's `underground` (S7-1, report.ts version 7): what S7 (地下全面) is measured by before
@@ -139,6 +140,32 @@ export const UndergroundSchema = z.strictObject({
         stations: count,
       }),
     ),
+    /**
+     * S7-2 (version 10, `--portal-approach cut`): the pairs counted apart from `list`, two lowered
+     * approaches going down side by side, on one surface by the plan (the lower's chunk `decks` "same"
+     * with the upper) with both stations in their lowered stretches. Why apart: they are the two
+     * carriageways of one approach, apart by what their own tunnels hold them to (S7-2 追記 7 の 2), not
+     * a deck over the approach; counted in `list`, they read as decks too low over it (S7-5 and S7-6
+     * read `pairs`). Absent without a lowered approach.
+     */
+    besideLowered: z
+      .strictObject({
+        pairs: count,
+        list: z.array(
+          z.strictObject({
+            id: z.string(),
+            lower: z.string(),
+            upper: z.string(),
+            s0: z.number(),
+            s1: z.number(),
+            minDzM: z.number().nonnegative(),
+            maxDzM: z.number().nonnegative(),
+            offsetM: z.number().nonnegative(),
+            stations: count,
+          }),
+        ),
+      })
+      .optional(),
   }),
   /**
    * S7-3 (version 9): the written junctions where the child's or the parent's chunk at the node is a
@@ -449,6 +476,11 @@ export function approachStretchesOf(
 export function overApproachOf(
   chunks: XwChunk[],
   stretches: readonly ApproachStretch[],
+  /**
+   * S7-2: the lowered approaches' stretches (violations.ts loweredStretchesOf, from the summaries'
+   * XwEnd.portalAt), for `besideLowered`. Empty or absent: none, and no `besideLowered` (version 9's shape).
+   */
+  lowered: ReadonlyMap<string, ReadonlyArray<readonly [number, number]>> = new Map(),
 ): Underground["overApproach"] {
   const approaches = {
     count: stretches.length,
@@ -466,8 +498,24 @@ export function overApproachOf(
     (byLower.get(run) ?? []).some((st) => s >= st.s0 - 1e-6 && s <= st.s1 + 1e-6);
   type Pair = Underground["overApproach"]["list"][number];
   const found = new Map<string, Pair>();
+  const beside = new Map<string, Pair>();
+  const hasLowered = lowered.size > 0;
   const isNone = byLower.size === 0;
-  if (isNone) return { approaches, pairs: 0, list: [] };
+  if (isNone)
+    return {
+      approaches,
+      pairs: 0,
+      list: [],
+      ...(hasLowered ? { besideLowered: { pairs: 0, list: [] } } : {}),
+    };
+  const isInLowered = (run: string, s: number) =>
+    (lowered.get(run) ?? []).some(([a, b]) => s >= a - 1e-6 && s <= b + 1e-6);
+  const decksOf = new Map<string, XwChunk["decks"]>();
+  for (const c of chunks) decksOf.set(c.run, [...(decksOf.get(c.run) ?? []), ...c.decks]);
+  const isSameAt = (lower: string, s: number, upper: string) =>
+    (decksOf.get(lower) ?? []).some(
+      (d) => d.with === upper && d.relation === "same" && s >= d.s0 - 1e-6 && s <= d.s1 + 1e-6,
+    );
   for (const p of pairStations(chunks)) {
     // a over b (dz > 0: a is the upper) or a under b (dz < 0: a is the lower).
     const isAUpper = p.dz > 0;
@@ -475,8 +523,12 @@ export function overApproachOf(
     const dz = Math.abs(p.dz);
     const isTooLow = dz > SAME_SURFACE_M && dz < p.levelApart;
     if (!isTooLow || !isNearPortal(lower, sLower)) continue;
+    const sUpper = isAUpper ? p.sa : p.sb;
+    const isBeside =
+      isInLowered(lower, sLower) && isInLowered(upper, sUpper) && isSameAt(lower, sLower, upper);
+    const into = isBeside ? beside : found;
     const id = `${lower}|${upper}`;
-    const o: Pair = found.get(id) ?? {
+    const o: Pair = into.get(id) ?? {
       id,
       lower,
       upper,
@@ -496,19 +548,27 @@ export function overApproachOf(
       o.minDzM = dz;
       o.offsetM = p.dist;
     }
-    found.set(id, o);
+    into.set(id, o);
   }
-  const list = [...found.values()]
-    .map((o) => ({
-      ...o,
-      s0: round(o.s0, 1),
-      s1: round(o.s1, 1),
-      minDzM: round(o.minDzM, 3),
-      maxDzM: round(o.maxDzM, 3),
-      offsetM: round(o.offsetM, 2),
-    }))
-    .toSorted((a, b) => (a.id < b.id ? -1 : 1));
-  return { approaches, pairs: list.length, list };
+  const listOf = (m: Map<string, Pair>) =>
+    [...m.values()]
+      .map((o) => ({
+        ...o,
+        s0: round(o.s0, 1),
+        s1: round(o.s1, 1),
+        minDzM: round(o.minDzM, 3),
+        maxDzM: round(o.maxDzM, 3),
+        offsetM: round(o.offsetM, 2),
+      }))
+      .toSorted((a, b) => (a.id < b.id ? -1 : 1));
+  const list = listOf(found);
+  const besideList = listOf(beside);
+  return {
+    approaches,
+    pairs: list.length,
+    list,
+    ...(hasLowered ? { besideLowered: { pairs: besideList.length, list: besideList } } : {}),
+  };
 }
 
 /** An unplanned chain as the build hands it in (compile.ts UnplannedChain). */
@@ -631,7 +691,11 @@ export function undergroundOf(input: {
   return {
     deferred: deferredOf(input.deferred),
     portals: portalEndsOf(input.chunks, input.runs, input.belowIds, notLowered),
-    overApproach: overApproachOf(input.chunks, approachStretchesOf(input.chunks, input.approachEnds)),
+    overApproach: overApproachOf(
+      input.chunks,
+      approachStretchesOf(input.chunks, input.approachEnds),
+      loweredStretchesOf(input.runs),
+    ),
     joins: joinsOf(input.chunks, input.runs, input.belowIds),
     unplanned: unplannedOf(input.unplanned),
   };
@@ -678,6 +742,7 @@ export function undergroundChanges(
   deferred: { added: string[]; removed: string[]; reasonChanged: string[]; inRangeChanged: string[] };
   portals: { added: string[]; removed: string[]; changed: string[] };
   overApproach: { added: string[]; removed: string[] };
+  besideLowered: { added: string[]; removed: string[] };
   approaches: { added: string[]; removed: string[] };
   joins: { added: string[]; removed: string[]; changed: string[] };
   unplanned: { added: string[]; removed: string[]; changed: string[] };
@@ -709,6 +774,10 @@ export function undergroundChanges(
     deferred: { ...sideBy(idsOf(a?.deferred.list), idsOf(b?.deferred.list)), reasonChanged, inRangeChanged },
     portals: { ...sideBy(idsOf(a?.portals.list), idsOf(b?.portals.list)), changed: portalChanged },
     overApproach: sideBy(idsOf(a?.overApproach.list), idsOf(b?.overApproach.list)),
+    besideLowered: sideBy(
+      idsOf(a?.overApproach.besideLowered?.list),
+      idsOf(b?.overApproach.besideLowered?.list),
+    ),
     approaches: sideBy(idsOf(a?.overApproach.approaches.list), idsOf(b?.overApproach.approaches.list)),
     joins: {
       ...sideBy(idsOf(a?.joins?.list), idsOf(b?.joins?.list)),

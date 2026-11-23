@@ -821,6 +821,14 @@ function openEndsOf(groundRuns: typeof result.runs): NonNullable<NonNullable<Rep
   const cap = HEIGHT_STRUCTURES.value.ground.approachMaxM;
   const byCause = { climbToViaduct: 0, downToPortal: 0, overPortal: 0, childLow: 0, childUnwritten: 0 };
   const offs: number[] = [];
+  // S7-2 (`--portal-approach cut`): a lowered end is off its target by what its approach could not go
+  // down (L short, the ground rising to the seam, a grade at its cap): counted apart (`lowered`), so the
+  // fields above read the ends at grade as without the flag. Why not left in: 28 lowered ends past the
+  // approach cap read as overPortal, the cause of a road standing over the portal, which they are not.
+  const lowered = loweredApproaches(plan).byRun;
+  const isLoweredEnd = (id: string, atStart: boolean) =>
+    (lowered.get(id) ?? []).some((a) => a !== null && a.atStart === atStart);
+  const loweredOffs: number[] = [];
   for (const r of groundRuns) {
     const list = result.chunks.filter((c) => c.run === r.id).sort((a, b) => a.k - b.k);
     const isEmpty = list.length === 0;
@@ -839,6 +847,10 @@ function openEndsOf(groundRuns: typeof result.runs): NonNullable<NonNullable<Rep
       const e = atStart ? r.start : r.end;
       if (e.kind !== "open") continue;
       const off = signedAt(atStart);
+      if (isLoweredEnd(r.id, atStart)) {
+        loweredOffs.push(Math.abs(off));
+        continue;
+      }
       offs.push(Math.abs(off));
       const isOver = Math.abs(off) > cap + 1e-9;
       if (!isOver) continue;
@@ -869,6 +881,16 @@ function openEndsOf(groundRuns: typeof result.runs): NonNullable<NonNullable<Rep
     maxM: Math.round(Math.max(0, ...offs) * 100) / 100,
     overApproach: offs.filter((d) => d > cap + 1e-9).length,
     byCause,
+    ...(lowered.size > 0
+      ? {
+          lowered: {
+            count: loweredOffs.length,
+            overBand: loweredOffs.filter((d) => d > band + 1e-9).length,
+            maxM: Math.round(Math.max(0, ...loweredOffs) * 100) / 100,
+            overApproach: loweredOffs.filter((d) => d > cap + 1e-9).length,
+          },
+        }
+      : {}),
   };
 }
 

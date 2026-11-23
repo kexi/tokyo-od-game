@@ -370,6 +370,37 @@ describe("坑口の端と取付けの上の床版（belowScore.ts portalEndsOf�
     expect(overApproachOf([...result.chunks, ...deckOver(0.06, 0, 400)], stretches).pairs).toBe(1);
   });
 
+  it("counts apart (besideLowered) two lowered approaches side by side on one surface, both in their stretches (S7-2 追記 5)", () => {
+    // Run 90 beside run 2, 0.3 m higher, one surface by the plan's decks: both lowered over s ≥ 200.
+    const beside = deckOver(0.3, 0, 400).map((c) => ({
+      ...c,
+      decks: [{ with: "2", relation: "same" as const, s0: 0, s1: 400 }],
+    }));
+    const two = result.chunks.map((c) =>
+      c.run === "2"
+        ? { ...c, decks: [...c.decks, { with: "90", relation: "same" as const, s0: 0, s1: 400 }] }
+        : c,
+    );
+    const lowered = new Map<string, Array<[number, number]>>([
+      ["2", [[200, 400]]],
+      ["90", [[200, 400]]],
+    ]);
+    const over = overApproachOf([...two, ...beside], stretches, lowered);
+    // Near the portal outside the stretches (s 100–200) still a deck too low over the approach.
+    expect(over.list.map((p) => p.id)).toEqual(["2|90"]);
+    expect(over.list[0].s1).toBeLessThan(200);
+    expect(over.besideLowered!.list.map((p) => p.id)).toEqual(["2|90"]);
+    expect(over.besideLowered!.list[0].s0).toBeGreaterThanOrEqual(200 - 1e-6);
+    // Without lowered stretches the shape of version 9: no besideLowered, every pair in `list`.
+    const before = overApproachOf([...two, ...beside], stretches);
+    expect(before.besideLowered).toBeUndefined();
+    expect(before.list[0].s1).toBeCloseTo(400, -1);
+    // Not one surface (a deck over it): in `list` even inside both stretches.
+    const deck = overApproachOf([...result.chunks, ...deckOver(0.3, 0, 400)], stretches, lowered);
+    expect(deck.besideLowered!.pairs).toBe(0);
+    expect(deck.pairs).toBe(1);
+  });
+
   it("takes the same approach whether the tunnel beyond is written, deferred or compiled outside the box (review 2)", () => {
     // (b) the tunnel ends where its way goes on outside the universe: deferred.
     const deferredNet = network([

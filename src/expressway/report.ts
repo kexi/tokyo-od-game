@@ -329,6 +329,12 @@ export const ReportSchema = z.strictObject({
               childUnwritten: count,
             })
             .optional(),
+          /**
+           * S7-2 (version 10, `--portal-approach cut`): the lowered ends (compile.ts loweredApproaches,
+           * written or not beyond), off their lowered target (approachTargetOf), counted here and not in
+           * the fields above. Absent without the flag.
+           */
+          lowered: z.strictObject({ count, overBand: count, maxM: m, overApproach: count }).optional(),
         })
         .optional(),
       /**
