@@ -105,7 +105,7 @@ export function knownCasesOf(
   return [...keys].toSorted();
 }
 
-export type StreetVerdict = "pass" | "fail" | "known";
+export type StreetVerdict = "pass" | "fail" | "known" | "known-main";
 
 /** pass: no failure; known: failed, every fault inside a ledger case; else fail. */
 export function streetVerdict(failures: readonly string[], known: readonly string[]): StreetVerdict {
@@ -113,4 +113,19 @@ export function streetVerdict(failures: readonly string[], known: readonly strin
   if (isClean) return "pass";
   const isKnown = known.length > 0;
   return isKnown ? "known" : "fail";
+}
+
+/**
+ * A failure set against main's drive of the same place on the same data (`--baseline`, R1-5 PR A: the
+ * line S7-6 is held to, "no failure main does not have", as the deck drive's "main の同じ合否"): a
+ * fail where main failed too (fail, known or known-main) is `known-main`, not a pass, counted apart.
+ * A place main passed, did not drive, or drove invalid keeps its verdict.
+ * Why not a pass where main fails: main's failure is the game's defect now, and the change under test
+ * must not hide it; it is only not this change's.
+ */
+export function againstMain(verdict: StreetVerdict, main: string | null): StreetVerdict {
+  const isFail = verdict === "fail";
+  if (!isFail) return verdict;
+  const didMainFail = main === "fail" || main === "known" || main === "known-main";
+  return didMainFail ? "known-main" : verdict;
 }

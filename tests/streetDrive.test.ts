@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readExpresswayFiles } from "../scripts/expresswayFiles";
 import {
+  againstMain,
   ARRIVE_M,
   type KnownCase,
   knownCasesOf,
@@ -143,6 +144,22 @@ describe("known cases (a failure inside a case of the ledger)", () => {
     expect(p!.offM).toBeCloseTo(4.53, 1);
     expect(projectOnRun(byRun, "R", 35.599, 139.7)).toBeNull();
     expect(projectOnRun(byRun, "nowhere", 35.6, 139.7)).toBeNull();
+  });
+});
+
+describe("against main's drive of the same place (--baseline, S7-6's line)", () => {
+  it("reads a failure main has too as known-main, never as a pass", () => {
+    expect(againstMain("fail", "fail")).toBe("known-main");
+    expect(againstMain("fail", "known")).toBe("known-main");
+    expect(againstMain("fail", "known-main")).toBe("known-main");
+  });
+
+  it("keeps a failure main does not have, and every other verdict, as it is", () => {
+    expect(againstMain("fail", "pass")).toBe("fail");
+    expect(againstMain("fail", "invalid")).toBe("fail");
+    expect(againstMain("fail", null)).toBe("fail");
+    expect(againstMain("pass", "fail")).toBe("pass");
+    expect(againstMain("known", "fail")).toBe("known");
   });
 });
 

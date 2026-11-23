@@ -7,6 +7,8 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:control-heights-r1-5a, at: 2026-11-24T00:40:00Z }
+  - { by: process:vitest-format-main-r1-cs, at: 2026-11-24T00:45:00Z }
   - { by: process:check-street-drive-r1-5a-a1, at: 2026-11-23T15:02:00Z }
   - { by: process:check-deck-drive-r1-5a-a5, at: 2026-11-23T13:38:00Z }
   - { by: process:vite-build-r1-5a-a4, at: 2026-11-23T13:20:00Z }
@@ -4702,6 +4704,7 @@ S6 PR 7c の街路の走行（`.qa/street-drive.mts`、git に無く古い workt
   - **穴埋め（線の変更ではない）**: 測った数が 0（自動運転が経路を引けず動かない）は、帯の検査が空のまま通り、到着の距離だけが不合格にしていた。測った数 0 を、それだけで不合格と書く。
   - 事故・小突かれ・検挙・逮捕の回は invalid にし、3 回まで走り直す（床版の走行と同じ `scripts/qa/driveInvalid.ts`。`drive-deck.ts` から中身を変えずに移した）。控えは事故を数えず、合否にも入れていなかった。
   - **known**: 探りの事例の一覧（`--site-lanes`: `check-expressway-lanes --cases`、`--hole-lanes`: `check-hole-lanes --cases`）を渡すと、不合格の点（帯を外れた最初の点・respawn の点・止まった点）が全部どれかの事例の内にあるとき `known`（事例の key つき）。合格には数えず、結果の `summary.json` で pass・fail・known・invalid を分ける。事例の届く幅は探りと同じ（lane-in-site は床版の半幅 + 壁高欄 `PARAPET_WIDTH`、street-lane-over-cut は穴の半幅 `holeHalfM` + 探りの余裕 `HOLE_SITE_MARGIN_M` 1 m を掘割のチャンクの区間で。余裕は `expresswayHoleLanes.ts` から `expresswaySiteLanes.ts` へ移して共有した）。
+- **main との比べ**（`--baseline <main の結果のフォルダ>`、コーディネーターの決定 2026-11-24）: S7-6 の線は「main の同じデータで走らせた結果に無い不合格 0」（床版の走行の「main と同じ合否」と同じ考え）。main でも落ちる場所の不合格は `known-main`（`againstMain`）で、合格に数えず `summary.json` の `knownMain` に分ける。main が合格・未走行・invalid の場所は、そのまま不合格。
 - 結果は場所ごとに `.qa/street-drive-<label>/<id>.json`（配ったフォルダ・場所・点・判定・各回）。ファイルの在る場所は飛ばす（再開）。終了コードは不合格 1、invalid 2、known だけ 3。
 
 ## 計測のフォルダを配る（`scripts/xwDataServe.ts`、`just serve-expressway-data <dir> [port]`）
@@ -4717,15 +4720,34 @@ S6 PR 7c の街路の走行（`.qa/street-drive.mts`、git に無く古い workt
 - A4: `vite build` を変数あり（r1b-g3）・なしで 2 回、`dist` 全体が `diff -r` で一致、`dist/data/expressway` は `public/data/expressway` と一致。開発サーバー（変数なし）の既定のタイル 14551-6452.json と meta.json は public の物とバイト一致、`__xw-data` は `text/html`（Vite の HTML の代わり）。
 - A5: G3（r1b-g3）と S7 の形の central（`r1-cs-48dc699`、`--below-junctions compile --portal-approach cut --run-borders cut --districts central`）を配って、既定のデータに無い run 756785283 の経路 `onward-756785283-by-203832847` を `drive-deck.ts` で走らせた。どちらも車が 756785283:0 に置かれ、結果の `served` にそのフォルダが出た。G3 は合格。**central では不合格**（756785283:0 で目標から 41 km/h 落ち込み、17 m で止まる、drops 1）: 経路の不合格として R1-4・R1-7 へ渡す（直していない）。
 - A1: 下の表（既定のデータ、新しい道具と控えの両方、1 本ずつ鍵）。両方で同じ合否。7c の記録の在る 13 か所のうち 7 か所が違い、対照 2 か所も帯の下で落ちる（理由は確かめていない）。
-- データテストを `XW_DATA_DIR`（r1-cs-48dc699）で走らせても `xw_data_served` は出ない（vitest の下で何もしない）。`tests/expresswayFormat.test.ts` の meta の欄の検査が `districts` で落ちるのは、地区のフォルダの meta の形で、この PR の前から（道具とは別）。全テスト 207 files・2,898 passed（変数なし）。
-- テスト: `tests/xwDataServe.test.ts`（変数なし・vitest の下で何も足さない、build・preview のフックが無い、配るファイル・404・`__xw-data`、meta の比べ）、`tests/streetDrive.test.ts`（7c の数、掘割に落ちて 10 m 以内に止まった・respawn した・測った数 0 の走行は不合格、known と外、known は合格でない、事例の届く幅、場所の表が既定のデータの run に解ける）。
+- データテストを `XW_DATA_DIR`（r1-cs-48dc699）で走らせても `xw_data_served` は出ない（vitest の下で何もしない）。
+- `XW_DATA_DIR`（r1-cs-48dc699、`--districts central`）で `tests/expresswayFormat.test.ts` を走らせると、meta の欄の検査が `districts` で 1 件落ちる。**main（48dc699 のきれいな worktree）でも同じに落ちる**（地区のフォルダの meta に `districts` が在り、`META_FIELDS` に無い。この PR とは別）。全テスト 207 files・2,898 passed（変数なし）。
+- テスト: `tests/xwDataServe.test.ts`（変数なし・vitest の下で何も足さない、build・preview のフックが無い、配るファイル・404・`__xw-data`、meta の比べ）、`tests/streetDrive.test.ts`（7c の数、main も落ちる不合格は known-main で合格でない、掘割に落ちて 10 m 以内に止まった・respawn した・測った数 0 の走行は不合格、known と外、known は合格でない、事例の届く幅、場所の表が既定のデータの run に解ける）。
+
+### 対照の街路が帯の下に出る: R1-4 の a2 の形（地形のコライダーが DEM より低い）
+
+対照 2 か所の、帯を外れた最初の点で、DEM の路面（ゲームの `groundY` と同じ双線形）・地形のコライダー（`terrainSurface.ts meshHeightAt`、メッシュの三角形）・車体の最低（DEM + 結果の over.min）を並べた（`.qa/r15-tools/control-heights.ts`、Node、z15 の DEM）。**どちらもコライダーが DEM より低い**: 帯の基準（DEM）より車が沈むのは、道具の誤りでなく、今のゲームの欠陥（R1-4 の a2: 街路の地形のコライダーが DEM の路面より最大 2.37 m 低い）を道具が拾っている、と読む。帯の数は変えない。
+
+| 場所            | 点                   | DEM（m） | コライダー（m） | コライダー − DEM | 点の ±4 m で最も低い | 車体の最低 − DEM |
+| --------------- | -------------------- | -------- | --------------- | ---------------- | -------------------- | ---------------- |
+| control-one-way | 35.664227,139.756200 | 2.049    | 1.533           | −0.516           | −1.069               | −0.67            |
+| control-narrow  | 35.664202,139.756216 | 1.535    | 0.826           | −0.709           | −1.346               | −0.12            |
+
+- 車体の最低は走行の全体の最低で、この点の値とは限らない（点は帯を外れた最初の点）。
+
+### central の走行 1 周の見積もり（手順 1 の後半、PR B の設計へ。r1-cs-48dc699、Node で数えただけ）
+
+- 規模（`.qa/r15-tools/scale.ts`）: 本線 129 run・197.9 km・車線の延長 440.9 km（1 車線 10.1・2 車線 138.8・3 車線 42.8・4 車線 6.2 km）、ランプ 228 run・56.4 km・車線の延長 65.1 km、街路 2 run・6.7 km。本線の鎖 22、タイル 54。ランプは出口 55・入口 53・JCT の連絡路 12・**分けられない 108**（ランプからランプ）。閉鎖はランプ 3。本線の端 21（ground/scope 11・open/operator 4・open/ref 2・open/scope 4）、ランプの端 10、口 23。
+- 1 本の実時間 ≈ 58 秒 + 1.12 × ゲームの時間（一定速。自動運転は約 1.4 倍）。R1-1b の走行の記録（`.qa/r1b/drives-*`）から。58 秒は 6 秒の経路 2 本からで、弱い。
+- (全): 規制速度で、ゲームの時間 約 8.5 h（本線 7.24 h・ランプ 1.23 h）、実時間 約 9.5 h + 経路ごとの読み込み。
+- (絞): 本線の車線 0 約 3.25 h・ランプの全車線 1.23 h・分合流の前後 300 m × 120 本 約 0.9 h で、ゲームの時間 約 5.4 h。実時間は 約 6.0 h + 読み込み（約 170 本 × 58 秒 ≈ 2.7 h）≈ 8.7 h、さらに短い経路 (i)〜(iv) と自動運転 20 本（約 2 h）。**実時間で数えると (絞) でも 6 時間を超える**。1 本ごとに町を読み直す分が大きいので、ブラウザ（読み込んだ町）を使い回す案を PR B の設計に回した。
 
 ### A1: 7c の 18 か所（既定のデータ 48dc699、2026-11-23 13:28〜15:02Z、新しい道具と控えを 9 か所ずつ 4 回、1 本ずつ鍵 R15）
 
 **両方の道具で、18 か所とも合否が同じ**（止まった距離・帯の外の数・respawn もほぼ同じ。ゲームの時間で進めるので、走りは決まっている）。合格は 5 か所（wall-24039751-left・wall-45068169-left・-right・kasumi-24402611-84・control-two-way）。
 
-- 7c の記録が在るのは 13 か所（麻布台 2・壁際 5・霞が関 6）。そのうち **7 か所が 7c と違い、理由は確かめていない**（設計へ戻した。止める条件）。決定の 2 か所と対照 3 か所には、7c の記録が見当たらない。
-- **対照の 2 か所も落ちる**: 床版から遠い街路（control-one-way・control-narrow）で、車体が DEM の上 0.4 m を下回る（最低 −0.67・−0.12 m、3〜4 回、走り始めの 35.66422,139.75620 の辺り）。今の帯（DEM 基準）のままでは、帯の下を「落ちた」と読めない。線は変えていない（設計の判断）。
+- 7c の記録が在るのは 13 か所（麻布台 2・壁際 5・霞が関 6）。そのうち **7 か所が 7c と違い、理由は未確認**（この PR では追わない、コーディネーターの決定 2026-11-24。一覧として残す）。決定の 2 か所と対照 3 か所には、7c の記録が見当たらない。
+- **対照の 2 か所も落ちる**: 床版から遠い街路（control-one-way・control-narrow）で、車体が DEM の上 0.4 m を下回る（最低 −0.67・−0.12 m、3〜4 回）。地形のコライダーが DEM より低い所で、R1-4 の a2 の形（上の節）。帯の数は変えない。
 - **自動運転が自分で終わる**: 止まった 7 か所のうち 5 か所は、測った数が 14〜18（約 4 秒）で自動運転が切れ、ページのログの `expressway_route_driven` は `arrived: true`。フックの `arrived` は 80 m の内（`expresswayDrive.ts ARRIVED_M`）なので、この確かめの 10 m とは別。決定の 2 か所は 60 秒の上限（240 回）まで走って終点の 47〜71 m 手前。kasumi-895902565-865 は 392 m 回り道をした。結果のファイルに自動運転の答え（`autopilot`）を残すようにした。
 
 | 場所                                        | 今（両方の道具）                                                           | 7c の記録               | 理由の候補（確かめていない）                  |

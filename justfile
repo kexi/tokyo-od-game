@@ -440,7 +440,7 @@ measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
 check-deck-drive label="run" route="" base="http://localhost:5173/tokyo-od-game/" out="" throttle="1":
     pnpm exec tsx scripts/qa/drive-deck.ts --label {{ label }} --base {{ base }} {{ if route != "" { "--route " + route } else { "" } }} {{ if out != "" { "--out " + out } else { "" } }} --cpu-throttle {{ throttle }}
 
-# 街路の場所の表 scripts/qa/streetPlaces.ts（ids をカンマで渡せばその場所だけ）で、車をいちばん近い街路の車線へ 40 m 手前に置き、自動運転で 40 m 先まで走らせ、到着（10 m 以内）・地面からの高さ 0.4〜1.3 m・落下・建物・止まり・置き直しを .qa/street-drive-<label>/<id>.json に書く（済んだ場所は飛ばす、事故・検挙の回は撮り直す、flags に --site-lanes <file>・--hole-lanes <file> で探りの事例の内の不合格を known に分ける、データは XW_DATA_DIR で開発サーバーと揃える、失敗は終了コード 1・invalid は 2・known だけなら 3）
+# 街路の場所の表 scripts/qa/streetPlaces.ts（ids をカンマで渡せばその場所だけ）で、車をいちばん近い街路の車線へ 40 m 手前に置き、自動運転で 40 m 先まで走らせ、到着（10 m 以内）・地面からの高さ 0.4〜1.3 m・落下・建物・止まり・置き直しを .qa/street-drive-<label>/<id>.json に書く（済んだ場所は飛ばす、事故・検挙の回は撮り直す、flags に --site-lanes <file>・--hole-lanes <file> で探りの事例の内の不合格を known に、--baseline <main の結果のフォルダ> で main も落ちる場所を known-main に分ける、データは XW_DATA_DIR で開発サーバーと揃える、失敗は終了コード 1・invalid は 2・known と known-main だけなら 3）
 check-street-drive label="run" ids="" base="http://localhost:5173/tokyo-od-game/" flags="":
     pnpm exec tsx scripts/qa/street-drive.ts --label {{ label }} --base {{ base }} {{ if ids != "" { "--only " + ids } else { "" } }} {{ flags }}
 

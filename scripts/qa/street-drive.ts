@@ -15,10 +15,14 @@
 //
 //   just check-street-drive [label] [ids] [base] [flags]   (the dev server: just serve-dev)
 //   pnpm exec tsx scripts/qa/street-drive.ts [--label L] [--base URL] [--only a,b] [--out DIR]
-//     [--tries N] [--site-lanes FILE] [--hole-lanes FILE]
+//     [--tries N] [--site-lanes FILE] [--hole-lanes FILE] [--baseline DIR]
+//
+// --baseline DIR: main's results of the same places on the same data (this tool's folder). A failure
+// where main failed too is `known-main` (streetDriveVerdict.ts againstMain): S7-6's line is "no
+// failure main does not have".
 //
 // Exit 1 when a place failed, 2 when none failed but one stayed invalid, 3 when the only failures are
-// known, else 0.
+// known or known-main, else 0.
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { HoleLanes } from "../expresswayCases.ts";
@@ -30,6 +34,7 @@ import { invalidOf } from "./driveInvalid.ts";
 import { freePort } from "./ports.ts";
 import { checkServedData } from "./servedData.ts";
 import {
+  againstMain,
   ARRIVE_M,
   knownCasesOf,
   RIDE_BAND,
@@ -52,6 +57,8 @@ const base = flag("base") ?? "http://localhost:5173/tokyo-od-game/";
 const only = flag("only");
 const outDir = flag("out") ?? join(ROOT, ".qa", `street-drive-${label}`);
 const tries = Number(flag("tries") ?? 3);
+/** main's results of the same places on the same data (a folder of this tool's <id>.json), or none. */
+const baselineDir = flag("baseline");
 const readList = <T>(file: string | undefined): T[] =>
   file === undefined ? [] : (JSON.parse(readFileSync(file, "utf8")) as T[]);
 
@@ -253,7 +260,12 @@ for (const p of places) {
   const failures = hasError ? [last.error!] : last.ride ? streetDriveFailures(last.ride) : [];
   const known = knownCasesOf(last.faults, cases, (run, lat, lon) => projectOnRun(files.byRun, run, lat, lon));
   const isInvalid = last.invalid !== null;
-  const verdict = isInvalid ? "invalid" : streetVerdict(failures, known);
+  const mainFile = baselineDir === undefined ? null : join(baselineDir, `${p.id}.json`);
+  const hasMain = mainFile !== null && existsSync(mainFile);
+  const main = hasMain
+    ? (JSON.parse(readFileSync(mainFile!, "utf8")) as { verdict: string; failures: string[] })
+    : null;
+  const verdict = isInvalid ? "invalid" : againstMain(streetVerdict(failures, known), main?.verdict ?? null);
   const out = {
     label,
     served,
@@ -262,6 +274,7 @@ for (const p of places) {
     verdict,
     failures,
     known,
+    main: main === null ? null : { dir: baselineDir, verdict: main.verdict, failures: main.failures },
     ...last,
     attempts: attempts.length,
     tries: attempts,
@@ -290,13 +303,14 @@ const summary = {
   pass: ids("pass"),
   fail: ids("fail"),
   known: ids("known"),
+  knownMain: ids("known-main"),
   invalid: ids("invalid"),
 };
 writeFileSync(join(outDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
 process.stdout.write(`${JSON.stringify({ ...summary, pass: summary.pass.length })}\n`);
 const hasFail = summary.fail.length > 0;
 const hasInvalid = summary.invalid.length > 0;
-const hasKnown = summary.known.length > 0;
+const hasKnown = summary.known.length + summary.knownMain.length > 0;
 if (hasFail) exit = 1;
 else if (hasInvalid) exit = 2;
 else if (hasKnown) exit = 3;
