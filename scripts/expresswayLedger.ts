@@ -128,6 +128,7 @@ log("expressway_ledger_updated", {
   },
   byRule: ledger.cases.filter((c) => c.by === "rule").length,
   seamProbes: counted.seamProbes,
+  boreOpenings: counted.boreOpenings,
   budget: ledger.budget !== null,
   bytes: Buffer.byteLength(text),
   reallowed,

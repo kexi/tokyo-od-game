@@ -36,6 +36,14 @@ export type CountedCase = FoundCase & { district: District; block: string; block
 export type Counted = {
   found: CountedCase[];
   seamProbes: number;
+  /** The tunnels' and cuts' openings as built (S7-4a, expresswaySeams.ts BoreProbe), counted. */
+  boreOpenings: {
+    opened: number;
+    noPartner: number;
+    sideMismatch: number;
+    wallRays: number;
+    wallHits: number;
+  };
   rules: Record<string, number>;
   districts: Map<string, District>;
   heightKm: HeightKm;
@@ -291,6 +299,13 @@ export async function countCases(files: XwFiles & { dir?: string }): Promise<Cou
   return {
     found,
     seamProbes: probed.seams.length,
+    boreOpenings: {
+      opened: probed.bore.opened.length,
+      noPartner: probed.bore.noPartner.length,
+      sideMismatch: probed.bore.sideMismatch.length,
+      wallRays: probed.bore.wallRays,
+      wallHits: probed.bore.wallHits,
+    },
     rules: ruleCounts(ofRange),
     districts,
     heightKm,

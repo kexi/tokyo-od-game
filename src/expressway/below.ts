@@ -29,6 +29,13 @@ export const TUNNEL_DEPTH_M = TUNNEL_INNER_HEIGHT_M + TUNNEL_ROOF.value.slab + T
 export const HEAD_OVER_GROUND_M = 0.6;
 
 /**
+ * Ground over a tunnel's road (m) under which the ground is cut away (isHoleAt): the box's inner
+ * height, its roof slab and HEAD_OVER_GROUND_M. One value for isHoleAt and the hole's edge between
+ * stations (expresswayBore.ts holeShare), which wrote it out again before (S7-4 review 1, W3).
+ */
+export const HOLE_COVER_M = TUNNEL_INNER_HEIGHT_M + TUNNEL_ROOF.value.slab + HEAD_OVER_GROUND_M;
+
+/**
  * Whether the ground is cut away over a station (the road is open to the sky there): everywhere in
  * a cut, and over a tunnel where the ground is not above the roof by HEAD_OVER_GROUND_M (near its
  * portals). The terrain's cut-out (expresswayBore.ts boreHoles) and the piers over a below run
@@ -36,7 +43,7 @@ export const HEAD_OVER_GROUND_M = 0.6;
  */
 export function isHoleAt(structure: "tunnel" | "cut", z: number, ground: number): boolean {
   if (structure === "cut") return true;
-  return ground - z < TUNNEL_INNER_HEIGHT_M + TUNNEL_ROOF.value.slab + HEAD_OVER_GROUND_M;
+  return ground - z < HOLE_COVER_M;
 }
 
 /**

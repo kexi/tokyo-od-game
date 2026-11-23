@@ -6,7 +6,13 @@ import {
   TUNNEL_ROOF,
   TUNNEL_WALKWAY,
 } from "../expressway/assumptions";
-import { cutWallHeight, HEAD_OVER_GROUND_M, isHoleAt, TUNNEL_INNER_HEIGHT_M } from "../expressway/below";
+import {
+  cutWallHeight,
+  HEAD_OVER_GROUND_M,
+  HOLE_COVER_M,
+  isHoleAt,
+  TUNNEL_INNER_HEIGHT_M,
+} from "../expressway/below";
 import { ST, STATION_STRIDE, type XwChunk } from "../expressway/format";
 import { carriagewayWidth } from "../expressway/section";
 import type { WaterPolygon } from "./waterGeometry";
@@ -94,9 +100,51 @@ export const BORE_FACES: Readonly<Record<"tunnel" | "cut", readonly BoreFace[]>>
 };
 
 /**
+ * An opened side of a below chunk's section (S7-4a, expresswayMerge.ts openBore): how far its floor
+ * (and a tunnel's ceiling and roof) reaches from the centre, and the point its road ends on where
+ * that is another deck's seam (local frame), else null (its own surface there). `isDivider`: a 分離壁
+ * stands at the reach (BORE_DIVIDER_FACES).
+ */
+export type BoreOpen = { reach: number; seam: number[] | null; isDivider?: boolean };
+
+/**
+ * The faces of `boreLoop` on a side whose opening has a 分離壁 at its reach (S7-4 review 1, addendum
+ * 2): `draw`, the face from the floor's bottom to the box's top at the reach (a tunnel's outer wall
+ * there, a cut's wall face to its top), drawn and solid from both sides; `skip`, the face over the same
+ * place from the road up, left out (the two would lie in one plane). Why both sides: the two runs read
+ * their height difference at their own rings, and where one side is open and the other walled the
+ * wall's back must not show through.
+ */
+export const BORE_DIVIDER_FACES: Readonly<
+  Record<
+    "tunnel" | "cut",
+    { left: { draw: number[]; skip: number[] }; right: { draw: number[]; skip: number[] } }
+  >
+> = {
+  tunnel: { left: { draw: [12], skip: [4] }, right: { draw: [10], skip: [6] } },
+  cut: { left: { draw: [4], skip: [2] }, right: { draw: [6], skip: [8] } },
+};
+
+/**
+ * The faces of `boreLoop` that stand across an opened side (left, right): a tunnel's lining from
+ * the floor to the ceiling and its outer wall from the floor's bottom to the roof's top. The loop
+ * keeps them (its corners run round the section), so the deck leaves them out between two rings
+ * both open on that side. Why not corners that give them no area: the ceiling's corner is over the
+ * floor's, so the face between them is a wall at the reach whatever is done with the others. A
+ * cut's opened side has its wall's corners on the road's end, its faces of no area.
+ */
+export const BORE_OPEN_FACES: Readonly<Record<"tunnel" | "cut", { left: number[]; right: number[] }>> = {
+  tunnel: { left: [4, 12], right: [6, 10] },
+  cut: { left: [], right: [] },
+};
+
+/**
  * A below chunk's cross-section at one ring as a corner loop (left = +u), `at(u, v)` giving the
  * local point u metres left of the centre and v above its centre height, `lift(u)` the road's
  * height there (the bank). `groundV` is the ground over the centre, relative to the centre's height.
+ * On an opened side (`open`, S7-4a) no wall stands: the road runs out to the reach (ending on the
+ * seam where there is one), the wall's corners lie on its end, and a tunnel's ceiling and roof run
+ * out over it (BORE_OPEN_FACES).
  */
 export function boreLoop(
   structure: "tunnel" | "cut",
@@ -105,9 +153,14 @@ export function boreLoop(
   lift: (u: number) => number,
   groundV: number,
   sides: { left: number; right: number } | null = null,
+  open: { left: BoreOpen | null; right: BoreOpen | null } = { left: null, right: null },
 ): number[][] {
   const lL = lift(hw);
   const lR = lift(-hw);
+  const uL = open.left ? open.left.reach : hw;
+  const uR = open.right ? open.right.reach : hw;
+  const roadL = open.left?.seam ?? at(uL, lift(uL));
+  const roadR = open.right?.seam ?? at(-uR, lift(-uR));
   if (structure === "cut") {
     // Each wall to the ground at its own side where that is higher than over the centre (P2.7-5:
     // the street on 麻布台's east side stood over the wall's top, a strip of sky under it). Why not
@@ -116,69 +169,79 @@ export function boreLoop(
     const gR = Math.max(groundV, sides?.right ?? -Infinity);
     const hL = cutWallHeight(lL, gL, PARAPET_HEIGHT.value);
     const hR = cutWallHeight(lR, gR, PARAPET_HEIGHT.value);
-    return [
-      at(-hw, lR),
-      at(-hw, lR),
-      at(hw, lL),
-      at(hw, lL + hL),
-      at(hw + WALL, lL + hL),
-      at(hw + WALL, lL - FLOOR),
-      at(-hw - WALL, lR - FLOOR),
-      at(-hw - WALL, lR + hR),
-      at(-hw, lR + hR),
-      at(-hw, lR),
-    ];
+    // A 分離壁 (isDivider) rises at the reach to the wall's top; else the wall's corners lie on the road's end.
+    const topL = open.left?.isDivider ? at(uL, lift(uL) + hL) : roadL;
+    const topR = open.right?.isDivider ? at(-uR, lift(-uR) + hR) : roadR;
+    const left = open.left
+      ? [roadL, topL, topL, at(uL, lift(uL) - FLOOR)]
+      : [at(hw, lL), at(hw, lL + hL), at(hw + WALL, lL + hL), at(hw + WALL, lL - FLOOR)];
+    const right = open.right
+      ? [at(-uR, lift(-uR) - FLOOR), topR, topR, roadR]
+      : [at(-hw - WALL, lR - FLOOR), at(-hw - WALL, lR + hR), at(-hw, lR + hR), at(-hw, lR)];
+    return [roadR, roadR, ...left, ...right];
   }
   const w = hw + WALK;
   const o = w + TUNNEL_WALL;
+  // The far corners of the box on each side: the walls' outer faces, or the reach where opened.
+  const oL = open.left ? uL : o;
+  const oR = open.right ? uR : o;
+  const left = open.left
+    ? [roadL, roadL, roadL, at(uL, lift(uL) + H)]
+    : [at(hw, lL), at(hw, lL + CURB), at(w, lL + CURB), at(w, lL + H)];
+  const right = open.right
+    ? [at(-uR, lift(-uR) + H), roadR, roadR, roadR]
+    : [at(-w, lR + H), at(-w, lR + CURB), at(-hw, lR + CURB), at(-hw, lR)];
+  const liftL = open.left ? lift(uL) : lL;
+  const liftR = open.right ? lift(-uR) : lR;
   return [
-    at(-hw, lR),
-    at(-hw, lR),
-    at(hw, lL),
-    at(hw, lL + CURB),
-    at(w, lL + CURB),
-    at(w, lL + H),
-    at(-w, lR + H),
-    at(-w, lR + CURB),
-    at(-hw, lR + CURB),
-    at(-hw, lR),
-    at(-o, lR - FLOOR),
-    at(-o, lR + H + ROOF),
-    at(o, lL + H + ROOF),
-    at(o, lL - FLOOR),
-    at(-o, lR - FLOOR),
+    roadR,
+    roadR,
+    ...left,
+    ...right,
+    at(-oR, liftR - FLOOR),
+    at(-oR, liftR + H + ROOF),
+    at(oL, liftL + H + ROOF),
+    at(oL, liftL - FLOOR),
+    at(-oR, liftR - FLOOR),
   ];
 }
 
 /**
  * A tunnel's 坑門 at a portal ring: a frame round the bore from the floor to above the ground (so the
- * cut-away terrain's edge is behind it), as quads [a, b, c, d] in loop order.
+ * cut-away terrain's edge is behind it), as quads [a, b, c, d] in loop order. `open`: the sides whose
+ * wall the ring has taken away (S7-4a, opened or a 分離壁, as openBore left the ring): no post there,
+ * the lintel kept. Why: the post stands 0.75–2.55 m past the carriageway's edge, which on an opened
+ * side is the other run's carriageway, and it stood square across that run's lanes (review of #120,
+ * must 1: 4848940:5 | 4849055:1). Why not the other run's side read again here: the ring's own state
+ * is the one its walls and floor follow.
  */
 export function headwallQuads(
   hw: number,
   at: (u: number, v: number) => number[],
   groundV: number,
+  open: { left: boolean; right: boolean } = { left: false, right: false },
 ): number[][][] {
   const w = hw + WALK;
   const o = w + TUNNEL_WALL + HEAD_SIDE;
   const top = Math.max(H + ROOF + HEAD_OVER_GROUND, groundV + HEAD_OVER_GROUND);
-  return [
-    [at(w, -FLOOR), at(o, -FLOOR), at(o, top), at(w, top)],
-    [at(-o, -FLOOR), at(-w, -FLOOR), at(-w, top), at(-o, top)],
-    [at(-w, H), at(w, H), at(w, top), at(-w, top)],
-  ];
+  const left = [at(w, -FLOOR), at(o, -FLOOR), at(o, top), at(w, top)];
+  const right = [at(-o, -FLOOR), at(-w, -FLOOR), at(-w, top), at(-o, top)];
+  const lintel = [at(-w, H), at(w, H), at(w, top), at(-w, top)];
+  return [...(open.left ? [] : [left]), ...(open.right ? [] : [right]), lintel];
 }
 
 /**
  * The ceiling lamps of a tunnel chunk, as quads hanging just under the ceiling at both walls, every
  * TUNNEL_LAMPS.pitch from the run's start (so they line up across chunks). `pointAt(s, u, v)` gives
- * the local point at run distance s; the chunk covers [s0, s1].
+ * the local point at run distance s; the chunk covers [s0, s1]. `isLit(s, sign)` leaves out a lamp
+ * on that side (+1 left), over an opened side (S7-4a).
  */
 export function lampQuads(
   hw: number,
   s0: number,
   s1: number,
   pointAt: (s: number, u: number, v: number) => number[],
+  isLit: (s: number, sign: 1 | -1) => boolean = () => true,
 ): number[][][] {
   const { pitch, length } = TUNNEL_LAMPS.value;
   const out: number[][][] = [];
@@ -186,7 +249,8 @@ export function lampQuads(
   const u1 = hw + WALK - 0.2;
   const v = H - 0.04;
   for (let s = Math.ceil(s0 / pitch) * pitch; s + length <= s1; s += pitch) {
-    for (const sign of [1, -1]) {
+    for (const sign of [1, -1] as const) {
+      if (!isLit(s, sign)) continue;
       out.push([
         pointAt(s, sign * u0, v),
         pointAt(s, sign * u1, v),
@@ -196,6 +260,15 @@ export function lampQuads(
     }
   }
   return out;
+}
+
+/**
+ * How far a below chunk's walls reach past its carriageway's edge (m): a cut's retaining wall, a
+ * tunnel's walkway and side wall. Where another run's carriageway comes inside it beside an opening,
+ * the wall cannot stand (S7-4a, expresswayMerge.ts openBore).
+ */
+export function boreWallBand(structure: "tunnel" | "cut"): number {
+  return structure === "tunnel" ? WALK + TUNNEL_WALL : WALL;
 }
 
 /** Half the width a below chunk takes in plan: walls and walkways included (the terrain's cut-out). */
@@ -472,9 +545,6 @@ export function boreHoles(
   flush();
   return out;
 }
-
-/** Ground over a tunnel's road under which isHoleAt (below.ts) opens the ground, m. */
-const HOLE_COVER_M = H + ROOF + HEAD_OVER_GROUND;
 
 /**
  * Where between stations i and j of a tunnel ground − road crosses HOLE_COVER_M, as a share from i
