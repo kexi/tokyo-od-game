@@ -351,6 +351,44 @@ describe("what joinExpressway leaves of an alpha line (追記 4 K2, K4 7)", () =
     expect(lines.filter((l) => l.width === 4.3 && l.xid === undefined && l.source !== "osm")).toHaveLength(1);
   });
 
+  // The re-review's exit2.mts: the line runs along 1.675 m inside the band's edge, so a metre past
+  // its last sample along the site is still inside the band and the gap's very next sample outside.
+  it("ends the gap at the first sample outside the band even when no sample past it is taken (a leg straight in)", () => {
+    const line = street([
+      [50, 12],
+      [50, 2.2],
+      [90, 2.2],
+    ]);
+    const away = street(
+      [
+        [50, 12],
+        [50, 60],
+      ],
+      6,
+    );
+    const { lines, input } = joined([line, away]);
+    expect(insideNotFoot(lines, input.sites ?? [])).toEqual([]);
+    expect(lines.filter((l) => l.width === 4.3 && l.xid === undefined && l.source !== "osm")).toHaveLength(1);
+  });
+
+  it("ends the gap at the first sample outside the band even when no sample past it is taken (a leg straight out at the far end)", () => {
+    const line = street([
+      [40, 2.2],
+      [80, 2.2],
+      [80, 12],
+    ]);
+    const away = street(
+      [
+        [80, 12],
+        [80, 60],
+      ],
+      6,
+    );
+    const { lines, input } = joined([line, away]);
+    expect(insideNotFoot(lines, input.sites ?? [])).toEqual([]);
+    expect(lines.filter((l) => l.width === 4.3 && l.xid === undefined && l.source !== "osm")).toHaveLength(1);
+  });
+
   it("cuts a leg going out at the line's far end at its first sample outside the band", () => {
     const line = street([
       [40, 0.3],
