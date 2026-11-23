@@ -421,7 +421,8 @@ export const LOG_EVENTS = {
     angleDeg: z.number(),
     widthM: z.number(),
     overGroundM: z.number(),
-    kind: z.enum(["cut", "under"]),
+    /** cut / under: crosses the site; same-road: the street's whole width lies in it (the ramp itself, R1-2b M1). */
+    kind: z.enum(["cut", "under", "same-road"]),
     tunnel: z.boolean(),
   }),
   /**
@@ -1640,6 +1641,58 @@ export const LOG_EVENTS = {
     longestM: z.number().nonnegative(),
     skippedForMissingTiles: count,
     byRun: z.array(z.strictObject({ run: z.string(), lanes: count, longestM: z.number().nonnegative() })),
+  }),
+  /**
+   * P2.7 R1-2b PR 1 (scripts/measureSameRoad.ts): the GSI street lines the same-road rule (M1, α)
+   * takes out, one a line, as joinExpressway cuts them: how many, how long, by width class, whether
+   * taking them out keeps through traffic, how their stretches end, how many run along the site for
+   * most of their length, and the pieces left of them inside the band and not at the foot (none is
+   * the rule's line, 追記 4 K4 2).
+   */
+  street_same_road_measured: info({
+    dir: z.string(),
+    lines: count,
+    alphaM: count,
+    extendedM: z.number().nonnegative(),
+    piecesLeft: count,
+    leftInBandNotFoot: count,
+    leftAtFoot: count,
+    byClass: counts,
+    byThrough: counts,
+    byEnds: counts,
+    wholeAlong: count,
+    partAlong: count,
+    fragmentsMismatch: count,
+    islands: count,
+    keptByVerdict: counts,
+  }),
+  /**
+   * P2.7 R1-2b PR 1 (scripts/expresswaySameRoadIslands.ts): the islands of the game's network round
+   * the sites (components other than the largest; cut by the window's edge, closed inside it, inside
+   * and of class 0 streets only), and those the same-road rule makes (count, length m, where).
+   */
+  street_same_road_islands_counted: info({
+    dir: z.string(),
+    windows: count,
+    edge: z.strictObject({ count, lengthM: count }),
+    inside: z.strictObject({ count, lengthM: count }),
+    insideClass0Only: z.strictObject({ count, lengthM: count }),
+    madeByRule: z.strictObject({ count, lengthM: count }),
+    madeByRuleAt: z.array(z.string()),
+  }),
+  /**
+   * P2.7 R1-2b PR 1 (scripts/expresswaySameRoadStability.ts): the same-road rule's answers over every
+   * window the game builds round the car: how many windows and lines, and how many lines (alpha ones
+   * apart) get more than one answer outside the edge band (none is the rule's line) or only in it.
+   */
+  street_same_road_stability_measured: info({
+    dir: z.string(),
+    windows: count,
+    lines: count,
+    alphaLines: count,
+    differOutsideBand: count,
+    alphaDifferOutsideBand: count,
+    differInBandOnly: count,
   }),
   /**
    * P2.7 R1-2 (scripts/measureStreetBands.ts): the street segments an expressway's site runs along,
