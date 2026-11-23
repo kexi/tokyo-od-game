@@ -33,6 +33,7 @@ import {
   QUEUE_GAP,
   type CrossingRef,
   type DriveObstacle,
+  type DriveSource,
   type JunctionAhead,
   type Seen,
   type Verdict,
@@ -219,6 +220,54 @@ export type DriveWhy = {
   pass: string | null;
 };
 
+/**
+ * One vehicle the last drive look weighed for the car in front (FrontPick): who it is, how far
+ * along the route from the car (m, centre to centre), across the route's path (m, + left), across
+ * from the car's own nose (`fromOwn`, the test against the band), its straight-line distance from
+ * the car (m) and whether it was the one picked.
+ */
+export type FrontCandidate = {
+  key: object | null;
+  source: DriveSource | null;
+  kind: DriveObstacle["kind"];
+  ahead: number;
+  lateral: number;
+  fromOwn: number;
+  straight: number;
+  stoppedFor: number;
+  picked: boolean;
+};
+
+/**
+ * A vehicle near ahead of the car (straight line: 0.5–60 m along its heading, under 4 m across it)
+ * that the look left out before the front was picked, and why: on another level (`level`), or more
+ * than 12 m from the route's path or off the look's window (`offPath`).
+ */
+export type FrontDropped = {
+  key: object | null;
+  source: DriveSource | null;
+  ahead: number;
+  across: number;
+  why: "level" | "offPath";
+};
+
+/**
+ * The last pick of the car in front (traffic()): the nose across the path (`own`), the band, the
+ * vehicles weighed and left out, the driver's update count when it was made. For the log only
+ * (main.ts autopilot_front_pick); never read for driving.
+ */
+export type FrontPick = {
+  tick: number;
+  own: number;
+  band: number;
+  picked: object | null;
+  candidates: FrontCandidate[];
+  dropped: FrontDropped[];
+};
+
+/** How far ahead along the route (m) FrontPick lists the vehicles weighed: the follow's reach. */
+const PICK_LIST_M = 60;
+
 const isDrivable = (seg: Segment) => isRoutable(seg.line, "autopilot") && seg.line.width >= 3;
 const SIGNAL_BEFORE = 30; // 右左折の合図は 30 m 手前から (施行令 第21条)
 /** A lane change eased at 1 m per 10 m (drivePath LANE_SLOPE) takes about this long to cross a lane. */
@@ -355,6 +404,28 @@ export class AutoDriver {
   lostWhy: LostWhy | null = null;
   /** What offLane() measured when it last found the car off its lane (main.ts autopilot_lost_lane). */
   lostAt: LostAt | null = null;
+  /**
+   * Updates so far, and the car's distance from its driven path (progressOn's `off`, m) at the
+   * last drive update: for the log and the QA recorder only. Why fields and not a log line from
+   * here: the recorder samples them every 0.1 s, and the offLane hold returns before traffic()
+   * runs, so a pick older than `ticks` tells a stale front from a fresh one.
+   */
+  ticks = 0;
+  pathOffM = 0;
+  /** What the last pick of the car in front was made from (traffic(); frontPick reads it). */
+  private readonly pick: {
+    isMade: boolean;
+    tick: number;
+    vehicles: Seen[];
+    front: Seen | null;
+    own: number;
+    band: number;
+    at: number;
+    x: number;
+    z: number;
+  } = { isMade: false, tick: 0, vehicles: [], front: null, own: 0, band: 0, at: 0, x: 0, z: 0 };
+  /** Vehicles the last look left out near ahead (look(); the same array, emptied each look). */
+  private readonly dropped: FrontDropped[] = [];
   /**
    * What set the speed at the last drive look: each limit and what it came from. main.ts logs it
    * when the car has stood, moves off, or has an accident (autopilot_stop_trace). Why not log from
@@ -551,6 +622,7 @@ export class AutoDriver {
    * gave up.
    */
   update(dt: number, world: DriveWorld, car: CarPose): DriveResult {
+    this.ticks++;
     const moved = Math.hypot(car.position.x - this.position.x, car.position.z - this.position.z);
     this.position.copy(car.position);
     this.yaw = car.yaw;
@@ -586,6 +658,7 @@ export class AutoDriver {
     }
     this.hint = p.index;
     this.at = p.at;
+    this.pathOffM = p.off;
     // Off its lane: stop, then work out how to get back into it.
     const why = this.offLane(route, world, p.off);
     if (why) {
@@ -777,14 +850,29 @@ export class AutoDriver {
     // Far enough ahead for oncoming traffic to be seen through a whole pass (第17条第5項).
     const from = this.at - 60;
     const to = this.at + 220;
+    const dir = this.heading();
+    this.dropped.length = 0;
+    // For the log only (FrontDropped): a vehicle near ahead in a straight line that this look
+    // leaves out. Why the straight line and not the route: what the route does not place is the
+    // question, so it cannot be the measure.
+    const noteDropped = (o: DriveObstacle, dx: number, dz: number, why: FrontDropped["why"]) => {
+      const ahead = dx * dir.x + dz * dir.z;
+      const across = dx * dir.z - dz * dir.x;
+      const isNearAhead = o.kind !== "person" && ahead > 0.5 && ahead < 60 && Math.abs(across) < 4;
+      if (!isNearAhead) return;
+      this.dropped.push({ key: o.key ?? null, source: o.source ?? null, ahead, across, why });
+    };
     const add = (o: DriveObstacle) => {
       const dx = o.position.x - this.position.x;
       const dz = o.position.z - this.position.z;
       const d2 = dx * dx + dz * dz;
       const isItself = d2 < 1;
-      if (isItself || d2 > 240 * 240 || !isSameLevel(this.position, o.position)) return;
+      if (isItself || d2 > 240 * 240) return;
+      const isOtherLevel = !isSameLevel(this.position, o.position);
+      if (isOtherLevel) return noteDropped(o, dx, dz, "level");
       const place = placeOnRoute(route, o.position, from, to, Math.max(1, this.hint - 15));
-      if (!place || place.dist > 12) return;
+      const isOffPath = !place || place.dist > 12;
+      if (isOffPath) return noteDropped(o, dx, dz, "offPath");
       const h = o.heading;
       const along =
         h === undefined ? 0 : (o.speed ?? 0) * (Math.sin(h) * place.dir.x + Math.cos(h) * place.dir.z);
@@ -795,6 +883,72 @@ export class AutoDriver {
     for (const o of world.vehicles ?? []) add(o);
     for (const p of world.obstacles) add({ position: p, kind: "person" });
     return seen.toSorted((a, b) => a.at - b.at);
+  }
+
+  /**
+   * Keeps what the pick of the car in front was made from (frontPick builds the log's form from
+   * it): the look's vehicles, the one picked, the nose across the path, the band, where the car was
+   * along the route. Why references and not the log's form here: this runs every frame for each
+   * driver (the autopilot and the robotaxi), and the log reads it only when the front changes or
+   * at an accident.
+   */
+  private notePick(vehicles: Seen[], front: Seen | undefined, own: number, band: number): void {
+    this.pick.tick = this.ticks;
+    this.pick.vehicles = vehicles;
+    this.pick.front = front ?? null;
+    this.pick.own = own;
+    this.pick.band = band;
+    this.pick.at = this.at;
+    this.pick.x = this.position.x;
+    this.pick.z = this.position.z;
+    this.pick.isMade = true;
+  }
+
+  /** The update count the last pick of the car in front was made at (null: none yet), read as is. */
+  get frontPickTick(): number | null {
+    return this.pick.isMade ? this.pick.tick : null;
+  }
+
+  /** The key of the vehicle the last pick took as the car in front (null: none), read as is. */
+  get frontPickKey(): object | null {
+    return this.pick.front?.o.key ?? null;
+  }
+
+  /**
+   * The last pick of the car in front in the log's form (null: none yet): the vehicles placed up
+   * to PICK_LIST_M ahead, the one picked, and those look() left out. For the log only
+   * (autopilot_front_pick). The straight-line distances are from where the car was at the pick to
+   * where the others are now (the same frame when the front has just changed).
+   */
+  get frontPick(): FrontPick | null {
+    const p = this.pick;
+    if (!p.isMade) return null;
+    const candidates: FrontCandidate[] = [];
+    for (const s of p.vehicles) {
+      const ahead = s.at - p.at;
+      const isListed = ahead > -5 && ahead < PICK_LIST_M;
+      if (!isListed) continue;
+      const q = s.o.position;
+      candidates.push({
+        key: s.o.key ?? null,
+        source: s.o.source ?? null,
+        kind: s.o.kind,
+        ahead,
+        lateral: s.lateral,
+        fromOwn: s.lateral - p.own,
+        straight: Math.hypot(q.x - p.x, q.z - p.z),
+        stoppedFor: s.stoppedFor,
+        picked: s === p.front,
+      });
+    }
+    return {
+      tick: p.tick,
+      own: p.own,
+      band: p.band,
+      picked: p.front?.o.key ?? null,
+      candidates,
+      dropped: this.dropped.slice(),
+    };
   }
 
   /**
@@ -827,6 +981,7 @@ export class AutoDriver {
     // 第26条: behind whatever is in front of the car now (in its lane, or beside the line it passes).
     const band = this.pass ? 1.95 : IN_LANE;
     const front = vehicles.find((s) => s.at > this.at + 0.5 && Math.abs(s.lateral - own) < band);
+    this.notePick(vehicles, front, own, band);
     this.looked.front = null;
     this.looked.follow = null;
     this.looked.verdict = verdict.kind;

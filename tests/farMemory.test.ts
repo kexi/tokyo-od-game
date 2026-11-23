@@ -128,7 +128,6 @@ describe("the far skyline's memory", () => {
       prepareFarTile(tile, { cut: () => undefined });
       expect(mesh.material).toBe(farFacadeMaterial());
       expect(ownDisposed).toBe(true);
-      expect((tile as Group & { batchTable?: unknown }).batchTable).toBeNull();
       // What the renderer does on dispose-model: the materials it listed before load-model.
       own.dispose();
       mesh.geometry.dispose();

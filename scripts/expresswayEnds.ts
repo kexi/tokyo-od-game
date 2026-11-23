@@ -2,7 +2,7 @@
 // the game finds them when it builds the decks: per end its run, class, kind, the structure of the end
 // chunk, the road over the ground there and the carriageway's width; the main lines' ground ends
 // apart (no wall). With --report <scorecard>, its walls (`ends.mainEnds` and `ends.rampEnds` whose
-// kind is not ground and that no run goes on from, report.ts version 9) against these: exit 1 when
+// kind is not ground and that no run goes on from, report.ts version 10) against these: exit 1 when
 // they differ. With --districts <stage>, the runs of those districts alone (districts.json), as a
 // --districts build writes them. And each end as the game first can build it (endsAsBuilt: the 3 × 3
 // tiles round its end chunk alone), against the answer over every tile: `asBuiltDiffer`, exit 1 when

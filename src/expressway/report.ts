@@ -9,7 +9,13 @@ import { type District, DISTRICTS } from "./districts";
 import type { LedgerSummary } from "./ledger";
 import { GIRDER_DEPTH } from "./assumptions";
 import { lowViaductStretches, openGroundStretches } from "./heightStructures";
-import { type ApproachEnd, type DeferredBelow, undergroundOf, UndergroundSchema } from "./belowScore";
+import {
+  type ApproachEnd,
+  type DeferredBelow,
+  type UnplannedBelow,
+  undergroundOf,
+  UndergroundSchema,
+} from "./belowScore";
 
 /**
  * The scorecard of one expressway build (P2.7-1, `scripts/expressway.ts --report`): what the later
@@ -70,15 +76,18 @@ const cls = z.enum(["expressway", "ramp", "street"]);
  * districts: runs, km, closed, over and off the wards, its tiles' gzip and largest tile),
  * `borders` (the runs cut by --run-borders cut, with the km of the other operators' side not
  * written) and `ends` (the written main lines' free ends, and the mouths where an unwritten run meets
- * a written one: for R1-1b's walls). Version 7 reports still parse. 9 (R1-1b N1): in `ends`, the
- * ends' `kind`, `onward` and `beyond`, the ramps' ends (`rampEnds`), the mouths' `side` and `at`, and
- * a child at a listed end's node no longer a mouth too. Version 8 reports still parse.
+ * a written one: for R1-1b's walls). Version 7 reports still parse. 9 (S7-3): `underground.joins` (the
+ * junctions and seams under the ground, with whether the parent carries an opening) and
+ * `underground.unplanned` (the chains with tunnel ways and no viaduct, never compiled). Version 8
+ * reports still parse. 10 (R1-1b N1): in `ends`, the ends' `kind`, `onward` and `beyond`, the ramps'
+ * ends (`rampEnds`), the mouths' `side` and `at`, and a child at a listed end's node no longer a mouth
+ * too. Version 9 reports still parse.
  */
-export const REPORT_VERSION = 9;
+export const REPORT_VERSION = 10;
 
 const blockSize = { runs: count, pieces: count, variables: count };
 
-/** An end's kind in `ends` (version 9). */
+/** An end's kind in `ends` (version 10). */
 const endKind = z.enum(["open", "ground", "portal", "junction", "seam"]);
 const fileSize = z.strictObject({ raw: count, gzip: count });
 
@@ -104,6 +113,7 @@ export const ReportSchema = z.strictObject({
     z.literal(6),
     z.literal(7),
     z.literal(8),
+    z.literal(9),
     z.literal(REPORT_VERSION),
   ]),
   label: z.string(),
@@ -517,19 +527,19 @@ export const ReportSchema = z.strictObject({
           id: z.string(),
           run: z.string(),
           end: z.enum(["start", "end"]),
-          /** The end's kind (version 9): endPlan's, a ground end going into a tunnel or cut `portal`. */
+          /** The end's kind (version 10): endPlan's, a ground end going into a tunnel or cut `portal`. */
           kind: endKind.optional(),
-          /** A written run hung at the node by a junction that goes on beyond it (version 9), or null. */
+          /** A written run hung at the node by a junction that goes on beyond it (version 10), or null. */
           onward: z.string().nullable().optional(),
           why: z.enum(["operator", "ref", "district", "scope"]),
           lon: z.number(),
           lat: z.number(),
-          /** The unwritten runs hung at that node (version 9): no mouths, since the end is listed. */
+          /** The unwritten runs hung at that node (version 10): no mouths, since the end is listed. */
           beyond: z.array(z.string()).optional(),
         }),
       ),
       /**
-       * The written ramps' and streets' ends with nothing written going on (version 9), as mainEnds,
+       * The written ramps' and streets' ends with nothing written going on (version 10), as mainEnds,
        * a ground end left out; why the run they would go on into is not written.
        */
       rampEnds: z
@@ -553,9 +563,9 @@ export const ReportSchema = z.strictObject({
           s: z.number(),
           child: z.string(),
           why: z.enum(["district", "ruleA", "closed", "outside"]),
-          /** Which side of the parent's direction the child lies (version 9). */
+          /** Which side of the parent's direction the child lies (version 10). */
           side: z.enum(["left", "right"]).optional(),
-          /** Where on the parent the child hangs (version 9): inside it, or at its start or end. */
+          /** Where on the parent the child hangs (version 10): inside it, or at its start or end. */
           at: z.enum(["inside", "start", "end"]).optional(),
         }),
       ),
@@ -706,6 +716,8 @@ export type ReportInput = {
   belowDeferrals?: readonly DeferredBelow[];
   /** The portals' approaches (compile.ts portalApproachEnds), into `underground.overApproach`. */
   approachEnds?: readonly ApproachEnd[];
+  /** The chains with tunnel ways and no viaduct (compile.ts unplannedChains), into `underground.unplanned`. */
+  unplanned?: readonly UnplannedBelow[];
 };
 
 const round = (v: number, digits: number) => {
@@ -1519,6 +1531,7 @@ export function buildReport(input: ReportInput): Report {
     underground: undergroundOf({
       deferred: input.belowDeferrals ?? [],
       approachEnds: input.approachEnds ?? [],
+      unplanned: input.unplanned ?? [],
       chunks: input.chunks,
       runs: input.runs,
       belowIds: new Set([

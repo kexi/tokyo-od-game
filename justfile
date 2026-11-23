@@ -339,13 +339,21 @@ compare-expressway-chunks a b:
 check-expressway-terrain dir="public/data/expressway" flags="":
     pnpm exec tsx scripts/expresswayTerrainProbe.ts {{ dir }} {{ flags }}
 
-# 盛土の床版の縁の内に車線の中心が入る、ゲームが残す一般道の車線を数える（ゲームと同じ切り方の道路網、地理院タイルは .cache/gsi-vector のものだけ、台帳の lane-in-site、1 行の JSON ログ、件数が上限を超えれば終了コード 1、flags に --cases <file> で台帳の道具の --site-lanes に渡す一覧）
+# 盛土の床版の縁の内に車線の中心が入る、ゲームが残す一般道の車線を数える（ゲームと同じ切り方の道路網に public/data の規制（JARTIC・OSM の車線数・一方通行）を当てた車線、地理院タイルは .cache/gsi-vector のものだけ、台帳の lane-in-site、1 行の JSON ログ、件数が上限を超えれば終了コード 1、flags に --cases <file> で台帳の道具の --site-lanes に渡す一覧）
 check-expressway-lanes dir="public/data/expressway" flags="":
     pnpm exec tsx scripts/expresswayLanesProbe.ts {{ dir }} {{ flags }}
 
-# 高速道路の掘割の敷地（擁壁の外面 + 1 m）に中心が掛かる一般道の車線を、ゲームと同じ道路網（地理院タイル、.cache/gsi-vector のものだけ）で run ごとに数える（台帳の street-lane-over-cut、1 行の JSON ログ、flags に --cases <file> で台帳の道具の --lanes に渡す一覧）
+# 同じ道の規則（R1-2b M1、α）が外した線の切れ端が、帯の内で足もとでない所に残っていないかを確かめる（ゲームと同じ切り方の道路網、地理院タイルは .cache/gsi-vector のものだけ、1 行の JSON ログの leftInBandNotFoot が 0 でないか、キャッシュに無いタイルで飛ばした窓（skippedForMissingTiles）があれば終了コード 1）
+check-same-road-pieces dir="public/data/expressway":
+    pnpm exec tsx scripts/measureSameRoad.ts {{ dir }}
+
+# 高速道路の掘割の敷地（擁壁の外面 + 1 m）に中心が掛かる一般道の車線を、ゲームと同じ道路網（地理院タイル、.cache/gsi-vector のものだけ。高速道路を結んで敷地で切り、public/data の規制を当てた車線）で run ごとに数える（台帳の street-lane-over-cut、1 行の JSON ログ、flags に --cases <file> で台帳の道具の --lanes に渡す一覧）
 check-hole-lanes dir="public/data/expressway" flags="":
     pnpm exec tsx scripts/expresswayHoleLanes.ts {{ dir }} {{ flags }}
+
+# 高速道路の盛土・掘割が沿う一般道の区間を、ゲームと同じ道路網と規制（JARTIC・OSM）で数え、R1-2a の類（clear・A 中央帯・A' 部屋の上限・B1・B2・B3・C 当てない）、車線 0 の節点での跳びの前後、外側線が PLATEAU の歩道に乗る所、足・橋脚・2 本の節点を測る（P2.7 R1-2、地理院タイルは .cache/gsi-vector、PLATEAU は .cache/plateau-tran に写す、1 行の JSON ログ、flags に --out <file> で一覧、--moves <file> で R1-2b 手順 0b の表: 線を左右 2 本に分ける・片側へずらすときのずれ・幅員の外へ出る量・先の敷地・街路・PLATEAU の歩道・地理院の建物・JARTIC の上下分離、手順 0-A の形 E の欄、キャッシュに無いタイルで飛ばした敷地のチャンクがあれば終了コード 1）
+measure-street-bands dir="public/data/expressway" flags="":
+    pnpm exec tsx scripts/measureStreetBands.ts {{ dir }} {{ flags }}
 
 # 高速道路のランプの足（地表端）をゲームと同じに一般道へ結び、接続路が自分の床版の脇へ入る・最初の 5 m が足の向きに真っすぐでない足を数える（dir はラベルか生成先のフォルダ、地理院タイルは .cache/gsi-vector、1 行の JSON ログ、破る足が 1 本でもあれば終了コード 1、flags に --cache <dir>・--cache-only）
 check-expressway-feet dir="public/data/expressway" flags="":

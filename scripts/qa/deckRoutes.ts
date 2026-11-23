@@ -218,6 +218,15 @@ export const DECK_ROUTES: readonly DeckRoute[] = [
     was: "P7 lower-backward: 45177678:3 → 下層の終わり（P7 の :17 は今のデータに無い）",
   },
   {
+    id: "auto-shibaura-entrance",
+    kind: "auto",
+    start: "35.6333,139.7786",
+    entrance: "4848755",
+    to: { lat: 35.634836, lon: 139.768653 },
+    seconds: 240,
+    was: "新設（P2.7 R1-2b PR 1）: 芝浦入口 4848755 の足の接続路から、盛土（4848755:0、脇の街路の線 212 を外した所）を上って高架の終わりへ",
+  },
+  {
     id: "daiba-exit",
     kind: "cruise",
     from: { run: "4848762", s: 2300 },

@@ -421,7 +421,8 @@ export const LOG_EVENTS = {
     angleDeg: z.number(),
     widthM: z.number(),
     overGroundM: z.number(),
-    kind: z.enum(["cut", "under"]),
+    /** cut / under: crosses the site; same-road: the street's whole width lies in it (the ramp itself, R1-2b M1). */
+    kind: z.enum(["cut", "under", "same-road"]),
     tunnel: z.boolean(),
   }),
   /**
@@ -650,6 +651,41 @@ export const LOG_EVENTS = {
   }),
   /** A call the navi says (in the language in force), whether or not the voice is muted. */
   nav_spoken: info({ text: z.string() }),
+  /**
+   * A traffic car already on the road put back on its lane where it was off it by more than 8 m
+   * unseen, or 25 m (traffic-ai.ts drive): its id, segment, place along it and the segment's length
+   * (m); how far its centre was off (m); whether that centre was in the camera's view; the spot it
+   * is put on to the player's car (m); the road it had chosen next, the turn into it (degrees, left
+   * +) and how far its centre was from that road's lane (m); seconds since the graph was swapped
+   * and since it last slid from a shove. Nulls: none.
+   */
+  traffic_car_put_back: info({
+    carId: count,
+    segId: z.number().int(),
+    sM: z.number(),
+    segLengthM: z.number(),
+    offLaneM: z.number(),
+    isSeen: z.boolean(),
+    playerDistM: z.number().nullable(),
+    nextSegId: z.number().int().nullable(),
+    turnDeg: z.number().nullable(),
+    nextOffM: z.number().nullable(),
+    sinceGraphS: z.number().nullable(),
+    sinceShoveS: z.number().nullable(),
+  }),
+  /**
+   * A put-back held off: the spot the traffic car would land on was within 60 m of the player's car
+   * (traffic-ai.ts drive), so it drives on from where it is. Once per car until it is put back or
+   * within 8 m of its lane again: its id, segment, place along it (m), how far off it is (m), the
+   * spot to the player's car (m; null: no player yet).
+   */
+  traffic_car_put_back_held: info({
+    carId: count,
+    segId: z.number().int(),
+    sM: z.number(),
+    offLaneM: z.number(),
+    playerDistM: z.number().nullable(),
+  }),
   /** Traffic AI cars on the expressway at a moment (debug.expressway.traffic, P6). */
   expressway_traffic_seen: info({
     cars: count,
@@ -663,20 +699,77 @@ export const LOG_EVENTS = {
   trip_started: info({ target: z.string(), distanceM: z.number() }),
   destination_set: info({ name: z.string(), distanceKm: z.number() }),
   poi_collected: info({ poiId: z.number().int(), category: z.string(), ward: z.string() }),
-  /** A crash: the car's speed, and for a body with a mass the blow by both masses (Δv, energy). */
+  /**
+   * A crash: the car's speed, and for a body with a mass the blow by both masses (Δv, energy).
+   * `otherKind` who was hit (a traffic car, a kerbside parked car, the robotaxi, a patrol, a bus, a
+   * person; else `kind` again); `otherRef` its number in autopilot_front_pick. Without a mass
+   * record, Δv from the velocities over the frame's steps (`deltaVFrom`: velocities; the other's
+   * only for a patrol or the robotaxi, the dynamic cars) and `otherKmhBefore` its speed before them.
+   */
   accident: info({
     kind: z.string(),
     speedKmh: z.number(),
+    otherKind: z.enum([
+      "traffic",
+      "parked",
+      "robotaxi",
+      "patrol",
+      "bus",
+      "pedestrian",
+      "vehicle",
+      "building",
+      "pole",
+    ]),
+    otherRef: count.optional(),
     otherDeltaVKmh: z.number().optional(),
     carDeltaVKmh: z.number().optional(),
     energyKj: z.number().optional(),
     otherMassKg: z.number().optional(),
+    deltaVFrom: z.enum(["mass", "velocities"]).optional(),
+    otherKmhBefore: z.number().optional(),
   }),
   /**
    * A person and the player's car touched but it was not the driver's accident: the car stood
    * (game/pedestrianBlow.ts) or the person's Δv was a nudge. `carKmh` is the car's speed into the blow.
    */
   pedestrian_bump: info({ carKmh: z.number(), otherDeltaVKmh: z.number() }),
+  /**
+   * A vehicle hit the player's car while it stood (game/vehicleBlow.ts: its own speed going in at
+   * 1 km/h or under), above the 5 km/h an accident takes: no accident, nothing booked. `ownKmh` the
+   * car's own speed going in, `speedAfterKmh` after the steps (the push in it); the blow by both
+   * masses where the mass contact recorded it.
+   */
+  vehicle_bump: info({
+    ownKmh: z.number(),
+    speedAfterKmh: z.number(),
+    ownDeltaVKmh: z.number().optional(),
+    otherDeltaVKmh: z.number().optional(),
+    otherMassKg: z.number().optional(),
+  }),
+  /**
+   * The player's car began to touch a traffic car (main.ts, judged an accident or not; the 3 s per
+   * body of the contact check). The other: its id (TrafficAI), segment, place along it (m) and
+   * speed; `ownKmh` the player's car going into the blow; both Δv; `bearingDeg` where the other is
+   * seen from the player's heading (ahead 0, left +, behind ±180); its look's gap at its last frame
+   * (m); where its look began to take in the player's car without a break, and its speed then;
+   * seconds since it was last put back on its lane. Δv only from the mass contact's own record.
+   * Nulls: none.
+   */
+  traffic_contact: info({
+    carId: count,
+    segId: z.number().int(),
+    sM: z.number(),
+    carKmh: z.number(),
+    ownKmh: z.number(),
+    ownDeltaVKmh: z.number().nullable(),
+    otherDeltaVKmh: z.number().nullable(),
+    bearingDeg: z.number(),
+    lookGapM: z.number().nullable(),
+    firstSeenM: z.number().nullable(),
+    firstSeenKmh: z.number().nullable(),
+    sincePutBackS: z.number().nullable(),
+    isAccident: z.boolean(),
+  }),
   /**
    * A jump (移動, 復帰, debug place) put the player more than 80 m from an open accident scene:
    * leaving and the 119 deadline are held until they are back within 80 m (game/emergency.ts).
@@ -759,6 +852,52 @@ export const LOG_EVENTS = {
     onPavement: z.boolean(),
     offPath: z.boolean(),
     misaligned: z.boolean(),
+  }),
+  /**
+   * The autopilot's car in front changed (`changed`, a fresh pick only), or the last pick at an
+   * accident (`accident`; `staleTicks` driver updates since it was made: the offLane hold makes
+   * none). The car: `pathOffM` from its driven path, `ownM` its nose across the path (+ left),
+   * the band (m) a vehicle has to be within of it. Each vehicle placed up to 60 m ahead: its log ref
+   * (as accident's otherRef), who it is, along (`aheadM`) and across the path, across from the nose
+   * (`fromOwnM`), straight-line distance, seconds stood. `dropped`: near ahead in a straight line
+   * (to 60 m, 4 m across the heading) but left out of the look, and why (another level, off the path).
+   * Nulls: no car picked, a vehicle with no key or source, stood forever (a parked car).
+   */
+  autopilot_front_pick: info({
+    phase: z.enum(["changed", "accident"]),
+    gameMs: z.number(),
+    staleTicks: count,
+    mode: z.string(),
+    lostWhy: z.string().nullable(),
+    lat: z.number(),
+    lon: z.number(),
+    speedMs: z.number(),
+    pathOffM: z.number(),
+    ownM: z.number(),
+    bandM: z.number(),
+    pickedRef: count.nullable(),
+    candidates: z.array(
+      z.strictObject({
+        ref: count.nullable(),
+        source: z.string().nullable(),
+        kind: z.string(),
+        aheadM: z.number(),
+        lateralM: z.number(),
+        fromOwnM: z.number(),
+        straightM: z.number(),
+        stoppedForS: z.number().nullable(),
+        picked: z.boolean(),
+      }),
+    ),
+    dropped: z.array(
+      z.strictObject({
+        ref: count.nullable(),
+        source: z.string().nullable(),
+        aheadM: z.number(),
+        acrossM: z.number(),
+        why: z.enum(["level", "offPath"]),
+      }),
+    ),
   }),
   autopilot_stop_trace: info({
     phase: z.enum(["still", "movedOff", "accident"]),
@@ -1581,6 +1720,108 @@ export const LOG_EVENTS = {
     longestM: z.number().nonnegative(),
     skippedForMissingTiles: count,
     byRun: z.array(z.strictObject({ run: z.string(), lanes: count, longestM: z.number().nonnegative() })),
+  }),
+  /**
+   * P2.7 R1-2b PR 1 (scripts/measureSameRoad.ts): the GSI street lines the same-road rule (M1, α)
+   * takes out, one a line, as joinExpressway cuts them: how many, how long, by width class, whether
+   * taking them out keeps through traffic, how their stretches end, how many run along the site for
+   * most of their length, and the pieces left of them inside the band and not at the foot (none is
+   * the rule's line, 追記 4 K4 2).
+   */
+  street_same_road_measured: info({
+    dir: z.string(),
+    skippedForMissingTiles: count,
+    lines: count,
+    alphaM: count,
+    extendedM: z.number().nonnegative(),
+    piecesLeft: count,
+    leftInBandNotFoot: count,
+    leftAtFoot: count,
+    byClass: counts,
+    byThrough: counts,
+    byEnds: counts,
+    wholeAlong: count,
+    partAlong: count,
+    fragmentsMismatch: count,
+    islands: count,
+    keptByVerdict: counts,
+  }),
+  /**
+   * P2.7 R1-2b PR 1 (scripts/expresswaySameRoadIslands.ts): the islands of the game's network round
+   * the sites (components other than the largest; cut by the window's edge, closed inside it, inside
+   * and of class 0 streets only), and those the same-road rule makes (count, length m, where).
+   */
+  street_same_road_islands_counted: info({
+    dir: z.string(),
+    missingTiles: count,
+    windows: count,
+    edge: z.strictObject({ count, lengthM: count }),
+    inside: z.strictObject({ count, lengthM: count }),
+    insideClass0Only: z.strictObject({ count, lengthM: count }),
+    madeByRule: z.strictObject({ count, lengthM: count }),
+    madeByRuleAt: z.array(z.string()),
+  }),
+  /**
+   * P2.7 R1-2b PR 1 (scripts/expresswaySameRoadStability.ts): the same-road rule's answers over every
+   * window the game builds round the car: how many windows and lines, and how many lines (alpha ones
+   * apart) get more than one answer outside the edge band (none is the rule's line) or only in it.
+   */
+  street_same_road_stability_measured: info({
+    dir: z.string(),
+    missingTiles: count,
+    windows: count,
+    lines: count,
+    alphaLines: count,
+    differOutsideBand: count,
+    alphaDifferOutsideBand: count,
+    differInBandOnly: count,
+  }),
+  /**
+   * P2.7 R1-2 (scripts/measureStreetBands.ts): the street segments an expressway's site runs along,
+   * by R1-2a's class (memo 改訂 1, 3.3: clear, A median, A' room cap, B1 / B2 / B3 / C not given), and the
+   * jumps, pavements, feet, piers and two-segment nodes round them.
+   */
+  street_bands_measured: info({
+    dir: z.string(),
+    groups: count,
+    siteChunks: count,
+    skippedChunksForMissingTiles: count,
+    groupsWithoutRegulations: count,
+    segments: count,
+    totalLengthM: count,
+    byClass: z.strictObject({
+      clear: count,
+      A: count,
+      "A'": count,
+      B1: count,
+      B2: count,
+      B3: count,
+      C: count,
+    }),
+    lengthByClass: z.strictObject({
+      clear: count,
+      A: count,
+      "A'": count,
+      B1: count,
+      B2: count,
+      B3: count,
+      C: count,
+    }),
+    fewerLanes: count,
+    widened: count,
+    edgeOnPavement: count,
+    jumps: count,
+    jumpsGrown: count,
+    jumpMostBeforeM: z.number().nonnegative(),
+    jumpMostAfterM: z.number().nonnegative(),
+    withPavement: count,
+    footNear: count,
+    piersOverLanes: count,
+    twoNodes: count,
+    twoNodesWithStop: count,
+    twoNodesWithCrossing: count,
+    twoNodesWithSignal: count,
+    durationMs: count,
   }),
   /**
    * The drops with no wall at their edge of a data folder (scripts/expresswayBareDrops.ts, A1 test 22):

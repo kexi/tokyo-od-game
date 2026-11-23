@@ -413,7 +413,7 @@ describe("--districts（地区で絞って書く、R1-1a、T8）", () => {
   });
 });
 
-describe("本線の端と口（スコアカード版 9 の ends、R1-1b の壁の材料）", () => {
+describe("本線の端と口（スコアカード版 10 の ends、R1-1b の壁の材料）", () => {
   it("lists the operator side's end at the operator border, and the far side of a ref border only while that district is not written", () => {
     const op = planNetwork(operatorChain(), new Set(), null, [], CUT);
     const opEnds = endsOf(op, new Set(["10", "20"]), new Set(["10", "20"]), new Map(), new Set());
@@ -425,7 +425,7 @@ describe("本線の端と口（スコアカード版 9 の ends、R1-1b の壁�
     expect(both.mainEnds.some((e) => e.why === "ref")).toBe(false);
   });
 
-  it("names a mouth by why its run is not written, on which side of the parent and where on it (version 9)", () => {
+  it("names a mouth by why its run is not written, on which side of the parent and where on it (version 10)", () => {
     const plan = planNetwork(operatorChain(), new Set(), null, [], CUT);
     // Exit 21 leaves 13 inside it (x 2600) towards y +300: the left of 13's direction (east).
     const dropped = new Map([["21", { round: 1, reason: "parent" as const, parent: "13" }]]);

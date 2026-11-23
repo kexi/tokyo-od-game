@@ -39,9 +39,18 @@ export const XW_VERSION = 6;
  * run's chunks may be `embankment` (retaining walls down to the ground, no piers) or `cut` (as a below
  * run's) where its solved height says so, with `portals` where the structure changes. A build with
  * the tags' structures (the default) names only "below", so its files are as before.
+ * "below-junctions" (S7-3, `--below-junctions compile`): below runs meet others at junctions and at a
+ * loop's seam under the ground, and tunnel and cut chunks carry `openings` where they do. Only such a
+ * build names it.
  */
-export const XW_FEATURES = ["below", "height-structures"] as const;
+export const XW_FEATURES = ["below", "height-structures", "below-junctions"] as const;
 export type XwFeature = (typeof XW_FEATURES)[number];
+/**
+ * The features the game reads (src/world/expresswayDeck.ts isSupportedMeta): the writer's list less
+ * "below-junctions", whose openings the runtime does not cut yet (S7-4 adds it). Why apart from
+ * XW_FEATURES: a reader that took the writer's list would read a file it cannot draw.
+ */
+export const XW_READER_FEATURES: readonly XwFeature[] = ["below", "height-structures"];
 /** Values per pier in `XwChunk.piers`: s, ground (T.P. m). */
 export const PIER_STRIDE = 2;
 /**
@@ -79,6 +88,12 @@ export type XwChunk = {
    * tunnel or cut. Left out when there are none (every viaduct chunk), so P7's chunks are unchanged.
    */
   portals?: XwPortal[];
+  /**
+   * S7-3 (`below-junctions`): where a junction's carriageway leaves or joins a tunnel or cut chunk's
+   * side (XwOpening), so the runtime opens that wall there. Left out where there is none, so a file
+   * built without the flag keeps its bytes.
+   */
+  openings?: XwOpening[];
   /**
    * A deck built to a landmark's deck levels (structures.ts), or null: then the chunk has no
    * girder (`girder` 0) nor piers, its section comes from the level's strips, and the slab goes on
@@ -218,6 +233,15 @@ export type XwStructure = "viaduct" | "embankment" | "ground" | "tunnel" | "cut"
  * below run's first and last station `from` / `to` is what comes before and after it.
  */
 export type XwPortal = { s: number; from: XwStructure; to: XwStructure };
+/**
+ * An opening of a tunnel or cut chunk (S7-3): the side the other run leaves or joins on, looking along
+ * the chunk's run; the run distances it spans (to the centimetre, as `decks`); the other run.
+ * `with` may name a run this folder does not hold (closed, out of the range, or a ramp outside the
+ * default boxes): the data is not cut by the range (T8), so the runtime opens no wall whose other run
+ * has no chunk. An opening is a stretch of the run, not of a chunk: one crossing a chunk's border
+ * leaves a few centimetres in the next chunk (S7-3 review 2, N1).
+ */
+export type XwOpening = { side: "left" | "right"; s0: number; s1: number; with: string };
 
 export type XwDeckStretch = { with: string; relation: "same" | "above" | "below"; s0: number; s1: number };
 

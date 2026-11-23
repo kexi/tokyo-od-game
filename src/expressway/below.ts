@@ -113,6 +113,152 @@ export function ceilingAt(
 }
 
 /**
+ * S7-3 (3.4): what a below run's end meets, for the descent its ceilings are measured from. A run is
+ * named by its id; `ends` are its start and end as the files and endPlan give them (kind, and for a
+ * junction or seam the parent and the parent's run distance there); `ground` is the ground at its
+ * first and last station (T.P. m, as the portal's elevation is read today).
+ */
+export type BelowLinkRun = {
+  id: string;
+  lengthM: number;
+  planV: DesignSpeed;
+  below: boolean;
+  ends: [BelowLinkEnd, BelowLinkEnd];
+  ground: [number, number];
+};
+export type BelowLinkEnd = { kind: string; parent?: string; parentS?: number };
+
+/** A portal a ceiling is measured from: `offset` m beyond the run's end, its ground, the speed over the way. */
+export type PortalReach = { offset: number; z: number; V: DesignSpeed };
+
+/** Within this of a run's end, a parent's run distance is at that end (the files keep centimetres). */
+const AT_END_M = 0.5;
+
+/**
+ * Whether a below run's end goes on under the ground (S7-3 3.4): its junction or seam parent is a below
+ * run, or it is free (`open`) and another below run seams onto it there (a loop's first run, whose last
+ * run seams back onto its start). Such an end is no portal: the road there is under the ground.
+ */
+export function isEndUnder(runs: ReadonlyMap<string, BelowLinkRun>, id: string, side: 0 | 1): boolean {
+  return nextUnder(runs, id, side) !== null;
+}
+
+/** The below run an end goes on into, and where on it, or null where the end is a portal. */
+function nextUnder(
+  runs: ReadonlyMap<string, BelowLinkRun>,
+  id: string,
+  side: 0 | 1,
+): { run: BelowLinkRun; s: number; side: 0 | 1 | null } | null {
+  const r = runs.get(id);
+  const isBelow = r !== undefined && r.below;
+  if (!isBelow) return null;
+  const e = r.ends[side];
+  const parent = e.parent === undefined ? undefined : runs.get(e.parent);
+  const isJoined = e.kind === "junction" || e.kind === "seam";
+  if (isJoined) {
+    const isUnder = parent !== undefined && parent.below;
+    if (!isUnder) return null;
+    const s = e.parentS ?? 0;
+    const atSide = s <= AT_END_M ? 0 : parent.lengthM - s <= AT_END_M ? 1 : null;
+    return { run: parent, s, side: atSide };
+  }
+  const isFree = e.kind === "open";
+  if (!isFree) return null;
+  const sHere = side === 0 ? 0 : r.lengthM;
+  for (const other of [...runs.values()].toSorted((a, b) => (a.id < b.id ? -1 : 1))) {
+    if (!other.below || other.id === id) continue;
+    for (const os of [0, 1] as const) {
+      const oe = other.ends[os];
+      const isSeamedHere =
+        oe.kind === "seam" && oe.parent === id && Math.abs((oe.parentS ?? 0) - sHere) <= AT_END_M;
+      if (isSeamedHere) return { run: other, s: os === 0 ? 0 : other.lengthM, side: os };
+    }
+  }
+  return null;
+}
+
+/**
+ * The portals each end of a below run is measured from (S7-3 3.4): an end that is a portal itself is one
+ * portal at offset 0, its own ground, the run's planV (as today). An end that goes on under the ground
+ * follows the connected below runs to their portals: the way along each run to each of its ends, past
+ * ends that go on too, a loop followed once round (an end met twice is not followed again). The speed
+ * is the highest planV along the way (the gentlest grade: a ceiling is imposed only where even it
+ * reaches). An end whose way meets no portal (a closed underground loop) is read as its own portal.
+ */
+export function portalReaches(
+  runs: ReadonlyMap<string, BelowLinkRun>,
+  id: string,
+): [PortalReach[], PortalReach[]] {
+  const r = runs.get(id)!;
+  const at = (side: 0 | 1): PortalReach[] => {
+    const own: PortalReach = { offset: 0, z: r.ground[side], V: r.planV };
+    const start = nextUnder(runs, id, side);
+    if (start === null) return [own];
+    const out: PortalReach[] = [];
+    const seen = new Set<string>([`${id}:${side}`]);
+    // `from`: the run the way came from. Only the end that leads back to it is passed by (a seam's end
+    // entered from the other side). Why not every end entered at: a junction at a node at the parent's
+    // end (S7-3 3.3: the run ending there for a merging child, the run starting there for a diverging
+    // one) enters at that end, and its portal there (0 m from the child's end) or its way on under the
+    // ground is the nearest the child has (S7-3 review 2: dropped, a ramp's ceiling ran up to its end at
+    // the ground and it was closed).
+    const walk = (
+      q: BelowLinkRun,
+      s: number,
+      enteredSide: 0 | 1 | null,
+      from: string,
+      acc: number,
+      V: DesignSpeed,
+    ) => {
+      const speed = Math.max(V, q.planV) as DesignSpeed;
+      for (const fs of [0, 1] as const) {
+        const next = nextUnder(runs, q.id, fs);
+        const isBack = enteredSide === fs && next !== null && next.run.id === from;
+        if (isBack) continue;
+        const key = `${q.id}:${fs}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const dist = acc + Math.abs(s - (fs === 0 ? 0 : q.lengthM));
+        if (next === null) {
+          out.push({ offset: dist, z: q.ground[fs], V: speed });
+          continue;
+        }
+        walk(next.run, next.s, next.side, q.id, dist, speed);
+      }
+    };
+    walk(start.run, start.s, start.side, id, 0, r.planV);
+    return out.length > 0 ? out : [own];
+  };
+  return [at(0), at(1)];
+}
+
+/**
+ * The ceiling at a station of a run whose ends are measured from portals beyond them (portalReaches):
+ * as ceilingAt, the ground less the structure's depth where the descent from every portal reaches it,
+ * each at its own way's length (its offset plus the run distance to that end) and speed.
+ */
+export function ceilingFrom(
+  structure: "tunnel" | "cut",
+  ground: number,
+  s: number,
+  length: number,
+  reaches: readonly [readonly PortalReach[], readonly PortalReach[]],
+): number | null {
+  // A portal whose ground was not read (compile.ts belowLinksOf: NaN outside the needed runs) would drop
+  // every ceiling of the run without a word: the way must stay among the needed runs, so it stops here.
+  // Why throw and not skip that portal: the ceilings would then depend on which runs the range needs.
+  const unread = [...reaches[0], ...reaches[1]].find((p) => Number.isNaN(p.z));
+  if (unread) throw new Error(`a portal ${unread.offset.toFixed(2)} m beyond the run has no ground read`);
+  const top = ground - depthFor(structure);
+  const ways = [
+    ...reaches[0].map((p) => ({ V: p.V, d: p.offset + s, z: p.z })),
+    ...reaches[1].map((p) => ({ V: p.V, d: p.offset + (length - s), z: p.z })),
+  ];
+  const isImposed = ways.every(({ V, d, z }) => isReachable(V, top, [{ d, z }]));
+  return isImposed ? top : null;
+}
+
+/**
  * A height build's rule for a shallow, short tunnel (P2.7-6 PR 1 4.2 の 6): where the tunnel stations
  * whose ceiling the descent reaches (`ceilingAt`) span less than one 第22条 vertical curve length at
  * V, no tunnel station keeps its ceiling. The descent's reach is judged station by station from each
@@ -165,15 +311,23 @@ export function belowDeferralOf(
   run: Run,
   nodeChains: Map<number, string[]>,
   outsideNodes: Set<number>,
+  /**
+   * S7-3 (`--below-junctions compile`): a loop's seam and a junction are compiled, so neither is a
+   * reason; the universe's edge still is (nothing beyond it to meet). Absent: deferred, as since P9.
+   */
+  joins?: "compile",
 ): "loop-seam" | "universe-edge" | "junction" | null {
   if (!run.below) return null;
   const ends = [run.from, run.to].filter((idx) => idx === 0 || idx === chain.nodes.length - 1);
   const isInsideChain = ends.length === 0;
   if (isInsideChain) return null;
-  if (chain.closed) return "loop-seam";
+  const isCompiled = joins === "compile";
+  const isLoopSeam = chain.closed && !isCompiled;
+  if (isLoopSeam) return "loop-seam";
   const nodes = ends.map((idx) => chain.nodes[idx]);
   const isOutside = nodes.some((node) => outsideNodes.has(node));
   if (isOutside) return "universe-edge";
+  if (isCompiled) return null;
   const isJunction = nodes.some((node) => (nodeChains.get(node) ?? []).some((c) => c !== chain.id));
   if (isJunction) return "junction";
   return null;

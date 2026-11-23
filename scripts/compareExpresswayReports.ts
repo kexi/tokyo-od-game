@@ -85,8 +85,10 @@ const undergroundLine =
         `portals +${ids(under.portals.added)} / −${ids(under.portals.removed)} / changed ${ids(under.portals.changed)}`,
         `overApproach +${ids(under.overApproach.added)} / −${ids(under.overApproach.removed)}`,
         `approaches +${ids(under.approaches.added)} / −${ids(under.approaches.removed)}`,
+        `joins +${ids(under.joins.added)} / −${ids(under.joins.removed)} / changed ${ids(under.joins.changed)}`,
+        `unplanned +${ids(under.unplanned.added)} / −${ids(under.unplanned.removed)} / changed ${ids(under.unplanned.changed)}`,
       ].join("; ");
-// R1-1b (version 9): the ends' rows by id and the mouths by parent, distance and child, as sets (their
+// R1-1b (version 10): the ends' rows by id and the mouths by parent, distance and child, as sets (their
 // `kind`, `why`, `side` and `at` are words, which the numbers' table does not show), and the walls: the
 // ends whose kind is not ground and that no run goes on from.
 const endIds = (r: typeof a) => ({
@@ -160,6 +162,8 @@ const changed =
   under.deferred.reasonChanged.length +
   under.deferred.inRangeChanged.length +
   under.portals.changed.length +
+  under.joins.changed.length +
+  under.unplanned.changed.length +
   endsChanged;
 log("expressway_reports_compared", {
   a: a.label,

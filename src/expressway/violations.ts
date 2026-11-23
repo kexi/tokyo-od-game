@@ -15,7 +15,9 @@ import {
   isTunnelFreeRun,
   checkSeamHeading,
 } from "./checks";
-import { STATION_STRIDE, type XwChunk, type XwDiagnostic, type XwRunSummary } from "./format";
+import { ST, STATION_STRIDE, type XwChunk, type XwDiagnostic, type XwRunSummary } from "./format";
+import { type BelowLinkRun, isEndUnder, portalReaches } from "./below";
+import type { DesignSpeed } from "../law/roadStandards";
 import { checkHeightStructures } from "./heightStructures";
 
 /**
@@ -54,6 +56,27 @@ export function violationsOf(
   const byRun = new Map<string, XwChunk[]>();
   for (const c of chunks) byRun.set(c.run, [...(byRun.get(c.run) ?? []), c]);
   for (const list of byRun.values()) list.sort((a, b) => a.k - b.k);
+  // S7-3 3.4: the written runs as below.ts reads them for the descent to their portals, the ground at
+  // their end stations read as T12's portal elevations are (the road's in a build by the tags).
+  const links = new Map<string, BelowLinkRun>();
+  for (const r of meta.runs) {
+    const list = byRun.get(r.id);
+    if (!list) continue;
+    const a = list[0].st;
+    const b = list[list.length - 1].st;
+    const at = isHeight ? ST.ground : ST.z;
+    links.set(r.id, {
+      id: r.id,
+      lengthM: r.lengthM,
+      planV: r.planV as DesignSpeed,
+      below: r.below === true,
+      ends: [
+        { kind: r.start.kind, parent: r.start.parent, parentS: r.start.parentS },
+        { kind: r.end.kind, parent: r.end.parent, parentS: r.end.parentS },
+      ],
+      ground: [a[at], b[b.length - STATION_STRIDE + at]],
+    });
+  }
   const found = Object.fromEntries(PROPERTIES.map((p) => [p, [] as string[]])) as Record<Property, string[]>;
   const openShort = (id: string) => {
     const d = meta.diagnostics.find(
@@ -108,9 +131,13 @@ export function violationsOf(
     // Why only in a height build: there a below run may seam to a run at grade (S6 PR 2) whose road
     // stands up to its band off the ground, and the road's height read as the portal's put ceilings
     // where the compiler had none (23594607, 21 in ship/all). A build by the tags keeps the road's.
-    const ends = isHeight
+    const plainEnds = isHeight
       ? { z0: first[5], z1: last[last.length - STATION_STRIDE + 5] }
       : { z0: first[3], z1: last[last.length - STATION_STRIDE + 3] };
+    // S7-3 3.4: an end going on under the ground is measured from the portals beyond it, as setupBelow
+    // does (the same below.ts functions, read from the files' ends and end stations).
+    const isUnder = isEndUnder(links, r.id, 0) || isEndUnder(links, r.id, 1);
+    const ends = isUnder ? { ...plainEnds, reaches: portalReaches(links, r.id) } : plainEnds;
     const isTunnelFree = isHeight && isTunnelFreeRun(list, r, ends);
     // A run at grade's cuts are T13's (its road is within a band of the ground, no ceiling). A viaduct
     // -tagged run's cuts keep T12 (review W10): they are deeper than the dead band by what they are.
