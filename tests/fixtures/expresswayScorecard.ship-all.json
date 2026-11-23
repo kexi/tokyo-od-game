@@ -1,6 +1,6 @@
 {
- "version": 11,
- "label": "s7p-all-off5",
+ "version": 12,
+ "label": "s73c-all-off",
  "range": "ship",
  "below": "all",
  "objective": {
@@ -10992,6 +10992,123 @@
        "990615412"
       ]
      ]
+    }
+   ]
+  },
+  "holes": {
+   "tunnelStations": 4063,
+   "holeStations": 456,
+   "heldHoleStations": 46,
+   "stretches": 91,
+   "far": {
+    "count": 30,
+    "m": 790.9
+   },
+   "farDeep": {
+    "count": 22,
+    "m": 560.2
+   }
+  },
+  "ceilingRows": {
+   "mode": "grid",
+   "rows": 56,
+   "runs": 19,
+   "maxPerInterval": 1,
+   "list": [
+    {
+     "id": "23594607",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "24402095",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "24402540",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "28127108",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "331922709",
+     "rows": 4,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "35266568",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "405795844",
+     "rows": 6,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "4854085",
+     "rows": 4,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "5170834",
+     "rows": 4,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "5204786",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "5213545",
+     "rows": 4,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "678761500",
+     "rows": 4,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "680260849",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "737538573",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "783636521",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "867182415",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "878618792",
+     "rows": 6,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "880273111",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "906266864",
+     "rows": 2,
+     "maxPerInterval": 1
     }
    ]
   }

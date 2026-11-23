@@ -1,6 +1,6 @@
 {
- "version": 11,
- "label": "s7p-pruned-off5",
+ "version": 12,
+ "label": "s73c-pruned-off",
  "range": "ship",
  "below": "pruned",
  "objective": {
@@ -11111,6 +11111,73 @@
        "990615412"
       ]
      ]
+    }
+   ]
+  },
+  "holes": {
+   "tunnelStations": 711,
+   "holeStations": 154,
+   "heldHoleStations": 8,
+   "stretches": 32,
+   "far": {
+    "count": 5,
+    "m": 123.8
+   },
+   "farDeep": {
+    "count": 3,
+    "m": 82.1
+   }
+  },
+  "ceilingRows": {
+   "mode": "grid",
+   "rows": 30,
+   "runs": 9,
+   "maxPerInterval": 1,
+   "list": [
+    {
+     "id": "35266568",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "405795844",
+     "rows": 6,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "5204786",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "5213545",
+     "rows": 4,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "678761500",
+     "rows": 4,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "680260849",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "737538573",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "783636521",
+     "rows": 2,
+     "maxPerInterval": 1
+    },
+    {
+     "id": "878618792",
+     "rows": 6,
+     "maxPerInterval": 1
     }
    ]
   }
