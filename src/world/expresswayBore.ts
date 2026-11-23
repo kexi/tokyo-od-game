@@ -327,11 +327,11 @@ const HOLE_NEIGHBOUR_M = 0.3;
 /** A run's own end in otherDecksAt: points within this of its end station along it are off it (m). */
 const SQUARE_END_M = 0.5;
 /** Other chunks with a station box within this of a chunk's (degrees, ~60 m) are its neighbours. */
-const NEIGHBOUR_REACH_DEG = 0.0006;
+export const NEIGHBOUR_REACH_DEG = 0.0006;
 
 /** Each chunk's stations' box [lon0, lat0, lon1, lat1], kept per chunk object (they never change). */
 const stationBoxes = new WeakMap<XwChunk, [number, number, number, number]>();
-function stationBox(c: XwChunk): [number, number, number, number] {
+export function stationBox(c: XwChunk): [number, number, number, number] {
   const known = stationBoxes.get(c);
   if (known) return known;
   let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];

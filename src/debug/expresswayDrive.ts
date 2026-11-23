@@ -180,6 +180,8 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
   let distance = 0;
   let last: Vector3 | null = null;
   let lastTarget = 0;
+  /** A wall-stop cruise's watch on its end (R1-1b): how far past the end the car's centre came, its top speed. */
+  let wall: { chunk: string; maxPastEndM: number; maxKmh: number } | null = null;
   let drops: Drop[] = [];
   let swaps: Drop["swaps"] = [];
   let seenGraph: RoadGraph | null = null;
@@ -269,9 +271,20 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
       lane?: number;
       /** The segments of the route the car follows now (an autopilot's), for rideHit. */
       onRoute?: () => ReadonlySet<Segment> | null;
+      /**
+       * A wall-stop drive (R1-1b): the chunk whose far end has the wall. Each frame the car's centre
+       * is measured along the chunk's end direction from its end point (positive: past it).
+       */
+      endOf?: string;
+      /**
+       * Hold `kmh` over the posted limit (a wall-stop drive at 1.5 × the limit, or flat out). Why an
+       * option and not the default: every other cruise is a drive as a driver would, under the limit.
+       */
+      overLimit?: boolean;
     } = {},
   ) => {
     const want = (options.kmh ?? 60) / 3.6;
+    wall = options.endOf ? { chunk: options.endOf, maxPastEndM: -Infinity, maxKmh: 0 } : null;
     const prefer = options.prefer ?? [];
     const lane = options.lane ?? 0;
     samples = [];
@@ -312,6 +325,13 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
       // its segment is the surface under the car. Measured against the clamped one, a 6 % grade made
       // a 0.2–0.3 m "bump" for a few metres past every seam.
       const hit = graph ? rideHit(graph, p, prefer, options.onRoute?.() ?? null) : null;
+      const endSeg = wall && graph ? graph.segments.find((x) => x.line.xid === wall!.chunk) : undefined;
+      if (wall && endSeg && graph) {
+        const { pos: endAt, dir: endDir } = graph.sample(endSeg, endSeg.length);
+        const past = (p.x - endAt.x) * endDir.x + (p.z - endAt.z) * endDir.z;
+        wall.maxPastEndM = Math.max(wall.maxPastEndM, past);
+        wall.maxKmh = Math.max(wall.maxKmh, Math.abs(speed) * 3.6);
+      }
       const xid = hit?.seg.line.xid ?? null;
       if (xid && visited[visited.length - 1] !== xid) visited.push(xid);
       const surface = hit && graph ? graph.surfaceY(hit.seg, hit.s) : null;
@@ -378,7 +398,8 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
       );
       const bend = Math.min(turn, 2 * Math.PI - turn) / 15;
       const posted = speedLimit(hit.seg) / 3.6;
-      const target = Math.min(want, posted, Math.sqrt(LATERAL_MS2 / Math.max(bend, 1e-4)));
+      const limit = options.overLimit ? Infinity : posted;
+      const target = Math.min(want, limit, Math.sqrt(LATERAL_MS2 / Math.max(bend, 1e-4)));
       lastTarget = target;
       const error = target - speed;
       const throttle = Math.max(0, Math.min(1, error * 0.35));
@@ -422,6 +443,18 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
       endsOnDeck: samples.length > 0 && samples[samples.length - 1].xid !== null,
       // Not a measurement of the decks when an accident or a pursuit was on at either end.
       invalid: startBlocker ?? deps.blocker(),
+      // A wall-stop drive's: past the end (m, the car's centre), top speed, and the car's height over
+      // the deck at the last sample on a deck (standing on the road, not on the wall's top).
+      ...(wall
+        ? {
+            wall: {
+              chunk: wall.chunk,
+              maxPastEndM: Math.round(wall.maxPastEndM * 100) / 100,
+              maxKmh: Math.round(wall.maxKmh * 10) / 10,
+              lastDyM: onDeck.length > 0 ? Math.round(onDeck[onDeck.length - 1].dy * 1000) / 1000 : null,
+            },
+          }
+        : {}),
     };
     log("expressway_drive_checked", summary);
     if (!routed) return summary;

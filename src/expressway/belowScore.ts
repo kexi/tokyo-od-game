@@ -70,9 +70,9 @@ export const UndergroundSchema = z.strictObject({
     coverShort: count,
     maxShortM: z.number().nonnegative(),
     /**
-     * S7-2 (version 10, `--portal-approach cut`): the ends whose approach at grade was lowered (their
+     * S7-2 (version 11, `--portal-approach cut`): the ends whose approach at grade was lowered (their
      * summary's XwEnd.portalAt), and those of them still short of the tunnel's depth (線 3). 0 without the
-     * flag; absent before version 10.
+     * flag; absent before version 11.
      */
     lowered: count.optional(),
     loweredCoverShort: count.optional(),
@@ -93,11 +93,11 @@ export const UndergroundSchema = z.strictObject({
         /** TUNNEL_DEPTH_M less the depth under the ground at the end (0 when deep enough); null into a cut. */
         coverShortM: z.number().nonnegative().nullable(),
         /**
-         * S7-2 (version 10): the lowered approach's stretch (its length to the portal at its start, m) and
+         * S7-2 (version 11): the lowered approach's stretch (its length to the portal at its start, m) and
          * its end's depth under the ground at the seam (m). Absent where the approach was not lowered.
          */
         lowered: z.strictObject({ lengthM: z.number().nonnegative(), approachDepthM: z.number() }).optional(),
-        /** S7-2 (version 10): why an approach the plan saw was left at grade ("both-portals", addendum 4). */
+        /** S7-2 (version 11): why an approach the plan saw was left at grade ("both-portals", addendum 4). */
         notLowered: z.enum(["both-portals"]).optional(),
       }),
     ),
@@ -141,7 +141,7 @@ export const UndergroundSchema = z.strictObject({
       }),
     ),
     /**
-     * S7-2 (version 10, `--portal-approach cut`): the pairs counted apart from `list`, two lowered
+     * S7-2 (version 11, `--portal-approach cut`): the pairs counted apart from `list`, two lowered
      * approaches going down side by side, on one surface by the plan (the lower's chunk `decks` "same"
      * with the upper) with both stations in their lowered stretches. Why apart: they are the two
      * carriageways of one approach, apart by what their own tunnels hold them to (S7-2 追記 7 の 2), not
@@ -355,7 +355,7 @@ export function portalEndsOf(
   runs: readonly XwRunSummary[],
   belowIds: ReadonlySet<string>,
   /**
-   * S7-2 (version 10): the portal ends (`<below run>:<end>`) whose approach the plan left at grade, and
+   * S7-2 (version 11): the portal ends (`<below run>:<end>`) whose approach the plan left at grade, and
    * why (compile.ts loweredApproaches' skipped). Absent: the counts and fields of version 9.
    */
   notLowered?: ReadonlyMap<string, "both-portals">,
@@ -682,7 +682,7 @@ export function undergroundOf(input: {
   chunks: XwChunk[];
   runs: readonly XwRunSummary[];
   belowIds: ReadonlySet<string>;
-  /** S7-2 (version 10): the approaches the plan left at grade (compile.ts loweredApproaches' skipped). */
+  /** S7-2 (version 11): the approaches the plan left at grade (compile.ts loweredApproaches' skipped). */
   notLowered?: ReadonlyArray<{ below: string; belowAtStart: boolean; reason: "both-portals" }>;
 }): Underground {
   const notLowered = new Map(

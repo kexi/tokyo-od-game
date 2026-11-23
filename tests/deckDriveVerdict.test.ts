@@ -6,6 +6,9 @@ import {
   type DeckDriveRide,
   MAX_ABS_DY_M,
   MAX_SHORTFALL_KMH,
+  WALL_SHORT_M,
+  type WallDriveRide,
+  wallStopFailures,
 } from "../scripts/qa/deckDriveVerdict";
 
 const ride = (over: Partial<DeckDriveRide> = {}): DeckDriveRide => ({
@@ -89,6 +92,53 @@ describe("autoDriveFailures: what fails an autopilot route (P6's drives)", () =>
     expect(autoDriveFailures(auto(), { ...quiet, waits: [{ ...wait, isOver: false }] })).toEqual([]);
     expect(autoDriveFailures(auto(), { ...quiet, waits: [{ ...wait, seconds: 50, isOver: true }] })).toEqual([
       "waited 50 s for a signal over 45 s (at 24402125:2)",
+    ]);
+  });
+});
+
+describe("wallStopFailures: what fails a drive into an end wall (R1-1b)", () => {
+  const atWall = (
+    wall: Partial<NonNullable<WallDriveRide["wall"]>> = {},
+    over: Partial<WallDriveRide> = {},
+  ) => ({
+    fell: false,
+    maxDyAt: "5213324:11",
+    chunks: ["5213324:10", "5213324:11"],
+    wall: { chunk: "5213324:11", maxPastEndM: -2.9, maxKmh: 92.4, lastDyM: 0.03, ...wall },
+    ...over,
+  });
+  const clean = { crossed: 0, uncaught: 0 };
+
+  it("passes the car standing on the road at the wall, a few metres short of the end (its half length)", () => {
+    expect(wallStopFailures(atWall(), clean)).toEqual([]);
+  });
+
+  it("fails a car whose centre came past the end: over the wall or through it", () => {
+    expect(wallStopFailures(atWall({ maxPastEndM: 0.4 }), clean)).toEqual([
+      "came 0.4 m past the end of 5213324:11 (over or through the wall)",
+    ]);
+  });
+
+  it("fails a car standing on the wall's top or off the deck, and one that fell", () => {
+    expect(wallStopFailures(atWall({ lastDyM: 1.3 }), clean)).toEqual([
+      "stood 1.3 m over the road at the end",
+    ]);
+    expect(wallStopFailures(atWall({ lastDyM: null }), clean)).toEqual([
+      "stood off the deck m over the road at the end",
+    ]);
+    expect(wallStopFailures(atWall({}, { fell: true }), clean)[0]).toMatch(/^fell off a deck/);
+  });
+
+  it("fails a drive that never came to the wall, crossed a building or threw", () => {
+    expect(wallStopFailures(atWall({ maxPastEndM: -(WALL_SHORT_M + 1) }), clean)).toEqual([
+      `stopped ${WALL_SHORT_M + 1} m short of the end (no wall met)`,
+    ]);
+    expect(wallStopFailures(atWall(), { crossed: 1, uncaught: 2 })).toEqual([
+      "building crossed on a deck (1)",
+      "uncaught errors (2)",
+    ]);
+    expect(wallStopFailures({ fell: false, maxDyAt: null, chunks: [] }, clean)).toEqual([
+      "no watch on the end (debug.expressway.cruise endOf)",
     ]);
   });
 });

@@ -455,7 +455,7 @@ const fixture = (name: string) =>
   ReportSchema.parse(JSON.parse(readFileSync(join(import.meta.dirname, "fixtures", name), "utf8")));
 
 describe("スコアカード版 7（report.ts）", () => {
-  it("the ship baselines are the current version (10 since S7-2), each deferred run under one reason, adding up to the plan's count", () => {
+  it("the ship baselines are the current version (11 since S7-2), each deferred run under one reason, adding up to the plan's count", () => {
     for (const [name, below] of [
       ["expresswayScorecard.ship.json", "pruned"],
       ["expresswayScorecard.ship-all.json", "all"],
@@ -548,16 +548,20 @@ describe("スコアカード版 9（belowScore.ts joinsOf・unplannedOf、compil
     expect(added.every(isNew)).toBe(true);
   });
 
-  it("a version-9 report still parses, and set beside its version 10 it differs by the lowered ends' counts alone (0 without the flag)", () => {
-    const ten = fixture("expresswayScorecard.ship-all.json");
-    const { lowered, loweredCoverShort, ...portals } = ten.underground!.portals;
+  it("a version-10 report still parses, and set beside its version 11 it differs by the lowered ends' counts alone (0 without the flag)", () => {
+    const eleven = fixture("expresswayScorecard.ship-all.json");
+    const { lowered, loweredCoverShort, ...portals } = eleven.underground!.portals;
     expect([lowered, loweredCoverShort]).toEqual([0, 0]);
     expect(
-      ten.underground!.portals.list.every((p) => p.lowered === undefined && p.notLowered === undefined),
+      eleven.underground!.portals.list.every((p) => p.lowered === undefined && p.notLowered === undefined),
     ).toBe(true);
-    const nine = ReportSchema.parse({ ...ten, underground: { ...ten.underground!, portals }, version: 9 });
-    const before = flattenReport(nine);
-    const after = flattenReport(ten);
+    const ten = ReportSchema.parse({
+      ...eleven,
+      underground: { ...eleven.underground!, portals },
+      version: 10,
+    });
+    const before = flattenReport(ten);
+    const after = flattenReport(eleven);
     const changed = [...before.keys()].filter(
       (key) => key !== "version" && before.get(key) !== after.get(key),
     );

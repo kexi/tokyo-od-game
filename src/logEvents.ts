@@ -555,6 +555,35 @@ export const LOG_EVENTS = {
    * (expresswayMerge.ts dividerOf, A1): the s range, the thinnest wall and how far its outer face
    * reaches down. One line per chunk and partner, beside expressway_merge_skipped.
    */
+  /**
+   * A wall closing a run's end with nothing written going on (expresswayDeck.ts, R1-1b 3.2): the
+   * chunk, which end, the wall's width across the road and its height over the slab's bottom.
+   */
+  expressway_end_wall_built: info({
+    chunk: z.string(),
+    end: z.enum(["start", "end"]),
+    widthM: z.number().nonnegative(),
+    heightM: z.number().nonnegative(),
+    /** The width whose top another run's deck over it lowered, and the width left without a box (A2). */
+    loweredM: z.number().nonnegative(),
+    noneM: z.number().nonnegative(),
+    boxes: count,
+    /** The width left to a road going on past the end, those runs, and the largest height between the roads there (追記 4 D3). */
+    yieldedM: z.number().nonnegative(),
+    yieldTo: z.array(z.string()),
+    yieldPastDzM: z.number().nonnegative(),
+    yieldFootDzM: z.number().nonnegative(),
+  }),
+  /**
+   * Such an end left without a wall (R1-1b 3.4): `tunnel` (a tunnel's section, none in the data) or
+   * `hidden` (its road shows nothing at the end ring, under another deck: a child ending at its
+   * parent's end).
+   */
+  expressway_end_wall_skipped: info({
+    chunk: z.string(),
+    end: z.enum(["start", "end"]),
+    reason: z.enum(["tunnel", "hidden", "covered"]),
+  }),
   expressway_divider_built: info({
     chunk: z.string(),
     with: z.string(),
@@ -610,6 +639,19 @@ export const LOG_EVENTS = {
      * when it stopped (the car may have been held by an arrest, not by the deck).
      */
     invalid: z.string().nullable(),
+    /**
+     * A wall-stop drive's (R1-1b, scripts/qa/deckRoutes.ts "wall"): the end chunk, how far past its
+     * end the car's centre came (m, below zero short of it), its top speed, and its height over the
+     * deck at the last sample on one.
+     */
+    wall: z
+      .strictObject({
+        chunk: z.string(),
+        maxPastEndM: z.number(),
+        maxKmh: z.number().nonnegative(),
+        lastDyM: z.number().nullable(),
+      })
+      .optional(),
   }),
   /**
    * The autopilot driven over the expressway by the dev hook (debug.expressway.route, P6): the
@@ -1354,6 +1396,66 @@ export const LOG_EVENTS = {
     maxTileGzipBytes: count,
     maxTile: z.string().nullable(),
     ok: z.boolean(),
+  }),
+  /**
+   * The ends of a data folder with nothing written going on (scripts/expresswayEnds.ts, R1-1b 3.1):
+   * the walls, the main lines' open ends by the end chunk's structure, their portals and ground ends,
+   * the ramps' open ends and portals, the ends with a junction child at the node, those in a tunnel,
+   * and against a scorecard the walls it lists that were not found and those found that it does not.
+   */
+  expressway_ends_counted: info({
+    dir: z.string(),
+    out: z.string(),
+    districts: z.array(z.string()).nullable(),
+    walls: count,
+    mainOpen: count,
+    mainOpenByStructure: z.record(z.string(), count),
+    mainPortal: count,
+    mainGround: count,
+    rampOpen: count,
+    rampPortal: count,
+    withJunctionChild: count,
+    tunnel: count,
+    missing: z.array(z.string()),
+    extra: z.array(z.string()),
+    /** The ends whose answer from the tiles read when the game first can build them differs from the full one. */
+    asBuiltDiffer: z.array(z.string()),
+  }),
+  /**
+   * The end walls of a data folder probed in Node (scripts/expresswayEndWalls.ts, R1-1b): walls built
+   * and the level rays at their faces that met nothing, ends skipped as hidden or in a tunnel and the
+   * rays there that met nothing, ends going on as another run and those with more than PARAPET_WIDTH
+   * of their face uncovered, the scorecard's mouths and those without the parent's wall or with a
+   * branch line or ゼブラ painted.
+   */
+  expressway_end_walls_probed: info({
+    dir: z.string(),
+    out: z.string(),
+    walls: count,
+    wallMisses: count,
+    /** Walls whose box top stands over another deck's underside over them, those lowered, ends left without one (A3). */
+    poking: count,
+    /** The same over faces level with this road, and walls where the two reads of a same partner's road part (R1-1b 追記 3 C3). */
+    pokingLevel: count,
+    readsPart: count,
+    /** Walls counted by (b) without the faces inside the other run's own end wall (proposed, not judged). */
+    pokingOffEndWalls: count,
+    /** Raw (b) (any run's road, the line before 追記 4 D6), points met under − MERGE_MAX_DZ down to − SLAB, the farthest dead end of a run not counted, the widest open gap. */
+    pokingRaw: count,
+    deepPoints: count,
+    uncountedFarthestEndM: z.number().nonnegative(),
+    openM: z.number().nonnegative(),
+    lowered: count,
+    covered: count,
+    hidden: count,
+    tunnel: count,
+    hiddenMisses: count,
+    /** Ends going on as another run where the deck boxes the face, and those only looked at (a cut's). */
+    onwardsBoxed: count,
+    onwardsSeen: count,
+    onwardOverWidth: count,
+    mouths: count,
+    mouthsBroken: count,
   }),
   expressway_districts_picked: info({ districts: z.array(z.string()), runs: count, chunks: count }),
   expressway_districts_compared: info({
