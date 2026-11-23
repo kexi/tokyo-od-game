@@ -476,6 +476,94 @@ describe("先へ続く道に譲る端の壁（R1-1b 追記 4 D3・追記 5 E3）
     expect(wall.boxes.map((x) => [x.lo, x.hi, x.top])).toEqual(alone.boxes.map((x) => [x.lo, x.hi, x.top]));
   });
 
+  it("stands no box on a road going on whose edge moves across within the box's depth, and leaves the face open no wider than PARAPET_WIDTH", () => {
+    // B level beside A at 5° to it, its right road edge crossing A's u 1.79 → 1.71 from 0.5 m in to 0.5 m out.
+    const tilt = (-5 * Math.PI) / 180;
+    const b = chunkAlong("B:0", (s) => [150 + s * Math.cos(tilt), 6 + (s - 50) * Math.sin(tilt)], 100);
+    for (let i = 0; i < b.st.length; i += STATION_STRIDE) b.st[i + ST.z] += 0.02;
+    const index = indexOf(goesOn, [a, b]);
+    const own = buildOf(a, index);
+    const other = buildOf(b, index);
+    const wall = own.endWalls.find((w) => w.end === "end")!;
+    expect(wall.yieldTo).toEqual(["B"]);
+    // Down from each box's top at its corners, face and back, in B's world alone: never B's road.
+    const onlyB = worldOf([other]);
+    const ring = own.rings[own.rings.length - 1];
+    for (const x of wall.boxes)
+      for (const u of [x.lo + 1e-3, x.hi - 1e-3])
+        for (const d of [0.02, PARAPET_WIDTH.value - 0.02]) {
+          const p = ringPoint(ring, u, 0)
+            .addScaledVector(ring.t, -d)
+            .setY(x.top - 1e-3);
+          const hit = cast(onlyB, p, down, x.top - ringPoint(ring, u, liftAt(ring, u, false)).y + 0.15);
+          expect(hit, `u ${u.toFixed(2)} d ${d}`).toBeNull();
+        }
+    // Across the face, every STEP a box or B's road past it, no open stretch over PARAPET_WIDTH.
+    const world = worldOf([own, other]);
+    const { lo, hi } = innerOf(own, "end");
+    let open = 0;
+    let worst = 0;
+    for (let u = lo + STEP / 2; u < hi; u += STEP) {
+      const road = ringPoint(ring, u, liftAt(ring, u, false));
+      const isBox =
+        cast(
+          world,
+          road
+            .clone()
+            .setY(road.y + 0.5)
+            .addScaledVector(ring.t, -0.25),
+          ring.t,
+          0.6,
+        ) !== null;
+      const past = road
+        .clone()
+        .addScaledVector(ring.t, 0.3)
+        .setY(road.y + 0.6);
+      const hit = cast(world, past, down, 1.2);
+      const isRoad = hit !== null && Math.abs(past.y - hit.timeOfImpact - road.y) < 0.3;
+      open = isBox || isRoad ? 0 : open + STEP;
+      worst = Math.max(worst, open);
+    }
+    expect(worst).toBeLessThanOrEqual(PARAPET_WIDTH.value);
+  });
+
+  it("keeps the parent's wall across its whole face where a child ends at its dead end, coming in from inside at an angle or from outside", () => {
+    const ramp = { cls: "ramp" as const, lanes: 1, shoulderL: 1, shoulderR: 0.5 };
+    const tilt = (10 * Math.PI) / 180;
+    // (a) B into A's end node from inside, from the left at 10° (44803854:91 end); (b) E from outside,
+    // coming back west to A's end node and ending there, its other end going on (224864769:end).
+    const inside = chunkAlong(
+      "B:0",
+      (s) => [200 - (60 - s) * Math.cos(tilt), (60 - s) * Math.sin(tilt)],
+      60,
+      ramp,
+    );
+    const outside = chunkAlong("E:0", (s) => [260 - s, 2], 60, ramp);
+    const net = [
+      summary("A", end("ground"), end("open")),
+      summary("B", end("ground"), end("junction", "A", 100), "ramp"),
+      summary("E", end("ground"), end("junction", "A", 100), "ramp"),
+    ];
+    for (const child of [inside, outside]) {
+      const index = indexOf(net, [a, child]);
+      const parent = buildOf(a, index);
+      const kid = buildOf(child, index);
+      const wall = parent.endWalls.find((w) => w.end === "end")!;
+      expect(wall.yieldedM, child.id).toBe(0);
+      expect(
+        wall.boxes.map((x) => [x.lo, x.hi, x.top]),
+        child.id,
+      ).toEqual(alone.boxes.map((x) => [x.lo, x.hi, x.top]));
+      // Every ray at the parent's face meets a box (its own or the child's) or rolls on onto a road.
+      const world = worldOf([parent, kid]);
+      const { lo, hi } = innerOf(parent, "end");
+      const { road } = topsAt(world, parent, "end", 0);
+      expect(missesAt(world, parent, "end", lo, hi, road + PARAPET_HEIGHT.value).misses, child.id).toEqual(
+        [],
+      );
+    }
+  });
+
   it("takes a run whose dead end lies within one car's length of the face as ending here, and one just past it as going on", () => {
     const inside = wallOf(endsDead, a, [besideOf(104, 100, () => 0.02)]);
     expect(inside.yieldedM).toBe(0);

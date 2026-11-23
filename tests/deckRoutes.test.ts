@@ -50,7 +50,8 @@ describe("the deck routes table", () => {
     expect(walls("ship-g3")).toEqual(["28368866", "45661183"]);
     expect(WALL_ROUTES).toHaveLength(6 * 2 * 3);
     expect(DEFAULT_DATA_ROUTES.some((r) => r.kind !== "auto" && r.data !== undefined)).toBe(false);
-    expect(DEFAULT_DATA_ROUTES).toHaveLength(DECK_ROUTES.length - 1 + 4 * 2 * 3);
+    const onOther = DECK_ROUTES.filter((r) => r.kind !== "auto" && r.data !== undefined).length;
+    expect(DEFAULT_DATA_ROUTES).toHaveLength(DECK_ROUTES.length - onOther + 4 * 2 * 3);
   });
 
   for (const r of DEFAULT_DATA_ROUTES) {

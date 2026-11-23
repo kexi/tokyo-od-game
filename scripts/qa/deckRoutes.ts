@@ -67,18 +67,24 @@ export type WallRoute = {
   speed: WallSpeed;
   seconds: number;
   /** Not the default data: the folder the dev server must serve for it (left out of `all`). */
-  data?: "ship-g3";
+  data?: RouteData;
   was: string;
 };
 
-export type DeckRoute = (CruiseRoute & { data?: "ship-g3" }) | AutoRoute | WallRoute;
+/**
+ * The data a route is driven over when not the default: "ship-g3" G3 (ship, pruned, cut, central),
+ * "ship-g1" G1 (ship, pruned), as R1-1b's measuring folders.
+ */
+export type RouteData = "ship-g3" | "ship-g1";
+
+export type DeckRoute = (CruiseRoute & { data?: RouteData }) | AutoRoute | WallRoute;
 
 /** The ends the wall-stop drives come at (R1-1b 7.3, 7.4), each in both lanes at the three speeds. */
 const WALL_ENDS: ReadonlyArray<{
   wall: string;
   from: RunPlace;
   prefer: string[];
-  data?: "ship-g3";
+  data?: RouteData;
   was: string;
 }> = [
   {
@@ -354,6 +360,29 @@ export const DECK_ROUTES: readonly DeckRoute[] = [
     data: "ship-g3",
     was: "新設（R1-1b 3.3）: ship（G3、central）のランプ 931759044 の端の節点で 79° 折れて 172358470 へ（壁は立てず、面の脇を箱で塞ぐ所）。main（壁の無い版）でも同じに走らせて並べる",
   },
+  {
+    id: "onward-756785283-by-203832847",
+    kind: "cruise",
+    from: { run: "756785283", s: 2 },
+    prefer: ["756785283"],
+    to: { run: "756785283", s: 60 },
+    kmh: 40,
+    seconds: 60,
+    data: "ship-g3",
+    was: "新設（R1-1b 追記 4 D7）: G3 の 756785283 を、203832847:start の脇（壁が 0.25 m 譲った縁）で通り抜ける。main（壁の無い版）と並べる",
+  },
+  ...[0, 1].map((lane) => ({
+    id: `onward-491625692-763353050-lane${lane}`,
+    kind: "cruise" as const,
+    from: { run: "491625692", s: 1380 },
+    lane,
+    prefer: ["491625692", "763353050"],
+    to: { run: "763353050", s: 10 },
+    kmh: 40,
+    seconds: 60,
+    data: "ship-g1" as const,
+    was: `新設（R1-1b 追記 4 D7）: ship（G1）の 491625692 → 763353050 を、763353049:start の脇（壁が 1.2 m 譲った縁）で通り抜ける、車線 ${lane}。main と並べる`,
+  })),
 ];
 
 /** Every route by id: the table above and the wall-stop drives. */
