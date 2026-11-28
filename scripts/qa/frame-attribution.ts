@@ -48,6 +48,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launch } from "./browser.mjs";
 import { freePort } from "./ports.ts";
+import { servedBuild, servedRecord } from "./servedBuild.ts";
 
 export type CallFrame = { functionName: string; url: string; lineNumber: number };
 export type ProfileNode = { id: number; callFrame: CallFrame; children?: number[] };
@@ -358,10 +359,13 @@ if (isMain) {
   }))
     url.searchParams.set(key, value);
   const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8", cwd: ROOT }).trim();
+  // commit and status are the tool's own tree; `served` is the tree the page came from (servedBuild.ts).
+  const servedAtStart = await servedBuild(base);
   const report: Record<string, unknown> & { scenes: unknown[] } = {
     label,
     commit: git("rev-parse", "HEAD"),
     status: git("status", "--short"),
+    served: servedRecord(servedAtStart, null),
     url: url.href,
     intervalUs,
     overMs,
@@ -480,7 +484,9 @@ if (isMain) {
       await b.sleep(1000);
     }
     save();
-    process.stdout.write(`${JSON.stringify({ report: join(out, "report.json") })}\n`);
+    report.served = servedRecord(servedAtStart, await servedBuild(base));
+    save();
+    process.stdout.write(`${JSON.stringify({ report: join(out, "report.json"), served: report.served })}\n`);
   } finally {
     await b.close();
   }
