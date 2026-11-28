@@ -1,6 +1,6 @@
 {
  "version": 11,
- "label": "s7p-pruned-off5",
+ "label": "r13-ship-pruned",
  "range": "ship",
  "below": "pruned",
  "objective": {
@@ -6373,6 +6373,13 @@
    "targetScale": 30,
    "bandM": 1.5
   },
+  "deferred": [
+   {
+    "run": "203832842",
+    "end": "end",
+    "until": "R1"
+   }
+  ],
   "offGround": {
    "p95M": 1.68,
    "maxM": 7.39,
@@ -6590,8 +6597,8 @@
    }
   },
   "record": {
-   "raw": 527663,
-   "gzip": 71162
+   "raw": 527721,
+   "gzip": 71202
   },
   "ledger": null,
   "gzipEnv": {

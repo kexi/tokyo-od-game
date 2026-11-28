@@ -291,7 +291,7 @@ make-guide-data:
 make-expressway-data range="hamazakibashi,rainbow,azabudai,azabudai_exit,shiodome" flags="":
     pnpm exec tsx scripts/expressway.ts --range {{ range }} {{ flags }}
 
-# 高速道路を計測用に生成し（.cache/expressway-area/<label>/、public/data/expressway は触らない）、スコアカードを .qa/expressway/<label>.report.json に書く（range は ship・all か名前付き範囲、below は pruned か all＝トンネル・掘割を見送らない計測専用、flags は --accept-extract や --baseline tests/fixtures/expresswayScorecard.ship.json、固定点 block の計測なら --partition blocks --quiet-factor 1.5、縦断の目的は既定 v2 で重みの掃引なら --grade-change 1 --reach 150、比較用の旧い目的なら --objective v1 など）
+# 高速道路を計測用に生成し（.cache/expressway-area/<label>/、public/data/expressway は触らない）、スコアカードを .qa/expressway/<label>.report.json に書く（range は ship・all か名前付き範囲、below は pruned か all＝トンネル・掘割を見送らない計測専用、flags は --accept-extract や --baseline tests/fixtures/expresswayScorecard.ship.json、固定点 block の計測なら --partition blocks --quiet-factor 1.5、縦断の目的は既定 v2 で重みの掃引なら --grade-change 1 --reach 150、比較用の旧い目的なら --objective v1、決定の表を外すなら --decisions none・feet-only・structures-only（値は当てる表）など）
 measure-expressway-area label range="ship" below="pruned" flags="":
     pnpm exec tsx scripts/expressway.ts --range {{ range }} --below {{ below }} --out .cache/expressway-area/{{ label }} --label {{ label }} --report .qa/expressway/{{ label }}.report.json {{ flags }}
 
@@ -431,6 +431,10 @@ measure-shader-prebuild label="run" base="http://localhost:5173/tokyo-od-game/" 
 # 止まっている地点（既定は東京駅、視界 far）で、近景の建物のタイルが持つ配列を種類ごと（位置・法線・UV・索引・外壁の属性・テクスチャ・b3dm の表）に足し上げ、LRU の数字と GC 後のヒープ・配列の実体と並べて .qa/memory-tiles/<label>.json に書く（args に --start・--view、表と読み込みの結果を外して測り直す --drop-tables、持ち主を見る --probe-holders）
 measure-tile-memory label="run" base="http://localhost:4174/tokyo-od-game/" *args:
     pnpm exec tsx scripts/qa/memory-tiles.ts --label {{ label }} --base {{ base }} {{ args }}
+
+# 夜雨の東京駅から、未読込の地域へのワープと移動中のワープの置き換えで CPU プロファイルを取り、50 ms を超えたフレームの中の時間を関数・ゲームのファイル・旧性能 PR の候補ごとに足し上げて .qa/frame-attribution/<label>/ に書く（開発サーバーが必要。args に --modes coldWarp,latestWarp・--interval（µs）・--over（ms））
+measure-frame-attribution label="run" base="http://localhost:5173/tokyo-od-game/" *args:
+    pnpm exec tsx scripts/qa/frame-attribution.ts --label {{ label }} --base {{ base }} {{ args }}
 
 # 首都高の床版の上に自車を置き、昼と雨の夜のフレーム間隔を 12 秒ずつ測って .qa/perf-deck-<label>.json に書く（A/B は変更前を別の開発サーバーで配って base を替える）
 measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
