@@ -394,6 +394,48 @@ describe("構造の決定の表（structureDecisions.ts、S6 PR 7c）: 盛土の
     ).toEqual([]);
   });
 
+  it("judges T13 in the scorecard's violations by the table the build was given (R1-3 --decisions), not the module's", () => {
+    // The first embankment's whole stretch, longer than smoothM (T13 names no shorter miss).
+    let end = list.indexOf(emb);
+    while (list[end + 1]?.structure === "embankment") end++;
+    const tail = list[end];
+    const decided = row(e0, tail.st[tail.st.length - STATION_STRIDE]);
+    expect(decided.s1 - decided.s0).toBeGreaterThan(HEIGHT_STRUCTURES.value.smoothM);
+    const built = solvePlan(
+      planNetwork(net, new Set(), null, [], { structures: "height", structureDecisions: [decided] }),
+      mound,
+      [],
+    );
+    expect(structureAt(built.chunks, mid)).toBe("viaduct");
+    const t13 = (table?: readonly StructureDecision[]) =>
+      violationsOf(
+        { runs: built.runs, diagnostics: built.diagnostics },
+        built.chunks,
+        () => undefined,
+        true,
+        table,
+      ).T13.count;
+    // The table given is the one read: with the row the decided viaduct holds; the module's table
+    // (the default, which names no run 2) and an empty one find it off its height. Were the table
+    // given ignored, the first would be the default's count.
+    expect(t13([decided])).toBe(0);
+    expect(t13([])).toBeGreaterThan(0);
+    expect(t13()).toBe(t13([]));
+    // The lenient direction a stale table would go: an embankment built without the row passes with
+    // the row read or not (a decided stretch allows both classes). So only the viaduct above, judged
+    // against an empty table, shows T13 reading the table it is given.
+    const plainV = (table?: readonly StructureDecision[]) =>
+      violationsOf(
+        { runs: plain.runs, diagnostics: plain.diagnostics },
+        plain.chunks,
+        () => undefined,
+        true,
+        table,
+      ).T13.count;
+    expect(plainV([decided])).toBe(0);
+    expect(plainV([])).toBe(0);
+  });
+
   it("leaves a stretch the table does not name as it was", () => {
     const other = solvePlan(
       planNetwork(net, new Set(), null, [], {

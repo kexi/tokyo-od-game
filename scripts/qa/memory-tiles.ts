@@ -9,6 +9,17 @@
 // buffer (the file's body kept alive) shows as buffer bytes over the attributes' own.
 // Why not a heap snapshot: the game's never arrived in 20 minutes (knowledge/memory-growth.md).
 //
+// --time-parse (M3, #10・#16・#27): every tile's parse, its load-model and the landmark cut-outs,
+// timed from before the first tile: the page's preload catches window.__game as main.ts sets it
+// (a setter on window), before the first frame asks for a tile. Per parse: the whole of it (it
+// waits on the Draco worker), its synchronous prefix (main thread only: the b3dm's header, its
+// feature and batch tables, the glTF's JSON chunk), and the JSON.parse calls inside that prefix,
+// told apart by what they return (a glTF has `asset`, a feature table `BATCH_LENGTH`, the rest is
+// the batch table). load-model by the tiles' dispatchEvent (the listeners are closures), the cut by
+// Buildings.cutFootprints (TS-private, a plain method at run time).
+// Why not wrap at "ready" as before: the near town loads under the loading screen, so that wrap saw
+// 158–162 parses of 415–427 near tiles (memory-growth.md M3).
+//
 //   just measure-tile-memory label base [args]
 //   pnpm exec tsx scripts/qa/memory-tiles.ts --label L [--base URL] [--start lat,lon] [--view far] [--drop-tables] [--probe-holders] [--time-parse]
 //
@@ -30,7 +41,84 @@ const base = flag("base") ?? "http://localhost:5173/tokyo-od-game/";
 const start = flag("start") ?? "35.6812,139.7671";
 const view = flag("view") ?? "far";
 const url = `${base}?start=${start}&time=day&weather=clear&seed=20261115`;
-const preload = `try { localStorage.setItem("tod.graphics", JSON.stringify({ viewDistance: ${JSON.stringify(view)} })); } catch {}`;
+const isTimed = argv.includes("--time-parse");
+/** Page-side (--time-parse): the timers of the header, installed as main.ts sets window.__game. */
+const TIME_PARSE = `(() => {
+  const T = (window.__tp = { parses: [], loads: [], cuts: [], installedAt: null, error: null, inSync: false, cur: null });
+  const nativeParse = JSON.parse;
+  JSON.parse = function (text, reviver) {
+    const isInPrefix = T.inSync && T.cur !== null;
+    if (!isInPrefix) return nativeParse.call(JSON, text, reviver);
+    const t0 = performance.now();
+    const r = nativeParse.call(JSON, text, reviver);
+    const ms = performance.now() - t0;
+    const isObject = r !== null && typeof r === "object";
+    const isGltf = isObject && "asset" in r;
+    if (isGltf) { T.cur.gltf += ms; return r; }
+    T.cur.table += ms; T.cur.tableChars += String(text).length;
+    return r;
+  };
+  const timeLoads = (tiles, who) => {
+    const isWrapped = !tiles || tiles.__tpTimed;
+    if (isWrapped) return;
+    const dispatch = tiles.dispatchEvent.bind(tiles);
+    tiles.dispatchEvent = (e) => {
+      const isLoad = e?.type === "load-model";
+      if (!isLoad) return dispatch(e);
+      const t0 = performance.now();
+      try { return dispatch(e); } finally { T.loads.push([t0, performance.now() - t0, who]); }
+    };
+    tiles.__tpTimed = true;
+  };
+  const install = (game) => {
+    const b = game?.buildings;
+    const isInstalled = !b || T.installedAt !== null;
+    if (isInstalled) return;
+    T.installedAt = performance.now();
+    const proto = Object.getPrototypeOf(b.tiles);
+    const parse = proto.parseTile;
+    proto.parseTile = function (...args) {
+      const who = this === b.tiles ? "near" : this === b.far ? "far" : "other";
+      const row = { table: 0, gltf: 0, tableChars: 0 };
+      const t0 = performance.now();
+      T.inSync = true; T.cur = row;
+      let pending;
+      try { pending = parse.apply(this, args); } finally { T.inSync = false; T.cur = null; }
+      const syncMs = performance.now() - t0;
+      return Promise.resolve(pending).finally(() =>
+        T.parses.push([t0, performance.now() - t0, who, syncMs, row.table, row.gltf, row.tableChars]));
+    };
+    const cut = b.cutFootprints;
+    b.cutFootprints = function (...args) {
+      const t0 = performance.now();
+      try { return cut.apply(this, args); } finally { T.cuts.push([t0, performance.now() - t0]); }
+    };
+    const watch = () => { timeLoads(b.tiles, "near"); timeLoads(b.far, "far"); };
+    watch();
+    setInterval(watch, 200);
+  };
+  let game;
+  Object.defineProperty(window, "__game", { configurable: true, enumerable: true,
+    get: () => game,
+    set: (v) => { game = v; try { install(v); } catch (e) { T.error = String(e); } } });
+})();`;
+const preload = `try { localStorage.setItem("tod.graphics", JSON.stringify({ viewDistance: ${JSON.stringify(view)} })); } catch {}
+${isTimed ? TIME_PARSE : ""}`;
+
+const tenth = (v: number | null) => (v === null ? null : Math.round(v * 10) / 10);
+/** Count, median, 90th percentile, largest and sum of `values` (ms, 0.1 ms). */
+function spread(values: readonly number[]) {
+  const sorted = values.toSorted((a, b) => a - b);
+  const at = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? null;
+  const r = tenth;
+  return {
+    n: sorted.length,
+    median: r(at(0.5)),
+    p90: r(at(0.9)),
+    max: r(sorted.at(-1) ?? null),
+    sum: r(sorted.reduce((a, b) => a + b, 0)),
+  };
+}
 /** The tiles stop streaming for this long before the count (perf-buildings.ts waits the same). */
 const QUIET_MS = 5000;
 const QUIET_MAX_MS = 60_000;
@@ -121,17 +209,6 @@ let out: Record<string, unknown> = { label, base, url, view };
 try {
   await b.send("Page.navigate", { url });
   await until("window.__game?.getState() === 'ready'");
-  // --time-parse: every tile's parseTile timed, on the renderers' shared prototype (M3).
-  if (argv.includes("--time-parse")) {
-    await b.evaluate(`(() => {
-      const proto = Object.getPrototypeOf(__game.buildings.tiles);
-      if (proto.__timed) return;
-      const parse = proto.parseTile;
-      window.__parses = [];
-      proto.parseTile = async function (...args) { const t0 = performance.now(); try { return await parse.apply(this, args); } finally { window.__parses.push([t0, performance.now() - t0, this === __game.buildings.tiles ? "near" : "far"]); } };
-      proto.__timed = true;
-    })()`);
-  }
   await b.evaluate("window.__game.start()");
   await until("__game.debug.settled().isSettled", 150);
   // The far skyline starts after the town (or 15 s): wait for it to load and settle too.
@@ -150,7 +227,42 @@ try {
     backingMB: Math.round(Number(usage.backingStorageSize) / 1e6),
     census,
   };
-  if (argv.includes("--time-parse")) out.parses = await b.evaluate("window.__parses || []");
+  if (isTimed) {
+    // Rows: parses [t0, ms, renderer, syncMs, tableJsonMs, gltfJsonMs, tableJsonChars], loads [t0, ms,
+    // renderer], cuts [t0, ms] (page ms).
+    type Timed = {
+      parses: Array<[number, number, string, number, number, number, number]>;
+      loads: Array<[number, number, string]>;
+      cuts: Array<[number, number]>;
+      installedAt: number | null;
+      error: string | null;
+    };
+    const tp = await b.evaluate<Timed>(
+      "({ parses: __tp.parses, loads: __tp.loads, cuts: __tp.cuts, installedAt: __tp.installedAt, error: __tp.error })",
+    );
+    const of = (who: string) => tp.parses.filter((p) => p[2] === who);
+    const parseSummary = Object.fromEntries(
+      ["near", "far"].map((who) => [
+        who,
+        {
+          parse: spread(of(who).map((p) => p[1])),
+          sync: spread(of(who).map((p) => p[3])),
+          tableJson: spread(of(who).map((p) => p[4])),
+          gltfJson: spread(of(who).map((p) => p[5])),
+          loadModel: spread(tp.loads.filter((l) => l[2] === who).map((l) => l[1])),
+        },
+      ]),
+    );
+    out.timing = {
+      installedAt: tp.installedAt,
+      error: tp.error,
+      ...parseSummary,
+      cuts: spread(tp.cuts.map((c) => c[1])),
+    };
+    out.parses = tp.parses;
+    out.loads = tp.loads;
+    out.cuts = tp.cuts;
+  }
   // --probe-holders: what else a tile keeps that could hold its file (the loader's result, its
   // parser), on the first tile; dropping only the scene's tables freed nothing (2026-11-17).
   if (argv.includes("--probe-holders")) {

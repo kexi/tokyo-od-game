@@ -1,6 +1,9 @@
 // Which flags of scripts/expressway.ts are for measuring only, so never write public/data/expressway
 // (a build without --out): the reason to stop, or null when the build may write the shipped folder.
 
+import { FOOT_DEFERRALS, type FootDeferral } from "../src/expressway/footDeferrals.ts";
+import { STRUCTURE_DECISIONS, type StructureDecision } from "../src/expressway/structureDecisions.ts";
+
 export type BuildFlags = {
   hasOut: boolean;
   /** --below all: the tunnels and cuts kept (measuring). */
@@ -35,6 +38,8 @@ export type BuildFlags = {
   isBelowJoinsCompile?: boolean;
   /** --portal-approach cut (S7-2: the runs at grade before a tunnel's portal lowered as cuts). */
   isPortalApproachCut?: boolean;
+  /** --decisions other than all (R1-3: a decisions' table not applied). */
+  isDecisionsOff?: boolean;
 };
 
 const MEASURE = "give --out (just measure-expressway-area)";
@@ -93,6 +98,9 @@ export function shippedFolderRefusal(f: BuildFlags): string | null {
   // S7-2: lowering the approaches moves the decks over them; S7-6 makes it the default.
   if (f.isPortalApproachCut)
     return `--portal-approach cut is for measuring until S7-6 makes it the default: ${MEASURE}`;
+  // R1-3: without a table the build leaves the decided feet in and the decided stretches embankments,
+  // which no review has seen (the rows stay through R1).
+  if (f.isDecisionsOff) return `決定の表を外した生成は計測用 (--decisions): ${MEASURE}`;
   // S6 PR 7c: the network's flags are the default; the values before them are for comparing.
   if (f.isTags) return `--structures tags is for comparing with the structures by height: ${MEASURE}`;
   if (f.isGroundSkip) return `--ground skip is for comparing with the runs at grade compiled: ${MEASURE}`;
@@ -137,4 +145,38 @@ export function portalApproachRefusal(mode: string, belowJoins: string): string 
   if (isOff) return null;
   if (belowJoins !== "compile") return "--portal-approach cut needs --below-junctions compile";
   return null;
+}
+
+/** The values of `--decisions` (R1-3): the tables applied, `all` by default. */
+export const DECISIONS = ["all", "none", "feet-only", "structures-only"] as const;
+export type Decisions = (typeof DECISIONS)[number];
+
+/**
+ * The reason `--decisions` cannot be taken, or null (R1-3). Why stop on an unknown value and not read
+ * it as `all`: a mistyped `feet-only` would build with both tables and be measured as without one.
+ */
+export function decisionsRefusal(mode: string): string | null {
+  const isKnown = (DECISIONS as readonly string[]).includes(mode);
+  if (isKnown) return null;
+  return `unknown --decisions ${mode} (${DECISIONS.join(", ")})`;
+}
+
+/**
+ * The decisions' tables a `--decisions` value applies (R1-3). The value names the tables applied, not
+ * those left out: `feet-only` applies the feet's row and leaves the two structure rows out. Null for
+ * `all`: the build passes no table, and planNetwork and the scorecard read the modules' as before the
+ * flag (a build without the flag keeps its bytes). Why not pass the modules' tables for `all` too: the
+ * same rows, through a second path that would have to stay the same for nothing.
+ */
+export function decisionTablesOf(
+  mode: Decisions,
+): { footDeferrals: readonly FootDeferral[]; structureDecisions: readonly StructureDecision[] } | null {
+  const isAll = mode === "all";
+  if (isAll) return null;
+  const isFeetApplied = mode === "feet-only";
+  const isStructuresApplied = mode === "structures-only";
+  return {
+    footDeferrals: isFeetApplied ? FOOT_DEFERRALS : [],
+    structureDecisions: isStructuresApplied ? STRUCTURE_DECISIONS : [],
+  };
 }

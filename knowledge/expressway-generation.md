@@ -7,12 +7,16 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:vitest-r1-5-pr133, at: 2026-11-24T04:00:00Z }
   - { by: process:control-heights-r1-5a, at: 2026-11-24T00:40:00Z }
   - { by: process:vitest-format-main-r1-cs, at: 2026-11-24T00:45:00Z }
   - { by: process:check-street-drive-r1-5a-a1, at: 2026-11-23T15:02:00Z }
   - { by: process:check-deck-drive-r1-5a-a5, at: 2026-11-23T13:38:00Z }
   - { by: process:vite-build-r1-5a-a4, at: 2026-11-23T13:20:00Z }
   - { by: process:vitest-r1-5a, at: 2026-11-23T15:05:00Z }
+  - { by: process:measure-expressway-area-r1-3-decisions, at: 2026-11-23T18:59:00Z }
+  - { by: process:probes-r1-3-decisions, at: 2026-11-23T19:10:00Z }
+  - { by: process:vitest-r1-3, at: 2026-11-23T19:30:00Z }
   - { by: process:measure-expressway-area-s7-2-cut2, at: 2026-11-23T03:02:00Z }
   - { by: process:measure-expressway-area-s7-2-baselines, at: 2026-11-23T07:26:00Z }
   - { by: process:vitest-s7-2, at: 2026-11-23T07:32:00Z }
@@ -4709,9 +4713,10 @@ S6 PR 7c の街路の走行（`.qa/street-drive.mts`、git に無く古い workt
   - **known**: 探りの事例の一覧（`--site-lanes`: `check-expressway-lanes --cases`、`--hole-lanes`: `check-hole-lanes --cases`）を渡すと、**全部の不合格の全部の点**（帯の下・上を外れた全部の測り、建物・止まり・respawn のログの lat/lon、止まった点）がどれかの事例の内にあるとき `known`（事例の key つき）。点を持たない不合格（落下・測った数 0・経路なし・置けない）が 1 つでもあれば known にしない。#132 の初めの版は帯を外れた最初の 1 点だけを見て、点の無い建物・止まりを見ず、事例の内で沈んでから外で建物に当たった走行を known にしていた（レビュー M2、テストに再現）。合格には数えず、結果の `summary.json` で pass・fail・known・invalid を分ける。事例の届く幅は探りと同じ（lane-in-site は床版の半幅 + 壁高欄 `PARAPET_WIDTH`、street-lane-over-cut は穴の半幅 `holeHalfM` + 探りの余裕 `HOLE_SITE_MARGIN_M` 1 m を掘割のチャンクの区間で。余裕は `expresswayHoleLanes.ts` から `expresswaySiteLanes.ts` へ移して共有した）。
 - **main との比べ**（`--baseline <main の結果のフォルダ>`、コーディネーターの決定 2026-11-24）: S7-6 の線は「main の結果に無い不合格 0」（床版の走行の「main と同じ合否」と同じ考え）。**main の結果は、main の checkout を main のデータで走らせた物**（同じ新しいデータを main のコードで走らせた物ではない: データだけを変える PR でそれを読むと、コードが同じなので全部が同じ結果になる）。
   - **種類で比べる**: 今の回の不合格の種類（数を除く）が、main の回のその場所の不合格の種類の部分集合のときだけ `known-main`。新しい種類が 1 つでもあれば不合格（main で沈んだだけの場所の respawn など）。止まった距離・帯の外の数が増えたのは、同じ種類として読む。#132 の初めの版は場所で比べ、main でも落ちる 13 か所では新しい不合格も隠れていた（レビュー M3）。
+  - **baseline は main の `summary.json` の鍵と同じ鍵の結果だけを読む**（`readMainResults`）。main のフォルダに main の古いデータの結果（main の側の `stale`）が残っていても、main の結果として比べない。summary の無いフォルダ・鍵の無い summary・その回の結果で `kinds` の無い物（種類を持つ前の版）は、使えないと言って止まる: 種類が無いと、無しと読めば全部が新しい不合格になり、全部と読めば隠れる（再レビュー r1・r3）。
   - `known-main` は合格に数えず、`summary.json` の `knownMain` に分ける。main が合格・未走行・invalid の場所は、そのまま不合格。結果のファイルに main の判定・種類・`served` を写す。
-- 結果は場所ごとに `.qa/street-drive-<label>/<id>.json`（配ったデータの鍵・場所・点・判定・各回）。**再開は、配ったデータ（meta とタイルのハッシュ）・事例の一覧・`--baseline` が今の回と同じ結果だけを飛ばす**（`scripts/qa/streetResults.ts`）。違う結果は走り直し、走らない場所の違う結果は `summary.json` の `stale` に出して数えない。invalid の結果も残るので、走り直すにはファイルを消す。
-- `summary.json` の `missing` は、表の場所のうち今の回の結果が無い物（`--only` で分けて走らせた途中など）。**終了コードは、不合格 1、invalid 2、missing 5、known 3、known-main だけ 4、全部合格 0**（`exitCodeOf`）。missing があると 0 にならないので、分けて走らせた途中のフォルダは緑に読めない。
+- 結果は場所ごとに `.qa/street-drive-<label>/<id>.json`（配ったデータの鍵・場所・点・判定・各回）。**再開は、配ったデータ（meta とタイルのハッシュ）・事例の一覧（ファイルの中身の SHA-256）・`--baseline`（main の summary の鍵と、読んだ main の場所ごとの判定・種類の SHA-256、`baselineSha256`）が今の回と同じ結果だけを飛ばす**。パスではなく中身なので、同じパスに書き直した一覧は別の回になる。main の判定が 1 か所でも変われば（同じフォルダに走り直して合格になった、実行時のコードだけが変わった）別の回になり、古い `known-main` は残らない（#133 のレビュー B1: main の鍵だけでは、main が合格に戻った場所の known-main が再開で残った）（`scripts/qa/streetResults.ts`）。違う結果は走り直し、走らない場所の違う結果は `summary.json` の `stale` に出して数えない。invalid の結果も残るので、走り直すにはファイルを消す。
+- `summary.json` の `missing` は、表の場所のうち今の回の結果が無い物（`--only` で分けて走らせた途中など）。**終了コードは、不合格 1、invalid 2、missing 5、known 3、known-main だけ 4、全部合格 0**（`exitCodeOf`）。missing があると 0 にならないので、分けて走らせた途中のフォルダは緑に読めない。 baseline を読めない（summary が無い: main をそこで走らせていない・途中で止まった、鍵が無い、種類が無い）ときは、走る前に終了コード 6 で止まる。配ったデータの照らし合わせ（`servedData.ts`）で止まるときは 1（床版の走行と同じ）。走りの初めに `summary.json` を消し、終わりに書くので、途中で止まった main のフォルダは baseline に使えない（#133 のレビュー o1）。
 
 ## 計測のフォルダを配る（`scripts/xwDataServe.ts`、`just serve-expressway-data <dir> [port]`）
 
@@ -4910,6 +4915,56 @@ PR #135 のレビュー（Opus）が一時の写しで測った数（「取り�
 - central のブラウザの走行（R1-5・R1-7 で行う）。
 - コライダーの確かめで、箱が当たった面が何か（壁高欄・分離壁・路面）。
 - 同じ面で低い制限速度になるランプの posted の出どころ（ランプの posted が本線より高い理由）。
+
+# P2.7 R1-3 決定の表を外した版の計測（`--decisions`、既定は all で出力は不変、2026-11-23〜24）
+
+**結論**: 決定の表（`footDeferrals.ts` の足 1 行、`structureDecisions.ts` の構造 2 行）を外した版を、既定範囲・central の 2 つの形で作った。どの形でも、表を外して出る探りの事例は、同じ形の `all` に在る物（甲）と、表の行に帰せる物（乙）だけで、それ以外（丙）は 0。未収束・違反（T1〜T7・T12・T13）・dangling・deckMismatch は 0、閉鎖は `all` と同じ、足の探りの違反 0。**表の 3 行は R1 では残す**（足 203832842 はユーザーの決定「R1 では戻さない」2026-11-18、構造の 2 行は R1-2b の後に測り直して決める）。この項目は、表を空にできるかの判定はしない。表の行は 1 文字も変えていない。
+
+**フラグ**（`scripts/expressway.ts`、番人は `scripts/expresswayGuards.ts`）:
+
+- `--decisions all｜none｜feet-only｜structures-only`。**値は当てる表**（外す表ではない）。`feet-only` は足の表だけを当てる（構造の 2 行を外す）、`structures-only` は構造の表だけを当てる（足の 1 行を外し、203832842 が戻る）。
+- `decisionTablesOf` が値から 2 つの表を返し、`PlanOptions.footDeferrals`・`structureDecisions` で渡す。`all` は null で、オプションを渡さない（前と同じ道）。フラグなしで既定範囲を作り直して `git status public/data/expressway` が空（45d84d5）。
+- `all` 以外は `--out` が無ければ止まる（「決定の表を外した生成は計測用」）。知らない値も止まる。生成の最初のログ `expressway_extract_checked` に `decisions`。
+- 表の読み手は 4 つ: `compile.ts` の足（`options.footDeferrals`）、構造（`plan.structureDecisions` → `structuresByHeight`）、記録（`plan.feet`・`plan.decidedViaducts`）、T13。**スコアカードの T13（`violations.ts` → `checkHeightStructures`）だけは、モジュールの表を直接読んでいた**（`decisions` に `undefined`）。`violationsOf` に任意の引数 `structureDecisions`（既定は今の表）を足して、渡した表で判定する。行の区間は「盛土か高架」のどちらも許すので、古い表で判定すると甘くなる向きに外れる（違反が出ないので見えない）。テストは、行で高架にした区間を空の表で判定すると T13 が出ることで確かめる。
+
+**ship と central の記録に `ground.deferred` が出なかった件（直した、別の commit）**:
+
+- 原因: `--range ship` では `checkFootDeferrals` が範囲の内を `chosen.has(run)` で聞いていた。`chosen`（`shipRuns`）は計画の run からしか選ばず、外した足の run は計画から外されているので、いつも範囲の外になり、`deferredOf` に落とされた（スコアカードの `ground.feet` には deferred の行が在った）。
+- 直し: 選んだ範囲では、地下の見送り（`belowDeferrals`）と同じく、外した run の鎖に選んだ run があるかで聞く。箱の範囲は前と同じ線で聞く。既定範囲の出力は不変。
+- 動いた物: 基準 fixture 2 本（ship・ship-all、版 11 のまま）に `ground.deferred`（203832842:end:R1）が足され、`size.record` が raw +58・gzip +40／+36。ship のフォルダの `report.json` の `ground` にも同じ行。チャンクは不変（`r1-cs-48dc699` と `r13-cs-all` の 1,691 チャンクが一致。直す前に作った `r1-cs-48dc699` の `report.json` には `ground.deferred` が無い）。`tests/expresswayData.test.ts` の「外した足が `ground.deferred` と 1 対 1」は、`r13-c-all`・`r13-cs-all` を `XW_DATA_DIR` にして通る（直す前の `r1-cs-48dc699` では落ちる）。
+- 落とし穴: `just compare-expressway-reports --check` は、足された `ground.deferred` を「changed」に数えない（出るのは `size.record` だけ）。欄の足し引きは JSON を直接比べて見る。
+
+**形**: 今の形 = `--below pruned`（既定範囲）／`--below pruned --run-borders cut --districts central`（central）。S7 の形 = `--below all --below-junctions compile --portal-approach cut --run-borders cut`（central は `--districts central` も）。`--below-chains` は main に無い（S7-3b の前）。
+
+**数**（甲・乙・丙は場所〔run と s の範囲の重なり〕で突き合わせた。比べる相手は同じ形の `all`）:
+
+| 生成                              | lane-in-site | street-lane-over-cut | (乙)                                        | (丙) | 構造が変わった区間                                                                        | 0.05 m を超えて動いた run                                                                                                  |
+| --------------------------------- | ------------ | -------------------- | ------------------------------------------- | ---- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `r13-d-all`（既定範囲・今の形）   | 8            | 1 run・22 車線       | —                                           | —    | 既定のデータと全チャンク一致（314）                                                       | —                                                                                                                          |
+| `r13-d-feet-only`                 | 10           | 1・22                | 895902565:1 の 2 件                         | 0    | 895902565 盛土 0〜57.6 → 0〜89.2、45021976 高架の終わり 3414 → 3410.6（行の区間の内だけ） | 無し（最大 0.001 m）                                                                                                       |
+| `r13-d-structures-only`           | 10           | 2・26                | 203832842:0 の 2 件、穴 203832842（6 車線） | 0    | 203832842 が戻る（盛土 0〜27.5、掘割 27.5〜68.9）                                         | 737538573 0.343、45021976 0.294、24402611 0.100                                                                            |
+| `r13-d-none`                      | 12           | 2・26                | 上の 4 件と穴                               | 0    | 上の 3 つ                                                                                 | 737538573 0.343、45021976 0.296、24402611 0.100                                                                            |
+| `r13-ds-all`（既定範囲・S7 の形） | 10           | 4・66                | —                                           | —    | —                                                                                         | —                                                                                                                          |
+| `r13-ds-none`                     | 14           | 5・70                | 4 件と穴                                    | 0    | 3 つ                                                                                      | 737538573 0.342、45021976 0.296、24402611 0.100                                                                            |
+| `r13-c-all`（central・今の形）    | 73           | 52・271              | —                                           | —    | —                                                                                         | —                                                                                                                          |
+| `r13-c-none`                      | 77           | 53・275              | 4 件と穴                                    | 0    | 3 つ                                                                                      | 737538573 0.343、23273634 0.32、45021976 0.296、45248411 0.11、24402611 0.10、24039713 0.093、4853805 0.092、4853804 0.085 |
+| `r13-cs-all`（central・S7 の形）  | **79**       | **59・327**          | —                                           | —    | —                                                                                         | —                                                                                                                          |
+| `r13-cs-none`                     | 83           | 60・331              | 4 件と穴                                    | 0    | 3 つ                                                                                      | 737538573 0.342、23273634 0.32、45021976 0.296、45248411 0.11、24402611 0.10、24039713 0.093、4853805 0.092、4853804 0.086 |
+
+- (乙) の 4 件: 203832842:0 の s 9.7〜23.2（9 m、幅員 40 m、最短 0.84 m）と s 24.6〜26.7（3 m、最短 0.89 m）、895902565:1 の s 72.9〜88.4（14 m、3 車線、最短 1.32 m）と s 85.7〜88.6（4 m、幅員 16 m、最短 1.40 m）。2026-11-18 の控え（R1-2 の担当の `sl-r12-tables-off.json`）と同じ場所・同じ値。7c の記録の 895902565:0 の s 57.6〜71.9 の事例は、どの生成にも出なかった。
+- 場所が同じで値が違う事例（止めずに全部書く）: 45021976:23 の始まりが s 3414.7 → 3412.7（長さ 43 m は同じ、最短 0.01 → 0）／45021976:23 の s 3507.7〜3508.3 の最短 2.73 → 2.74 m（構造の行の区間の外だが、同じチャンクの構造が変わる値で出る。`structures-only` では動かない）／穴 737538573 が 22 → 20 車線（並びと長さが変わる）。
+- 既定範囲の今の形（`r13-d-all`）は台帳と同じ（lane-in-site 8 か所、street-lane-over-cut 737538573・22 車線）。central の今の形の 73・52 run・271 車線は前の記録と同じ。**S7 の形の central（公開の形）は 79・59 run・327 車線**（今の形より +6 か所、+7 run・+56 車線。増えた穴は 4848875・4848883・4854085・1127507748・405795841・406000909・4853044）。既定範囲の S7 の形で、今の形に無い事例は lane-in-site の 378284472:0・378284483:1（どちらも幅員 4.3 m・10 m）と、穴の 4848875・4848883・4854085（S7-6 の台帳の材料）。
+- 穴 737538573 の車線（`r13-d-all` → `r13-d-none`、22 → 20）: 足を外すと 幅員 4.3 m の 3 本（5・5・6 m）と、幅員 40 m の 4 本（14・65・68・68 m、最短 0.01 m を含む）が無くなり、幅員 40 m の 5 本（19・22・22・6・43 m、最短 1.05〜5.1 m）が足される。ほかの 13 本は同じ（区間の番号は網で変わる）。戻った 203832842 の穴の 6 車線は 13・6・11・11・21・6 m、最短 0.05〜3.1 m。
+- 足の探り（`check-expressway-feet --cache-only`）: 10 の生成とも違反 0（203832842 が戻る版も）。違反に数えない欄は、`all` と `none` で同じ: central の今の形で急な足 1（38028908:start、84°）、central の S7 の形で急な足 2（38028908:start、5170994:end の 85°）とつながらない足 2（46151740:start、5203882:start）。
+- 地形の探り（`check-expressway-terrain`）: 既定範囲の今の形の 4 つの値は、路面の上の地形・街路の点 0（`endTerrainOut` は 68〜71）。**S7 の形と central では `all` でも 0 でない**（値で変わらない）: 既定範囲・S7 の形 10 点（23705286:0、0.06 m）と街路 41 点、central・今の形 10 点（28368866:2・38028908:0・333682063:1、最大 0.55 m）、central・S7 の形 1,942 点（5204787:2 が 1,818 点・最大 6.59 m、ほか 276920911:2・24636427:0〜1）と街路 1,936 点。S7 の担当の持ち物として渡す（この項目では直さない）。
+- 同じ道の切れ端の探り: どの生成も帯の内の切れ端 0。`measure-street-bands` の類は、構造の 2 行を外すと A・B1・C が 1 ずつ、足の行を外す（足が戻る）と B2 が 1 増える。
+- 記録だけの物: 23273634（203832842 の前の高架）の端は、`all` で地表端（end の勾配 3.5 %）、`none` で seam（start の勾配 1.17 %）。7c の値と同じ。麻布台の穴（737538573:2 の `boreHoles`）は、足を当てる版で 16 頂点・1,503 m²、足を外す版で 14 頂点・1,466 m²。895902565 の s 70 の橋脚は、構造の行を外すと無くなる（盛土になる）。
+
+**確かめていないこと**: どの版もブラウザで走らせていない・撮っていない（行を消さないので、走行は行を消す PR で）。central で、構造の行と同じ型（main の高架の下を車線が通れた所が盛土で塞がれた所）がいくつあるかは数えていない（R1-6 の材料）。S7-3b の `--below-chains compile` を足した形は測っていない。
+
+**R1-7 への申し送り**: 表は空にしない。足の行の `until: "R1"` と `release`、構造の行の `RELEASE` の文は、もう事実と合わない（中央帯の規則は取り下げた）。`until` は `report.json` の `ground.deferred` に出るので、直すなら作り直しの PR で。`reason`・`release`・`decidedBy`・`decidedAt` は出力に出ない。`--districts` の生成では、外した足の範囲の内は出荷範囲の全体で聞く（`belowDeferrals` と同じ。段に絞らない）。行が central の 1 行だけの今は違いが出ないが、central 以外の段の生成と 1 対 1 の検査が会う所で決める。
+
+**trust signal**: 生成 12 本（ship の基準 2 本、既定範囲 6 本、central 4 本）は、1 本ずつ鍵を取って作った（2026-11-23 13:50〜19:00 UTC、M2 Max、devshell）。ログの build は 45d84d5（ship/pruned）、3aa72e8・d985ae9（ship/all、生成の途中で commit した）、d985ae9（残り 10 本）で、どれも `+`（汚れた木）なし。3 つの commit の `src/`・`scripts/` は同じで、間の commit は `.qa/` と基準 fixture だけ。フラグなしの作り直しは 45d84d5。`r1-cs-48dc699`（S7 の形の central、R1-4・R1-5 と共通）は 48dc699。探り（車線・穴・足・地形・同じ道・街路の帯）はゲームと同じ網で、タイルの飛ばし 0。比べの道具と控えは枝 `feat/expressway-decisions-flag` の `.qa/r13/`（`classify.mjs`・`struct.mts`・`records.mts`、`cls-*.json`・`struct-*.json`・`p-*-lanes.json`・`p-*-holes.json`）。テスト: `tests/expresswayGuards.test.ts`（番人と値の表）、`tests/expresswayHeightStructures.test.ts`（T13 が渡した表を読む）、`tests/expresswayFeet.test.ts`（選んだ範囲で外した足が鎖で範囲の内）。
 
 # 未対応・既知の欠落
 
