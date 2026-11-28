@@ -1,0 +1,12 @@
+
+ RUN  v5.0.3 /Users/kei/ghq/github.com/kexi/tokyo-od-game/.claude/worktrees/agent-a3643aa5cb7a2eb02
+
+
+ Test Files  205 passed (205)
+      Tests  2867 passed | 4 skipped (2871)
+   Start at  04:04:33
+   Duration  45.61s (tests 75%, import 18%, transform 7%)
+
+    Isolate  205 workers spawned · ~143ms startup each (spawn + environment, per file)
+             at least ~2.52s faster with isolate: false — reuses workers across files instead of one per file
+

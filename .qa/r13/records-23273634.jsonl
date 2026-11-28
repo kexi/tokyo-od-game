@@ -1,0 +1,4 @@
+{"label":"r13-c-all","run":"23273634","start":{"kind":"junction","parent":"45021976","parentS":3411.76,"z":19.903,"grade":0.0075,"bank":0},"end":{"kind":"ground","z":20.29,"grade":0.035,"ground":20.29,"bank":0}}
+{"label":"r13-c-none","run":"23273634","start":{"kind":"junction","parent":"45021976","parentS":3411.76,"z":19.967,"grade":0.0117,"bank":0},"end":{"kind":"seam","parent":"203832842","parentS":0,"z":20.21,"grade":-0.00591,"bank":0}}
+{"label":"r13-cs-all","run":"23273634","start":{"kind":"junction","parent":"45021976","parentS":3411.76,"z":19.903,"grade":0.0075,"bank":0},"end":{"kind":"ground","z":20.29,"grade":0.035,"ground":20.29,"bank":0}}
+{"label":"r13-cs-none","run":"23273634","start":{"kind":"junction","parent":"45021976","parentS":3411.76,"z":19.967,"grade":0.0117,"bank":0},"end":{"kind":"seam","parent":"203832842","parentS":0,"z":20.21,"grade":-0.00592,"bank":0}}

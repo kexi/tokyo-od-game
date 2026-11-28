@@ -1,0 +1,2 @@
+pnpm exec tsx scripts/expresswayHoleLanes.ts public/data/expressway --cases .qa/r13/holes-default.json
+{"ts":"2026-11-23T13:08:54.486Z","level":"info","event":"expressway_hole_lanes_measured","traceId":"76412583-a451-41dc-aeb5-b6c535ede59e","build":"48dc699@0.1.0","dir":"public/data/expressway","runs":1,"lanes":22,"longestM":68,"skippedForMissingTiles":0,"byRun":[{"run":"737538573","lanes":22,"longestM":68}]}

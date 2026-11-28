@@ -1,0 +1,10 @@
+r13-d-all
+r13-d-feet-only
+r13-d-structures-only
+r13-d-none
+r13-ds-all
+r13-ds-none
+r13-c-all
+r13-c-none
+r13-cs-all
+r13-cs-none

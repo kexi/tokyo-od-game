@@ -1,0 +1,2 @@
+pnpm exec tsx scripts/expresswayHoleLanes.ts .cache/expressway-area/r13-d-feet-only --cases .qa/r13/p-r13-d-feet-only-holes.json
+{"ts":"2026-11-23T15:25:16.426Z","level":"info","event":"expressway_hole_lanes_measured","traceId":"c20e30bc-c511-43a5-bc2f-cf84282afa46","build":"d985ae9@0.1.0","dir":".cache/expressway-area/r13-d-feet-only","runs":1,"lanes":22,"longestM":68,"skippedForMissingTiles":0,"byRun":[{"run":"737538573","lanes":22,"longestM":68}]}

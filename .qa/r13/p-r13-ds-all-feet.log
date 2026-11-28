@@ -1,0 +1,2 @@
+pnpm exec tsx scripts/expresswayFeetProbe.ts .cache/expressway-area/r13-ds-all --cache-only
+{"ts":"2026-11-23T16:24:04.273Z","level":"info","event":"expressway_feet_probed","traceId":"e15da9a0-22f8-4b5f-af2a-32166421877e","build":"d985ae9@0.1.0","dir":".cache/expressway-area/r13-ds-all","feet":10,"groundRunFeet":3,"skippedForMissingTiles":0,"joined":{"atGrade":3,"street":7,"inside":0,"unattached":0},"violations":0,"violating":[],"unattachedFeet":[],"maxLegDeg":45,"steepFeet":[],"durationMs":504}

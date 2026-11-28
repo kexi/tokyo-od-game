@@ -1,0 +1,11 @@
+{"label":"default","azabudaiHole":[{"vertices":16,"areaM2":1503}],"piers895902565_50to100":[70]}
+{"label":"r13-d-all","azabudaiHole":[{"vertices":16,"areaM2":1503}],"piers895902565_50to100":[70]}
+{"label":"r13-d-feet-only","azabudaiHole":[{"vertices":16,"areaM2":1503}],"piers895902565_50to100":[]}
+{"label":"r13-d-structures-only","azabudaiHole":[{"vertices":14,"areaM2":1466}],"piers895902565_50to100":[70]}
+{"label":"r13-d-none","azabudaiHole":[{"vertices":14,"areaM2":1466}],"piers895902565_50to100":[]}
+{"label":"r13-ds-all","azabudaiHole":[{"vertices":16,"areaM2":1504}],"piers895902565_50to100":[70]}
+{"label":"r13-ds-none","azabudaiHole":[{"vertices":14,"areaM2":1467}],"piers895902565_50to100":[]}
+{"label":"r13-c-all","azabudaiHole":[{"vertices":16,"areaM2":1503}],"piers895902565_50to100":[70]}
+{"label":"r13-c-none","azabudaiHole":[{"vertices":14,"areaM2":1466}],"piers895902565_50to100":[]}
+{"label":"r13-cs-all","azabudaiHole":[{"vertices":16,"areaM2":1504}],"piers895902565_50to100":[70]}
+{"label":"r13-cs-none","azabudaiHole":[{"vertices":14,"areaM2":1467}],"piers895902565_50to100":[]}

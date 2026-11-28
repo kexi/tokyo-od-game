@@ -1,0 +1,2 @@
+pnpm exec tsx scripts/measureSameRoad.ts .cache/expressway-area/r13-ds-all
+{"ts":"2026-11-23T16:24:16.372Z","level":"info","event":"street_same_road_measured","traceId":"b42ba6fb-c6fc-446a-a457-5c1e48180e77","build":"d985ae9@0.1.0","dir":".cache/expressway-area/r13-ds-all","skippedForMissingTiles":0,"lines":1,"alphaM":52,"extendedM":1,"piecesLeft":0,"leftInBandNotFoot":0,"leftAtFoot":0,"byClass":{"1":1},"byThrough":{"dead-end":1},"byEnds":{"site-end/line-end":1},"wholeAlong":1,"partAlong":0,"fragmentsMismatch":0,"islands":0,"keptByVerdict":{"partial":21}}

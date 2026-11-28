@@ -1,0 +1,1306 @@
+{
+ "summary": {
+  "dir": ".cache/expressway-area/r13-d-feet-only",
+  "groups": 14,
+  "siteChunks": 51,
+  "skippedChunksForMissingTiles": 0,
+  "groupsWithoutRegulations": 0,
+  "segments": 20,
+  "totalLengthM": 501,
+  "byClass": {
+   "clear": 2,
+   "A": 9,
+   "A'": 0,
+   "B1": 6,
+   "B2": 0,
+   "B3": 0,
+   "C": 3
+  },
+  "lengthByClass": {
+   "clear": 33,
+   "A": 216,
+   "A'": 0,
+   "B1": 141,
+   "B2": 0,
+   "B3": 0,
+   "C": 111
+  },
+  "fewerLanes": 4,
+  "widened": 5,
+  "edgeOnPavement": 0,
+  "jumps": 18,
+  "jumpsGrown": 10,
+  "jumpMostBeforeM": 12.13,
+  "jumpMostAfterM": 12.1,
+  "withPavement": 13,
+  "footNear": 1,
+  "piersOverLanes": 34,
+  "twoNodes": 1904,
+  "twoNodesWithStop": 6,
+  "twoNodesWithCrossing": 0,
+  "twoNodesWithSignal": 27,
+  "durationMs": 9969
+ },
+ "segments": [
+  {
+   "run": "24402611",
+   "chunk": "24402611:0",
+   "structure": "embankment",
+   "chunks": [
+    "24402611:0",
+    "895902565:7"
+   ],
+   "s0": 32.1,
+   "s1": 58.1,
+   "lengthM": 27,
+   "seg": 821,
+   "segLengthM": 27,
+   "at": [
+    35.671248,
+    139.743158
+   ],
+   "widthM": 50,
+   "travel": 0,
+   "lineOneway": 0,
+   "ruled": false,
+   "lanes": 2,
+   "basis": "jartic",
+   "medianNow": 7.63,
+   "carriagewayNow": 21.63,
+   "room": 43,
+   "right": -9.45,
+   "left": 10.51,
+   "bands": [
+    {
+     "right": -9.45,
+     "left": 10.51
+    }
+   ],
+   "ruling": {
+    "klass": "A",
+    "lanesAfter": 2,
+    "median": 21.02,
+    "carriageway": 35.02
+   },
+   "lanesChange": 0,
+   "widened": true,
+   "offCentre": 2,
+   "edgeOnPavement": false,
+   "pavementShare": 0,
+   "footNearM": null
+  },
+  {
+   "run": "895902565",
+   "chunk": "895902565:7",
+   "structure": "embankment",
+   "chunks": [
+    "24402611:0",
+    "895902565:7"
+   ],
+   "s0": 876.8,
+   "s1": 882.8,
+   "lengthM": 7,
+   "seg": 823,
+   "segLengthM": 29,
+   "at": [
+    35.67113,
+    139.743039
+   ],
+   "widthM": 50,
+   "travel": 0,
+   "lineOneway": 0,
+   "ruled": false,
+   "lanes": 2,
+   "basis": "jartic",
+   "medianNow": 2.65,
+   "carriagewayNow": 16.65,
+   "room": 43,
+   "right": -9.65,
+   "left": 10.17,
+   "bands": [
+    {
+     "right": -9.65,
+     "left": 10.17
+    }
+   ],
+   "ruling": {
+    "klass": "A",
+    "lanesAfter": 2,
+    "median": 20.33,
+    "carriageway": 34.33
+   },
+   "lanesChange": 0,
+   "widened": true,
+   "offCentre": 2,
+   "edgeOnPavement": false,
+   "pavementShare": 0,
+   "footNearM": null
+  },
+  {
+   "run": "24039751",
+   "chunk": "24039751:1",
+   "structure": "cut",
+   "chunks": [
+    "24039751:0",
+    "24039751:1"
+   ],
+   "s0": 106,
+   "s1": 117,
+   "lengthM": 23,
+   "seg": 856,
+   "segLengthM": 127.6,
+   "at": [
+    35.672033,
+    139.744528
+   ],
+   "widthM": 9,
+   "travel": 0,
+   "lineOneway": 0,
+   "ruled": false,
+   "lanes": 1,
+   "basis": "width",
+   "medianNow": 0,
+   "carriagewayNow": 7.5,
+   "room": 9,
+   "right": 3.32,
+   "left": 16.01,
+   "bands": [
+    {
+     "right": 3.32,
+     "left": 16.01
+    }
+   ],
+   "ruling": {
+    "klass": "clear",
+    "lanesAfter": 1,
+    "median": 0,
+    "carriageway": 7.5
+   },
+   "lanesChange": 0,
+   "widened": false,
+   "offCentre": 1,
+   "edgeOnPavement": false,
+   "pavementShare": 0,
+   "footNearM": null
+  },
+  {
+   "run": "24402609",
+   "chunk": "24402609:0",
+   "structure": "embankment",
+   "chunks": [
+    "24402609:0"
+   ],
+   "s0": 0,
+   "s1": 9,
+   "lengthM": 10,
+   "seg": 860,
+   "segLengthM": 162.1,
+   "at": [
+    35.671795,
+    139.744671
+   ],
+   "widthM": 9,
+   "travel": 0,
+   "lineOneway": 0,
+   "ruled": false,
+   "lanes": 1,
+   "basis": "width",
+   "medianNow": 0,
+   "carriagewayNow": 7.5,
+   "room": 9,
+   "right": -16,
+   "left": -4.31,
+   "bands": [
+    {
+     "right": -16,
+     "left": -4.31
+    }
+   ],
+   "ruling": {
+    "klass": "clear",
+    "lanesAfter": 1,
+    "median": 0,
+    "carriageway": 7.5
+   },
+   "lanesChange": 0,
+   "widened": false,
+   "offCentre": 1,
+   "edgeOnPavement": false,
+   "pavementShare": 0,
+   "footNearM": null
+  },
+  {
+   "run": "737538573",
+   "chunk": "737538573:0",
+   "structure": "cut",
+   "chunks": [
+    "737538573:0"
+   ],
+   "s0": 23.8,
+   "s1": 35.8,
+   "lengthM": 13,
+   "seg": 637,
+   "segLengthM": 12.9,
+   "at": [
+    35.659534,
+    139.736709
+   ],
+   "widthM": 40,
+   "travel": 0,
+   "lineOneway": 0,
+   "ruled": false,
+   "lanes": 2,
+   "basis": "jartic",
+   "medianNow": 0,
+   "carriagewayNow": 14,
+   "room": 33,
+   "right": -4.95,
+   "left": 6.89,
+   "bands": [
+    {
+     "right": -4.95,
+     "left": 6.89
+    }
+   ],
+   "ruling": {
+    "klass": "A",
+    "lanesAfter": 2,
+    "median": 13.79,
+    "carriageway": 27.79
+   },
+   "lanesChange": 0,
+   "widened": true,
+   "offCentre": 2,
+   "edgeOnPavement": false,
+   "pavementShare": 0.04,
+   "footNearM": null
+  },
+  {
+   "run": "737538573",
+   "chunk": "737538573:0",
+   "structure": "cut",
+   "chunks": [
+    "737538573:0"
+   ],
+   "s0": 36.1,
+   "s1": 46.1,
+   "lengthM": 11,
+   "seg": 638,
+   "segLengthM": 10.4,
+   "at": [
+    35.65963,
+    139.736751
+   ],
+   "widthM": 40,
+   "travel": 0,
+   "lineOneway": 0,
+   "ruled": false,
+   "lanes": 5,
+   "basis": "jartic",
+   "medianNow": 0,
+   "carriagewayNow": 33,
+   "room": 33,
+   "right": -5.18,
+   "left": 6.88,
+   "bands": [
+    {
+     "right": -5.18,
+     "left": 6.88
+    }
+   ],
+   "ruling": {
+    "klass": "A",
+    "lanesAfter": 3,
+    "median": 13.75,
+    "carriageway": 33
+   },
+   "lanesChange": -2,
+   "widened": false,
+   "offCentre": 3,
+   "edgeOnPavement": false,
+   "pavementShare": 0.04,
+   "footNearM": null
+  },
+  {
+   "run": "737538573",
+   "chunk": "737538573:0",
+   "structure": "cut",
+   "chunks": [
+    "737538573:0"
+   ],
+   "s0": 46.6,
+   "s1": 107.9,
+   "lengthM": 62,
+   "seg": 639,
+   "segLengthM": 89.5,
+   "at": [
+    35.659913,
+    139.736936
+   ],
+   "widthM": 40,
+   "travel": 0,
+   "lineOneway": 0,
+   "ruled": false,
+   "lanes": 2,
+   "basis": "jartic",
+   "medianNow": 0,
+   "carriagewayNow": 14,
+   "room": 33,
+   "right": -8.97,
+   "left": 6.3,
+   "bands": [
+    {
+     "right": -8.97,
+     "left": 6.3
+    }
+   ],
+   "ruling": {
+    "klass": "A",
+    "lanesAfter": 2,
+    "median": 17.95,
+    "carriageway": 31.95
+   },
+   "lanesChange": 0,
+   "widened": true,
+   "offCentre": 2,
+   "edgeOnPavement": false,
+   "pavementShare": 0.06,
+   "footNearM": null
+  },
+  {
+   "run": "45021976",
+   "chunk": "45021976:23",
+   "structure": "embankment",
+   "chunks": [
+    "45021976:23"
+   ],
+   "s0": 3426.4,
+   "s1": 3445.5,
+   "lengthM": 20,
+   "seg": 647,
+   "segLengthM": 19.5,
+   "at": [
+    35.658418,
+    139.736452
+   ],
+   "widthM": 40,
+   "travel": -1,
+   "lineOneway": 0,
+   "ruled": true,
+   "lanes": 3,
+   "basis": "jartic",
+   "medianNow": 0,
+   "carriagewayNow": 10.75,
+   "room": 33,
+   "right": -7.87,
+   "left": 4.08,
+   "bands": [
+    {
+     "right": -7.87,
+     "left": 4.08
+    }
+   ],
+   "ruling": {
+    "klass": "B1",
+    "lanesAfter": 3,
+    "median": 0,
+    "carriageway": 10.75
+   },
+   "lanesChange": 0,
+   "widened": false,
+   "offCentre": 3,
+   "edgeOnPavement": false,
+   "pavementShare": 0.09,
+   "footNearM": null
+  },
+  {
+   "run": "45021976",
+   "chunk": "45021976:23",
+   "structure": "embankment",
+   "chunks": [
+    "45021976:22",
+    "45021976:23"
+   ],
+   "s0": 3412.7,
+   "s1": 3425.7,
+   "lengthM": 16,
+   "seg": 650,
+   "segLengthM": 22.4,
+   "at": [
+    35.658262,
+    139.736438
+   ],
+   "widthM": 40,
+   "travel": -1,
+   "lineOneway": 0,
+   "ruled": true,
+   "lanes": 3,
+   "basis": "jartic",
+   "medianNow": 0,
+   "carriagewayNow": 10.75,
+   "room": 33,
+   "right": -8.03,
+   "left": 4.1,
+   "bands": [
+    {
+     "right": -8.03,
+     "left": 4.1
+    }
+   ],
+   "ruling": {
+    "klass": "B1",
+    "lanesAfter": 3,
+    "median": 0,
+    "carriageway": 10.75
+   },
+   "lanesChange": 0,
+   "widened": false,
+   "offCentre": 3,
+   "edgeOnPavement": false,
+   "pavementShare": 0.12,
+   "footNearM": null
+  },
+  {
+   "run": "737538573",
+   "chunk": "737538573:0",
+   "structure": "cut",
+   "chunks": [
+    "737538573:0"
+   ],
+   "s0": 14.9,
+   "s1": 23,
+   "lengthM": 9,
+   "seg": 657,
+   "segLengthM": 8.6,
+   "at": [
+    35.659439,
+    139.73668
+   ],
+   "widthM": 40,
+   "travel": 0,
+   "lineOneway": 0,
+   "ruled": false,
+   "lanes": 2,
+   "basis": "jartic",
+   "medianNow": 0,
+   "carriagewayNow": 14,
+   "room": 33,
+   "right": -5.87,
+   "left": 6.58,
+   "bands": [
+    {
+     "right": -5.87,
+     "left": 6.58
+    }
+   ],
+   "ruling": {
+    "klass": "A",
+    "lanesAfter": 2,
+    "median": 13.17,
+    "carriageway": 27.17
+   },
+   "lanesChange": 0,
+   "widened": true,
+   "offCentre": 2,
+   "edgeOnPavement": false,
+   "pavementShare": 0.04,
+   "footNearM": null
+  },
+  {
+   "run": "45021976",
+   "chunk": "45021976:23",
+   "structure": "embankment",
+   "chunks": [
+    "45021976:23",
+    "737538573:0"
+   ],
+   "s0": 3507.1,
+   "s1": 3531.3,
+   "lengthM": 40,
+   "seg": 659,
+   "segLengthM": 39.5,
+   "at": [
+    35.659221,
+    139.73663
+   ],
+   "widthM": 40,
+   "travel": -1,
+   "lineOneway": 0,
+   "ruled": true,
+   "lanes": 3,
+   "basis": "jartic",
+   "medianNow": 0,
+   "carriagewayNow": 10.75,
+   "room": 33,
+   "right": -8.17,
+   "left": 5.61,
+   "bands": [
+    {
+     "right": -8.17,
+     "left": 5.61
+    }
+   ],
+   "ruling": {
+    "klass": "B1",
+    "lanesAfter": 3,
+    "median": 0,
+    "carriageway": 10.75
+   },
+   "lanesChange": 0,
+   "widened": false,
+   "offCentre": 3,
+   "edgeOnPavement": false,
+   "pavementShare": 0.01,
+   "footNearM": null
+  },
+  {
+   "run": "45021976",
+   "chunk": "45021976:23",
+   "structure": "embankment",
+   "chunks": [
+    "45021976:23"
+   ],
+   "s0": 3488.5,
+   "s1": 3506.6,
+   "lengthM": 19,
+   "seg": 661,
+   "segLengthM": 18.7,
+   "at": [
+    35.658967,
+    139.736585
+   ],
+   "widthM": 40,
+   "travel": -1,
+   "lineOneway": 0,
+   "ruled": true,
+   "lanes": 3,
+   "basis": "jartic",
+   "medianNow": 0,
+   "carriagewayNow": 10.75,
+   "room": 33,
+   "right": -9.22,
+   "left": 3.32,
+   "bands": [
+    {
+     "right": -9.22,
+     "left": 3.32
+    }
+   ],
+   "ruling": {
+    "klass": "B1",
+    "lanesAfter": 3,
+    "median": 0,
+    "carriageway": 10.75
+   },
+   "lanesChange": 0,
+   "widened": false,
+   "offCentre": 3,
+   "edgeOnPavement": false,
+   "pavementShare": 0,
+   "footNearM": null
+  },
+  {
+   "run": "45021976",
+   "chunk": "45021976:23",
+   "structure": "embankment",
+   "chunks": [
+    "45021976:23"
+   ],
+   "s0": 3446,
+   "s1": 3488.1,
+   "lengthM": 43,
+   "seg": 662,
+   "segLengthM": 42.4,
+   "at": [
+    35.658696,
+    139.736521
+   ],
+   "widthM": 40,
+   "travel": -1,
+   "lineOneway": 0,
+   "ruled": true,
+   "lanes": 3,
+   "basis": "jartic",
+   "medianNow": 0,
+   "carriagewayNow": 10.75,
+   "room": 33,
+   "right": -9.25,
+   "left": 3.61,
+   "bands": [
+    {
+     "right": -9.25,
+     "left": 3.61
+    }
+   ],
+   "ruling": {
+    "klass": "B1",
+    "lanesAfter": 3,
+    "median": 0,
+    "carriageway": 10.75
+   },
+   "lanesChange": 0,
+   "widened": false,
+   "offCentre": 3,
+   "edgeOnPavement": false,
+   "pavementShare": 0.04,
+   "footNearM": null
+  },
+  {
+   "run": "895902565",
+   "chunk": "895902565:1",
+   "structure": "embankment",
+   "chunks": [
+    "895902565:1"
+   ],
+   "s0": 86.1,
+   "s1": 88.2,
+   "lengthM": 3,
+   "seg": 771,
+   "segLengthM": 293,
+   "at": [
+    35.665099,
+    139.738782
+   ],
+   "widthM": 16,
+   "travel": -1,
+   "lineOneway": 0,
+   "ruled": true,
+   "lanes": 1,
+   "basis": "osm",
+   "medianNow": 0,
+   "carriagewayNow": 4.25,
+   "room": 9,
+   "right": -4.51,
+   "left": 8.07,
+   "bands": [
+    {
+     "right": -4.51,
+     "left": 8.07
+    }
+   ],
+   "ruling": {
+    "klass": "C",
+    "lanesAfter": 1,
+    "median": 0,
+    "carriageway": 4.25
+   },
+   "lanesChange": 0,
+   "widened": false,
+   "offCentre": 0,
+   "edgeOnPavement": false,
+   "pavementShare": 0.25,
+   "footNearM": null
+  },
+  {
+   "run": "895902565",
+   "chunk": "895902565:1",
+   "structure": "embankment",
+   "chunks": [
+    "895902565:1"
+   ],
+   "s0": 86.2,
+   "s1": 88.2,
+   "lengthM": 3,
+   "seg": 813,
+   "segLengthM": 27.6,
+   "at": [
+    35.665104,
+    139.738787
+   ],
+   "widthM": 40,
+   "travel": -1,
+   "lineOneway": 0,
+   "ruled": true,
+   "lanes": 5,
+   "basis": "jartic",
+   "medianNow": 0,
+   "carriagewayNow": 17.25,
+   "room": 33,
+   "right": -4.43,
+   "left": 7.13,
+   "bands": [
+    {
+     "right": -4.43,
+     "left": 7.13
+    }
+   ],
+   "ruling": {
+    "klass": "B1",
+    "lanesAfter": 5,
+    "median": 0,
+    "carriageway": 17.25
+   },
+   "lanesChange": 0,
+   "widened": false,
+   "offCentre": 4,
+   "edgeOnPavement": false,
+   "pavementShare": 0.25,
+   "footNearM": null
+  },
+  {
+   "run": "895902565",
+   "chunk": "895902565:0",
+   "structure": "embankment",
+   "chunks": [
+    "895902565:0",
+    "895902565:1"
+   ],
+   "s0": 57.6,
+   "s1": 71.7,
+   "lengthM": 29,
+   "seg": 815,
+   "segLengthM": 28.4,
+   "at": [
+    35.664965,
+    139.738763
+   ],
+   "widthM": 40,
+   "travel": 0,
+   "lineOneway": 0,
+   "ruled": false,
+   "lanes": 3,
+   "basis": "jartic",
+   "medianNow": 8,
+   "carriagewayNow": 28.5,
+   "room": 33,
+   "right": -5.47,
+   "left": 7.14,
+   "bands": [
+    {
+     "right": -5.47,
+     "left": 7.14
+    }
+   ],
+   "ruling": {
+    "klass": "A",
+    "lanesAfter": 2,
+    "median": 14.29,
+    "carriageway": 28.5
+   },
+   "lanesChange": -1,
+   "widened": false,
+   "offCentre": 3,
+   "edgeOnPavement": false,
+   "pavementShare": 0.27,
+   "footNearM": null
+  },
+  {
+   "run": "895902565",
+   "chunk": "895902565:0",
+   "structure": "embankment",
+   "chunks": [
+    "895902565:0"
+   ],
+   "s0": 22.1,
+   "s1": 57.2,
+   "lengthM": 36,
+   "seg": 817,
+   "segLengthM": 35.8,
+   "at": [
+    35.664676,
+    139.738714
+   ],
+   "widthM": 40,
+   "travel": 0,
+   "lineOneway": 0,
+   "ruled": false,
+   "lanes": 3,
+   "basis": "jartic",
+   "medianNow": 8,
+   "carriagewayNow": 28.5,
+   "room": 33,
+   "right": -7.28,
+   "left": 6.02,
+   "bands": [
+    {
+     "right": -7.28,
+     "left": 6.02
+    }
+   ],
+   "ruling": {
+    "klass": "A",
+    "lanesAfter": 2,
+    "median": 14.55,
+    "carriageway": 28.5
+   },
+   "lanesChange": -1,
+   "widened": false,
+   "offCentre": 3,
+   "edgeOnPavement": false,
+   "pavementShare": 0.22,
+   "footNearM": null
+  },
+  {
+   "run": "895902565",
+   "chunk": "895902565:0",
+   "structure": "embankment",
+   "chunks": [
+    "895902565:0"
+   ],
+   "s0": 0.3,
+   "s1": 21.4,
+   "lengthM": 22,
+   "seg": 818,
+   "segLengthM": 81.3,
+   "at": [
+    35.664419,
+    139.738667
+   ],
+   "widthM": 40,
+   "travel": 0,
+   "lineOneway": 0,
+   "ruled": false,
+   "lanes": 3,
+   "basis": "jartic",
+   "medianNow": 8,
+   "carriagewayNow": 28.5,
+   "room": 33,
+   "right": -8.07,
+   "left": 4.19,
+   "bands": [
+    {
+     "right": -8.07,
+     "left": 4.19
+    }
+   ],
+   "ruling": {
+    "klass": "A",
+    "lanesAfter": 2,
+    "median": 16.13,
+    "carriageway": 28.5
+   },
+   "lanesChange": -1,
+   "widened": false,
+   "offCentre": 2,
+   "edgeOnPavement": false,
+   "pavementShare": 0.12,
+   "footNearM": null
+  },
+  {
+   "run": "4848755",
+   "chunk": "4848755:0",
+   "structure": "embankment",
+   "chunks": [
+    "4848755:0"
+   ],
+   "s0": 38.2,
+   "s1": 106.8,
+   "lengthM": 70,
+   "seg": 188,
+   "segLengthM": 158.7,
+   "at": [
+    35.634041,
+    139.778048
+   ],
+   "widthM": 9,
+   "travel": -1,
+   "lineOneway": 0,
+   "ruled": true,
+   "lanes": 2,
+   "basis": "jartic",
+   "medianNow": 0,
+   "carriagewayNow": 7.5,
+   "room": 9,
+   "right": -12.22,
+   "left": 2.1,
+   "bands": [
+    {
+     "right": -12.22,
+     "left": 2.1
+    }
+   ],
+   "ruling": {
+    "klass": "C",
+    "lanesAfter": 2,
+    "median": 0,
+    "carriageway": 7.5
+   },
+   "lanesChange": 0,
+   "widened": false,
+   "offCentre": 0,
+   "edgeOnPavement": false,
+   "pavementShare": 0,
+   "footNearM": null
+  },
+  {
+   "run": "4848755",
+   "chunk": "4848755:0",
+   "structure": "embankment",
+   "chunks": [
+    "4848755:0"
+   ],
+   "s0": 0.2,
+   "s1": 37.3,
+   "lengthM": 38,
+   "seg": 215,
+   "segLengthM": 43,
+   "at": [
+    35.633626,
+    139.778333
+   ],
+   "widthM": 9,
+   "travel": 1,
+   "lineOneway": 0,
+   "ruled": true,
+   "lanes": 2,
+   "basis": "jartic",
+   "medianNow": 0,
+   "carriagewayNow": 7.5,
+   "room": 9,
+   "right": -3.01,
+   "left": 5.58,
+   "bands": [
+    {
+     "right": -3.01,
+     "left": 5.58
+    }
+   ],
+   "ruling": {
+    "klass": "C",
+    "lanesAfter": 2,
+    "median": 0,
+    "carriageway": 7.5
+   },
+   "lanesChange": 0,
+   "widened": false,
+   "offCentre": 0,
+   "edgeOnPavement": false,
+   "pavementShare": 0,
+   "footNearM": 6
+  }
+ ],
+ "jumps": [
+  {
+   "seg": 821,
+   "node": "35.671151,139.743059",
+   "other": 823,
+   "beforeM": 2.49,
+   "afterM": 0.35
+  },
+  {
+   "seg": 823,
+   "node": "35.671151,139.743059",
+   "other": 821,
+   "beforeM": 2.49,
+   "afterM": 0.35
+  },
+  {
+   "seg": 823,
+   "node": "35.670943,139.742864",
+   "other": 824,
+   "beforeM": 1.17,
+   "afterM": 7.67
+  },
+  {
+   "seg": 637,
+   "node": "35.659586,139.736727",
+   "other": 638,
+   "beforeM": 9.53,
+   "afterM": 2.71
+  },
+  {
+   "seg": 637,
+   "node": "35.659474,139.736687",
+   "other": 657,
+   "beforeM": 0,
+   "afterM": 0.31
+  },
+  {
+   "seg": 638,
+   "node": "35.659672,139.736773",
+   "other": 639,
+   "beforeM": 9.53,
+   "afterM": 0.63
+  },
+  {
+   "seg": 638,
+   "node": "35.659586,139.736727",
+   "other": 637,
+   "beforeM": 9.53,
+   "afterM": 2.71
+  },
+  {
+   "seg": 639,
+   "node": "35.660359,139.737289",
+   "other": 640,
+   "beforeM": 4,
+   "afterM": 4.97
+  },
+  {
+   "seg": 639,
+   "node": "35.659672,139.736773",
+   "other": 638,
+   "beforeM": 9.53,
+   "afterM": 0.63
+  },
+  {
+   "seg": 657,
+   "node": "35.659474,139.736687",
+   "other": 637,
+   "beforeM": 0,
+   "afterM": 0.31
+  },
+  {
+   "seg": 657,
+   "node": "35.659398,139.736671",
+   "other": 659,
+   "beforeM": 1.63,
+   "afterM": 8.21
+  },
+  {
+   "seg": 815,
+   "node": "35.665090,139.738783",
+   "other": 771,
+   "beforeM": 12.13,
+   "afterM": 12.1
+  },
+  {
+   "seg": 815,
+   "node": "35.665090,139.738783",
+   "other": 813,
+   "beforeM": 5.63,
+   "afterM": 5.6
+  },
+  {
+   "seg": 815,
+   "node": "35.664836,139.738742",
+   "other": 817,
+   "beforeM": 0,
+   "afterM": 0.03
+  },
+  {
+   "seg": 817,
+   "node": "35.664836,139.738742",
+   "other": 815,
+   "beforeM": 0,
+   "afterM": 0.03
+  },
+  {
+   "seg": 817,
+   "node": "35.664517,139.738687",
+   "other": 818,
+   "beforeM": 0,
+   "afterM": 0.2
+  },
+  {
+   "seg": 818,
+   "node": "35.664517,139.738687",
+   "other": 817,
+   "beforeM": 0,
+   "afterM": 0.2
+  },
+  {
+   "seg": 818,
+   "node": "35.663795,139.738539",
+   "other": 840,
+   "beforeM": 0,
+   "afterM": 0.2
+  }
+ ],
+ "piersOverLanes": [
+  {
+   "chunk": "24402611:8",
+   "s": 1120,
+   "street": 300,
+   "widthM": 40
+  },
+  {
+   "chunk": "24402611:8",
+   "s": 1155,
+   "street": 301,
+   "widthM": 40
+  },
+  {
+   "chunk": "24402611:8",
+   "s": 1190,
+   "street": 301,
+   "widthM": 40
+  },
+  {
+   "chunk": "24402611:8",
+   "s": 1225,
+   "street": 312,
+   "widthM": 40
+  },
+  {
+   "chunk": "24402611:9",
+   "s": 1404.1,
+   "street": 639,
+   "widthM": 40
+  },
+  {
+   "chunk": "45021976:21",
+   "s": 3360,
+   "street": 666,
+   "widthM": 40
+  },
+  {
+   "chunk": "45021976:21",
+   "s": 3391.9,
+   "street": 666,
+   "widthM": 40
+  },
+  {
+   "chunk": "24402611:7",
+   "s": 1085,
+   "street": 845,
+   "widthM": 40
+  },
+  {
+   "chunk": "24402125:0",
+   "s": 105,
+   "street": 1153,
+   "widthM": 9
+  },
+  {
+   "chunk": "24402125:0",
+   "s": 140,
+   "street": 1150,
+   "widthM": 9
+  },
+  {
+   "chunk": "24402125:0",
+   "s": 175,
+   "street": 1150,
+   "widthM": 9
+  },
+  {
+   "chunk": "45021976:4",
+   "s": 280,
+   "street": 1154,
+   "widthM": 9
+  },
+  {
+   "chunk": "45021976:4",
+   "s": 315,
+   "street": 1154,
+   "widthM": 9
+  },
+  {
+   "chunk": "45021976:4",
+   "s": 350,
+   "street": 1154,
+   "widthM": 9
+  },
+  {
+   "chunk": "45021976:5",
+   "s": 385,
+   "street": 1154,
+   "widthM": 9
+  },
+  {
+   "chunk": "45021976:6",
+   "s": 490,
+   "street": 1182,
+   "widthM": 9
+  },
+  {
+   "chunk": "45021976:6",
+   "s": 525,
+   "street": 1181,
+   "widthM": 9
+  },
+  {
+   "chunk": "45021976:6",
+   "s": 560,
+   "street": 1652,
+   "widthM": 9
+  },
+  {
+   "chunk": "45068172:1",
+   "s": 210,
+   "street": 1154,
+   "widthM": 9
+  },
+  {
+   "chunk": "45068172:1",
+   "s": 245,
+   "street": 1154,
+   "widthM": 9
+  },
+  {
+   "chunk": "24402611:20",
+   "s": 3115,
+   "street": 1128,
+   "widthM": 25
+  },
+  {
+   "chunk": "45021976:15",
+   "s": 1960,
+   "street": 1129,
+   "widthM": 25
+  },
+  {
+   "chunk": "4853798:0",
+   "s": 35,
+   "street": 1129,
+   "widthM": 25
+  },
+  {
+   "chunk": "45177678:0",
+   "s": 105,
+   "street": 188,
+   "widthM": 9
+  },
+  {
+   "chunk": "45177678:0",
+   "s": 140,
+   "street": 188,
+   "widthM": 9
+  },
+  {
+   "chunk": "45177678:0",
+   "s": 175,
+   "street": 188,
+   "widthM": 9
+  },
+  {
+   "chunk": "45177678:0",
+   "s": 210,
+   "street": 68,
+   "widthM": 9
+  },
+  {
+   "chunk": "45177678:0",
+   "s": 245,
+   "street": 68,
+   "widthM": 9
+  },
+  {
+   "chunk": "45177678:0",
+   "s": 280,
+   "street": 68,
+   "widthM": 9
+  },
+  {
+   "chunk": "45177681:14",
+   "s": 3325,
+   "street": 210,
+   "widthM": 9
+  },
+  {
+   "chunk": "4848889:4",
+   "s": 840,
+   "street": 42,
+   "widthM": 4.3
+  },
+  {
+   "chunk": "4848889:4",
+   "s": 875,
+   "street": 73,
+   "widthM": 9
+  },
+  {
+   "chunk": "4848889:4",
+   "s": 910,
+   "street": 72,
+   "widthM": 9
+  },
+  {
+   "chunk": "4848889:4",
+   "s": 945,
+   "street": 210,
+   "widthM": 9
+  }
+ ]
+}
