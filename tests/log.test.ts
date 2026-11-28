@@ -690,6 +690,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
     sha256: "0".repeat(64),
     pinned: true,
     accepted: false,
+    decisions: "all",
   },
   expressway_extract_pinned: {
     file: ".cache/osm/kanto-20261003T202050Z.osm.pbf",

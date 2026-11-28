@@ -7,7 +7,7 @@ describe("measure-shader-prebuild's window (scripts/qa/shader-prebuild.ts)", () 
     readyAt: 0,
     compiled: null,
     skipped: true,
-    pipelines: { n: 3, at: [10, 140, 500] },
+    pipelines: { n: 3, at: [10, 140, 500], kinds: ["facade", "shadow:facade", "terrain"] },
   };
 
   it("counts only the gaps whose frame ends inside the window, against each threshold", () => {
@@ -26,6 +26,11 @@ describe("measure-shader-prebuild's window (scripts/qa/shader-prebuild.ts)", () 
   it("counts the pipelines built inside the window only", () => {
     expect(windowStats(page, 0, 460).pipelines).toBe(2);
     expect(windowStats(page, 460, 600).pipelines).toBe(1);
+  });
+
+  it("counts the pipelines inside the window by what they were built for", () => {
+    expect(windowStats(page, 0, 460).pipelinesByKind).toEqual({ facade: 1, "shadow:facade": 1 });
+    expect(windowStats(page, 460, 600).pipelinesByKind).toEqual({ terrain: 1 });
   });
 
   it("gives no longest gap for a window without frames", () => {

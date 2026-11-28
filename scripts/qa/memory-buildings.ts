@@ -29,7 +29,7 @@
 import { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launch } from "./browser.mjs";
-import { COUNT_PIPELINES } from "./pipelineCount.ts";
+import { COUNT_PIPELINES, countKinds } from "./pipelineCount.ts";
 import { freePort } from "./ports.ts";
 import { slopeSummary, type MemorySample } from "./memorySlopes.ts";
 
@@ -129,7 +129,9 @@ const WATCH = `(() => {
       const mesh = ro?.object; let named = mesh; while (named && !named.name && named.parent) named = named.parent;
       const made = mesh ? ((named?.name || "") + "/" + (mesh.name || (mesh.geometry?.type ?? mesh.type))) : "?";
       const material = ro?.material ? ro.material.type + ":" + (ro.material.name || "") : "?";
-      m.pipelineLog.push([performance.now(), material + " | " + made + (top?.isScene ? "" : " (floating)")]);
+      // Third: the kind (pipelineCount.ts), which tells the shadow pass from the object's own material.
+      const kind = window.__pipelineKind ? window.__pipelineKind(ro, __game) : "?";
+      m.pipelineLog.push([performance.now(), material + " | " + made + (top?.isScene ? "" : " (floating)"), kind]);
       return build(...args);
     };
     backend.__logged = true;
@@ -221,7 +223,7 @@ const COUNTS = `(() => {
   } };
 })()`;
 const isCounted = argv.includes("--counts");
-let pipelineLog: Array<[number, string]> = [];
+let pipelineLog: Array<[number, string, string?]> = [];
 let longFrames: Array<[number, number]> = [];
 const isTracingRemovals = argv.includes("--trace-removals");
 
@@ -448,7 +450,9 @@ try {
   // --counts: every pipeline built and every frame over 100 ms, page time (ms), for the analysis.
   if (isCounted) {
     pipelineLog =
-      (await b.evaluate<Array<[number, string]>>("window.__mem.pipelineLog || []").catch(() => [])) ?? [];
+      (await b
+        .evaluate<Array<[number, string, string?]>>("window.__mem.pipelineLog || []")
+        .catch(() => [])) ?? [];
     longFrames =
       (await b.evaluate<Array<[number, number]>>("window.__mem.longFrames || []").catch(() => [])) ?? [];
   }
@@ -473,6 +477,12 @@ const out = {
   alloc: allocDone,
   census,
   pipelineLog,
+  pipelinesByKind: countKinds(
+    pipelineLog.map((row) => row[0]),
+    pipelineLog.map((row) => row[2] ?? "?"),
+    0,
+    Infinity,
+  ),
   longFrames,
   samples,
 };
