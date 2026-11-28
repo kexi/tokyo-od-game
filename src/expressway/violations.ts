@@ -19,6 +19,7 @@ import { ST, STATION_STRIDE, type XwChunk, type XwDiagnostic, type XwRunSummary 
 import { type BelowLinkRun, hasPortalsBeyond, type PortalAt, portalReaches } from "./below";
 import type { DesignSpeed } from "../law/roadStandards";
 import { checkHeightStructures } from "./heightStructures";
+import { STRUCTURE_DECISIONS, type StructureDecision } from "./structureDecisions";
 
 /**
  * The checks of knowledge/road-redesign-plan.md 4.4 over built files, counted per property, as the
@@ -43,6 +44,12 @@ export function violationsOf(
   rampFloor: (run: string) => number | undefined = () => undefined,
   /** The files name "height-structures" (P2.7-6): T13 judges the structures; else it has nothing to judge. */
   isHeight = false,
+  /**
+   * R1-3: the structure decisions the build applied (PlanOptions.structureDecisions; the table's by
+   * default), so T13 judges a decided stretch as the compiler built it. Why not always the module's:
+   * a build with the table left out (`--decisions`) would have its stretches judged as viaducts allowed.
+   */
+  structureDecisions: readonly StructureDecision[] = STRUCTURE_DECISIONS,
 ): Violations {
   // A height build's ramp under the assumed radius is a ledger case (ramp-radius, listed `new` until a
   // review decides it) as soon as it is reported (ramp_radius), so T6 and T3 hold it to its own OSM
@@ -167,7 +174,7 @@ export function violationsOf(
           r.below === true,
           r.ground === true,
           groundEndsOf(r, runs),
-          undefined,
+          structureDecisions,
           loweredOf(r.id),
         ),
       );
