@@ -29,7 +29,7 @@ import { join } from "node:path";
 import { launch } from "./browser.mjs";
 import { freePort } from "./ports.ts";
 import { waitQuiet } from "./quietWatch.ts";
-import { servedBuild, servedRecord } from "./servedBuild.ts";
+import { servedBuild, servedRecord, warnIfNotSame } from "./servedBuild.ts";
 
 const ROOT = join(import.meta.dirname, "..", "..");
 const argv = process.argv.slice(2);
@@ -297,7 +297,9 @@ try {
   out = { ...out, failure: String(error) };
   process.stdout.write(`${JSON.stringify({ failure: String(error) })}\n`);
 } finally {
-  out.served = servedRecord(servedAtStart, await servedBuild(base));
+  const served = servedRecord(servedAtStart, await servedBuild(base));
+  out.served = served;
   writeFileSync(join(outDir, `${label}.json`), `${JSON.stringify(out, null, 2)}\n`);
+  warnIfNotSame(served, join(outDir, `${label}.json`));
   await b.close();
 }

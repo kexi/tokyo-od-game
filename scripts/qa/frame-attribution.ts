@@ -48,7 +48,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launch } from "./browser.mjs";
 import { freePort } from "./ports.ts";
-import { servedBuild, servedRecord } from "./servedBuild.ts";
+import { servedBuild, servedRecord, warnIfNotSame } from "./servedBuild.ts";
 
 export type CallFrame = { functionName: string; url: string; lineNumber: number };
 export type ProfileNode = { id: number; callFrame: CallFrame; children?: number[] };
@@ -486,6 +486,7 @@ if (isMain) {
     save();
     report.served = servedRecord(servedAtStart, await servedBuild(base));
     save();
+    warnIfNotSame(report.served as ReturnType<typeof servedRecord>, join(out, "report.json"));
     process.stdout.write(`${JSON.stringify({ report: join(out, "report.json"), served: report.served })}\n`);
   } finally {
     await b.close();
