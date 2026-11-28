@@ -191,5 +191,8 @@ describe("measure-frame-attribution's analysis (scripts/qa/frame-attribution.ts)
       expect(hits).toEqual([candidate]);
     }
     expect(NAMED_WRAPPERS).toContain("function __qaMarker(");
+    // And the wrapped methods go through them (a name that is made but not called counts 0 too).
+    expect(NAMED_WRAPPERS).toContain("return __qaParseTile(this, args)");
+    expect(NAMED_WRAPPERS).toContain("? __qaLoadModel(e)");
   });
 });
