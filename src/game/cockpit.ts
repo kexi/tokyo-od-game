@@ -355,6 +355,9 @@ export class Cockpit {
    * Why not a smaller near plane for everything: depth precision 4 km away would fall apart (road
    * paint and kerbs flicker); with 0.5 m the roof lining, the upper windscreen, the pillars and the
    * door trims (30–60 cm from the eye) were cut away, showing the sky and the car's own tyres.
+   * The driver's seat's views are drawn from one pose with one scene-wide matrix update
+   * (withSceneMatrices): inside that scope, nothing in the scene (the scene itself included) may be
+   * moved, or what moved must update its own matrixWorld before it is drawn.
    */
   render(
     composer: FrameComposer,
