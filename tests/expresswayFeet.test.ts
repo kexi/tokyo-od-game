@@ -204,6 +204,24 @@ describe("cutFeet（合成網: 高架のランプ → 地平 run → 街路）",
     expect(danglingOf(solved.runs).length).toBe(0);
   });
 
+  it("a deferred foot is in the range when a chosen range (--range ship) picks a run of its chain, though the deferred run itself is never chosen (R1-3: ship's ground.deferred)", () => {
+    const chosenBy = (ids: string[]) =>
+      planNetwork(net, new Set(), null, [], {
+        ...height,
+        feet: [alongStreet],
+        footDeferrals: [deferral],
+        wanted: () => new Set(ids),
+      });
+    // Run 10 (the viaduct the foot hung from) is on run 11's chain: the foot is the range's.
+    expect(chosenBy(["10"]).feet).toEqual([
+      expect.objectContaining({ run: "11", outcome: "deferred", inRange: true }),
+    ]);
+    // Nothing of its chain chosen: not the range's.
+    expect(chosenBy([]).feet).toEqual([
+      expect.objectContaining({ run: "11", outcome: "deferred", inRange: false }),
+    ]);
+  });
+
   it("a foot along a street not in the table is built as before: one foot-along-street case", () => {
     const plan = planNetwork(net, new Set(), null, [], { ...height, feet: [alongStreet], footDeferrals: [] });
     expect(plan.runs.has("11")).toBe(true);
