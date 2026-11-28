@@ -460,6 +460,10 @@ measure-road-worker:
 measure-road-streaming:
     node scripts/qa/perf-road-streaming.mjs
 
+# 信号の交差点照合を、枝の元（main）の TrafficControl と実地域（東京駅・吾妻橋）の道路網で交互に 30 回ずつ測り、出力の一致を確かめる（開発サーバーが必要）
+measure-signal-network:
+    node scripts/qa/perf-signal-network.mjs
+
 # 地形の共有マスク式を両backend・昼夜・別タイル・更新・交換で全画素比較し、生成CPUを測る
 measure-terrain-mask:
     node scripts/qa/terrain-mask-parity.mjs

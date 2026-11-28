@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [信号の交差点照合で、道路網の外の信号を省く（性能 PR #13 の作り直し）](signal-network-performance.md) - 交差点の範囲から 25 m 以上外の信号を比べる前に省く。main で setNetwork の同期の部分が東京駅 5.4 → 4.2 ms・吾妻橋 9.6 → 4.8 ms（交互 30 回とも同じ向き）、出力 726,671 値が一致
+
 - [地形の水域マスクのシェーダーをチャンクの間で共有する（性能 PR #11 の作り直し）](terrain-mask-performance.md) - チャンクごとの TextureNode をやめ、materialReference で同じ式を共有。main で 8 チャンクのシェーダーの作成 8 → 1 回、WebGPU・WebGL2 の昼夜で 20 画像が旧処理と一致
 
 - [車内の連続描画で、シーンの行列更新を 1 回にする（性能 PR #7 の作り直し）](scene-matrix-performance.md) - 車内視点の 1 フレームで約 4.7 回だった updateMatrixWorld を 1 回に。main で行列の CPU 1.40〜1.46 → 0.38〜0.40 ms（−73 %、8 組とも同じ向き）、WebGPU・WebGL2 の昼夜で画素と行列が旧処理と一致
