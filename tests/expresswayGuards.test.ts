@@ -4,6 +4,7 @@ import {
   DECISIONS,
   decisionsRefusal,
   decisionTablesOf,
+  flagFormRefusal,
   shippedFolderRefusal,
 } from "../scripts/expresswayGuards";
 import { FOOT_DEFERRALS } from "../src/expressway/footDeferrals";
@@ -24,6 +25,19 @@ describe("決定の表を当てる値（--decisions、R1-3）", () => {
       expect(shippedFolderRefusal(flagsOf(mode, false)), mode).toMatch(/決定の表を外した生成は計測用/);
       expect(shippedFolderRefusal(flagsOf(mode, true)), mode).toBeNull();
     }
+  });
+  it("stops --decisions=value and a --decisions with no value after it (both read as all before, PR #136 review 1), and takes --decisions value or no flag", () => {
+    const argv = (...rest: string[]) => ["node", "scripts/expressway.ts", "--range", "ship", ...rest];
+    expect(flagFormRefusal(argv("--decisions=none", "--out", "x"), "decisions")).toMatch(
+      /^give --decisions <value>, not --decisions=<value>/,
+    );
+    expect(flagFormRefusal(argv("--out", "x", "--decisions"), "decisions")).toMatch(
+      /^--decisions needs a value/,
+    );
+    expect(flagFormRefusal(argv("--decisions", "none", "--out", "x"), "decisions")).toBeNull();
+    expect(flagFormRefusal(argv("--out", "x"), "decisions")).toBeNull();
+    // Another flag's joined form is not this guard's: it names one flag.
+    expect(flagFormRefusal(argv("--districts=central"), "decisions")).toBeNull();
   });
   it("stops an unknown value (a typo is not read as all), and takes the four values", () => {
     expect(decisionsRefusal("feet")).toMatch(/^unknown --decisions feet/);
