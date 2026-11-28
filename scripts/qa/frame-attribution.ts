@@ -382,8 +382,9 @@ if (isMain) {
     if (!isReady) throw new Error("game did not become ready");
     await b.evaluate("__game.start()");
     await b.sleep(30000);
-    // Then up to WARM_MAX_S more for the roads: on a busy machine they were still loading at 30 s
-    // (2026-11-28). The scenes start from settled roads either way.
+    // Then up to WARM_MAX_S more for the roads, so the scenes start from settled roads. (The run of
+    // 2026-11-28 that stopped here at 30 s had measured another worktree's dev server: not a sign
+    // that main's roads take longer. The wait stays: it costs nothing when the roads are ready.)
     const WARM = `__game.getState() === 'playing' &&
       __game.debug.roads.input().lines.length > 100 && !__game.debug.roads.input().loading`;
     const WARM_MAX_S = 90;
