@@ -104,8 +104,8 @@ function refusing<T>(read: () => T): T {
 const isOddBaseline =
   baselineDir !== undefined && !/(^|[/\\])street-drive-main-[^/\\]*\/?$/.test(baselineDir);
 if (isOddBaseline)
-  process.stderr.write(
-    `${JSON.stringify({ label, warning: "the baseline folder is not .qa/street-drive-main-<label>", baselineDir })}\n`,
+  process.stdout.write(
+    `${JSON.stringify({ label, baselineWarning: "the baseline folder is not .qa/street-drive-main-<label>", baselineDir })}\n`,
   );
 const mainResults = baselineDir === undefined ? null : refusing(() => readMainResults(baselineDir));
 const key: ResultKey = {

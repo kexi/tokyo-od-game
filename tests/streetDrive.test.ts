@@ -312,6 +312,17 @@ describe("main's results (--baseline) and the logged points", () => {
     ).sha256;
     expect(new Set([failed, passed, respawned, otherKey]).size).toBe(4);
     expect(again).toBe(failed);
+    // main's invalid keeps the branch's fail where its fail made known-main: the verdict is in the hash.
+    const invalid = readMainResults(mainFolder(key, { a: res("a", "invalid", key, ["under"]) })).sha256;
+    expect(invalid).not.toBe(failed);
+    // Two places that read alike but for their ids (main driven --only a,b and --only a,c).
+    const ab = readMainResults(
+      mainFolder(key, { a: res("a", "pass", key, []), b: res("b", "fail", key, ["under"]) }),
+    ).sha256;
+    const ac = readMainResults(
+      mainFolder(key, { a: res("a", "pass", key, []), c: res("c", "fail", key, ["under"]) }),
+    ).sha256;
+    expect(ab).not.toBe(ac);
   });
 
   it("refuses a baseline with no summary, a summary with no key, or a result of the run with no kinds", () => {
@@ -342,7 +353,11 @@ describe("main's results (--baseline) and the logged points", () => {
     expect(code).toContain("baseline: mainResults?.sha256");
     expect(code).toContain("readMainResults(baselineDir)");
     expect(code).toContain("const BASELINE_REFUSED = 6;");
-    expect(code).toContain('rmSync(join(outDir, "summary.json")');
+    const rm = code.indexOf('rmSync(join(outDir, "summary.json")');
+    expect(rm).toBeGreaterThan(0);
+    expect(rm).toBeLessThan(code.indexOf("for (const p of places)"));
+    expect(code).toContain("refusing(() => readMainResults(baselineDir))");
+    expect(code).toContain("process.exit(BASELINE_REFUSED)");
   });
 });
 

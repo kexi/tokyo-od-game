@@ -125,8 +125,8 @@ export function readMainResults(dir: string): MainResults {
   if (!hasSummary) throw new Error(`baseline ${dir} has no summary.json: drive main there first`);
   const summary = JSON.parse(readFileSync(summaryFile, "utf8")) as { key?: ResultKey | null };
   const mainKey = summary.key;
-  // Why not a named condition: a const loses the narrowing of mainKey below.
-  if (mainKey === undefined || mainKey === null)
+  const hasKey = mainKey !== undefined && mainKey !== null;
+  if (!hasKey)
     throw new Error(`baseline ${dir}: its summary.json has no key (a version before the resume key)`);
   const byPlace = new Map<string, MainDrive & { served?: unknown }>();
   for (const f of readdirSync(dir)) {
