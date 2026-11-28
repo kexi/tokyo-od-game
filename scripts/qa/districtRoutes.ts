@@ -10,16 +10,14 @@ import type { StreetPlace } from "./streetPlaces.ts";
  * the same data (order and ids; no randomness). `just make-district-routes <dir> <district>` writes it
  * (not committed: the table is made again from R1-7's data); drive-deck.ts `--routes <file>` drives it.
  *
- * The routes (R1-5 3.2, the "絞" lanes, with C: entrance → main → exit chains):
- * - main: each main line (main runs joined end to start, expresswayEnds.ts endAhead) end to end in
- *   lane 0, cut into pieces of at most PIECE_M with OVERLAP_M again at each cut; the first piece starts
- *   up an entrance ramp joining the line's first run near its start, the last leaves by an exit ramp
- *   leaving its last run near its end (C), so those ramps need no drive of their own in lane 0.
+ * The routes (R1-5 3.2 and the user's decision of 2026-11-24, with C: entrance → main → exit chains):
+ * - main: each main line (main or street-floor runs joined end to start, expresswayEnds.ts endAhead)
+ *   end to end in lane 0, cut at its exits (each piece leaves by one) and at most every PIECE_M; the
+ *   next piece starts up an entrance merging within CHAIN_NEAR_M before the cut (else OVERLAP_M before
+ *   it). The ramps a piece drives in lane 0 need no lane-0 drive of their own (C).
  * - ramp: each ramp path (ramp runs joined end to start) in every lane it has, from APPROACH_M before
  *   its diverge on the run it leaves (or its own start) to APPROACH_M past its merge (or the street).
- * - lanes: on the main runs, lanes 1+ only round each diverge and merge (± APPROACH_M) and each place
- *   the lane count changes between chunks (the "絞" (i) and (ii)); (iii) the ledger's cases are left to
- *   the views (PR C), (iv) the ends to the wall routes.
+ * - lanes 1+ of the main lines: not driven (the user's decision): left to the probes and the views.
  * - wall: each run end with nothing going on (endAhead false), in each lane, at the posted limit.
  * - auto: AUTO_ROUTES entrance → exit pairs on the autopilot, picked by id order (every route ref
  *   first, then evenly through the rest).
@@ -45,6 +43,12 @@ export const CHAIN_NEAR_M = 1_000;
 export const WALL_LEAD_M = 400;
 /** How many autopilot routes (the plan's「地区ごとに 20 本」). */
 export const AUTO_ROUTES = 20;
+/**
+ * How far (straight) an autopilot route's exit foot is from its entrance (m): about the hand table's
+ * two (auto-shibakoen-shiodome 2,170 m and auto-shiodome-shibakoen 2,524 m driven), so a route is as
+ * long as those that fit a bundle.
+ */
+export const AUTO_TRIP_M = 2_500;
 /** A place is put this far inside its run's ends (m): at s0 itself chunkAt may answer the run before. */
 const INSIDE_M = 2;
 /** A cruise asks for more than any posted limit: the hook caps it at the posted limit (expresswayDrive.ts). */
@@ -87,6 +91,15 @@ function timeOn(chunks: readonly XwChunk[], s0: number, s1: number): number {
   }
   return t;
 }
+
+/**
+ * An autopilot route's limit: AUTO_LIMIT `advance(1)` calls (drive-deck.ts driveAuto counts these,
+ * about 2.9 s of real time each while the page draws, routeBundles.ts WALL_PER_ADVANCE_S), so one
+ * that does not arrive still fits a bundle. The hand table's shortest (240); its routes of about
+ * AUTO_TRIP_M arrive in about 200 s of game time. Why not 600 or a limit from the distance (the
+ * first two): a route that did not arrive ran 18 min of a 25 min lock (the trial b5-a, 2026-11-28).
+ */
+export const AUTO_LIMIT = 240;
 
 export function districtRoutes(
   net: Net,
@@ -146,10 +159,13 @@ export function districtRoutes(
   const wholeTime = (id: string) => timeOn(chunksOf(id), runs.get(id)!.s0, runs.get(id)!.s1);
 
   // ---------- main lines ----------
-  const mains = [...runs.values()].filter((r) => r.cls === "expressway");
+  // The lines are the decks' own carriageways: the 都市高速's, and a structure's street floor (P7's
+  // 臨港道路 under the Rainbow Bridge, cls "street", driven as the hand table's rainbow-lower-*).
+  const isLineClass = (cls: Run["cls"]) => cls === "expressway" || cls === "street";
+  const mains = [...runs.values()].filter((r) => isLineClass(r.cls));
   const mainOnward = (id: string) => {
     const n = onwardOf(id);
-    return n !== null && runs.get(n)!.cls === "expressway" ? n : null;
+    return n !== null && isLineClass(runs.get(n)!.cls) ? n : null;
   };
   const hasMainBefore = new Set(mains.map((r) => mainOnward(r.id)).filter((x): x is string => x !== null));
   const lines: string[][] = [];
@@ -194,10 +210,10 @@ export function districtRoutes(
     const first = runs.get(path[0])!;
     const last = path.at(-1)!;
     const n = nexts.get(last)!;
-    const isEntrance = first.start.kind === "ground" && "run" in n && runs.get(n.run)!.cls === "expressway";
+    const isEntrance = first.start.kind === "ground" && "run" in n && isLineClass(runs.get(n.run)!.cls);
     if (isEntrance) entranceAt.set(n.run, [...(entranceAt.get(n.run) ?? []), { path, s: n.s }]);
     const isExit = first.start.kind === "junction" && first.start.parent !== undefined && isGroundEnd(last);
-    const isOffMain = isExit && runs.get(first.start.parent!)?.cls === "expressway";
+    const isOffMain = isExit && isLineClass(runs.get(first.start.parent!)?.cls ?? "ramp");
     if (isOffMain)
       exitAt.set(first.start.parent!, [
         ...(exitAt.get(first.start.parent!) ?? []),
@@ -260,10 +276,14 @@ export function districtRoutes(
       const mainTo = placeAt(endM);
       const iFrom = line.indexOf(mainFrom.run);
       const iTo = line.indexOf(mainTo.run);
+      // The branch first: the cruise takes, at a fork, the first of `prefer` that leaves it
+      // (expresswayDrive.ts aimAt), so the line's own run listed before its exit would keep the car
+      // on the line past the exit (the trial's ramp-202805893, 2026-11-28; the hand table's
+      // daiba-exit lists its exit first too).
       const prefer = [
+        ...(exit ? exit.path : []),
         ...(start.via ? start.via.path : []),
         ...line.slice(iFrom, iTo + 1),
-        ...(exit ? exit.path : []),
       ];
       const gameS =
         lineTime(start.m, endM) +
@@ -296,43 +316,10 @@ export function districtRoutes(
     }
   }
 
-  // ---------- lanes 1+ on the main runs: round each diverge, merge and change of lane count ----------
-  for (const m of mains) {
-    const lanes = lanesOf(m.id);
-    const hasMoreLanes = lanes > 1;
-    if (!hasMoreLanes) continue;
-    const at = new Set<number>();
-    for (const r of runs.values()) {
-      const isDiverge = r.start.kind === "junction" && r.start.parent === m.id;
-      if (isDiverge) at.add(r.start.parentS!);
-      const isMerge = r.end.kind === "junction" && r.end.parent === m.id;
-      if (isMerge) at.add(r.end.parentS!);
-    }
-    const chunks = [...chunksOf(m.id)].sort((a, b) => a.k - b.k);
-    for (let i = 1; i < chunks.length; i++) {
-      const isChange = chunks[i].lanes !== chunks[i - 1].lanes;
-      if (isChange) at.add(chunks[i].st[ST.s]);
-    }
-    for (const s of [...at].sort((a, b) => a - b)) {
-      const from = Math.max(m.s0 + INSIDE_M, s - APPROACH_M);
-      const to = Math.min(m.s1 - INSIDE_M, s + APPROACH_M);
-      const gameS = timeOn(chunksOf(m.id), from, to);
-      for (let lane = 1; lane < lanes; lane++) {
-        routes.push({
-          id: `lane-${m.id}-${Math.round(s)}-lane${lane}`,
-          kind: "cruise",
-          from: { run: m.id, s: from },
-          lane,
-          prefer: [m.id],
-          to: { run: m.id, s: to },
-          kmh: CRUISE_KMH,
-          seconds: secondsFor(gameS),
-          was: `生成（R1-5 PR B）: 本線 ${m.id} の s ${Math.round(s)} の前後（分合流か車線数の変わる所）、車線 ${lane}`,
-        });
-        cover(m.id, lane);
-      }
-    }
-  }
+  // Lanes 1+ of the main lines are not driven (the user's decision, 2026-11-24): the probes that see
+  // every lane as a surface (the seams' steps, bare drops, the end walls) and the views do. Why not
+  // the "絞" (i)/(ii) short drives round each diverge, merge and change of lane count: 272 of them on
+  // central, 4.2 h of the round's 13.6 h (knowledge「P2.7 R1-5 PR B」).
 
   for (const path of paths) {
     const first = runs.get(path[0])!;
@@ -356,7 +343,9 @@ export function districtRoutes(
       : isGroundEnd(last.id)
         ? { run: last.id, street: true }
         : { run: last.id, s: last.s1 - INSIDE_M };
-    const prefer = [...(parent ? [parent.id] : []), ...path, ...(onward ? [onward.id] : [])];
+    // The ramp first and the run it leaves last (as the main pieces': the first of `prefer` that
+    // leaves a fork is taken).
+    const prefer = [...path, ...(onward ? [onward.id] : []), ...(parent ? [parent.id] : [])];
     const gameS =
       path.reduce((a, id) => a + wholeTime(id), 0) +
       (parent ? timeOn(chunksOf(parent.id), from.s, first.start.parentS ?? from.s) : 0) +
@@ -413,22 +402,31 @@ export function districtRoutes(
   const autos: AutoRoute[] = [];
   const pairs: Array<[number, number]> = [];
   const hasPairs = entrances.length > 0 && exits.length > 0;
+  /** The exit (index) whose foot lies nearest AUTO_TRIP_M from entrance i, not yet paired with it (ties by id). */
+  const exitFor = (i: number) => {
+    const e = entrances[i];
+    const kx = 111320 * Math.cos((e.lat * Math.PI) / 180);
+    const scored = exits.map((x, j) => {
+      const f = footOf(x.id);
+      const m = Math.hypot((f.lon - e.lon) * kx, (f.lat - e.lat) * 110574);
+      return { j, off: Math.abs(m - AUTO_TRIP_M) };
+    });
+    const free = scored.filter((x) => !pairs.some(([a, b]) => a === i && b === x.j));
+    return free.toSorted((a, b) => a.off - b.off || a.j - b.j)[0]?.j ?? null;
+  };
   if (hasPairs) {
-    // Every route ref first: its first entrance by id, with the exit half the list away.
-    const refs = [...new Set(entrances.map((e) => e.route ?? ""))].filter((x) => x !== "").sort();
-    for (const ref of refs) {
-      const i = entrances.findIndex((e) => e.route === ref);
-      pairs.push([i, (i + Math.floor(exits.length / 2)) % exits.length]);
-    }
-    for (
-      let k = 0;
-      pairs.length < Math.min(AUTO_ROUTES, entrances.length * exits.length) && k < AUTO_ROUTES * 4;
-      k++
-    ) {
-      const i = Math.floor((k * entrances.length) / AUTO_ROUTES) % entrances.length;
-      const j = (i * 7 + k) % exits.length;
-      const isNew = !pairs.some(([a, b]) => a === i && b === j);
-      if (isNew) pairs.push([i, j]);
+    // Every route ref first (its first entrance by id), then entrances evenly through the id order.
+    const refs = [...new Set(entrances.map((e) => e.route ?? ""))].filter((x) => x !== "").toSorted();
+    const order = [
+      ...refs.map((ref) => entrances.findIndex((e) => e.route === ref)),
+      ...Array.from({ length: AUTO_ROUTES }, (_, k) => Math.floor((k * entrances.length) / AUTO_ROUTES)),
+    ];
+    for (const i of order) {
+      const isFull = pairs.length >= AUTO_ROUTES;
+      if (isFull) break;
+      const j = exitFor(i);
+      const isPaired = j === null || pairs.some(([a]) => a === i);
+      if (!isPaired) pairs.push([i, j!]);
     }
   }
   for (const [i, j] of pairs.slice(0, AUTO_ROUTES)) {
@@ -440,7 +438,7 @@ export function districtRoutes(
       start: `${e.lat.toFixed(5)},${e.lon.toFixed(5)}`,
       entrance: e.run,
       to: footOf(x.id),
-      seconds: 600,
+      seconds: AUTO_LIMIT,
       was: `生成（R1-5 PR B）: 自動運転、入口 ${e.run}（${e.name ?? "?"}、${e.route ?? "?"}）→ 出口 ${x.id} の足`,
     });
   }
@@ -493,6 +491,7 @@ export function districtRoutes(
  * 192–233 s of game time over 2.2–2.5 km; the generated ones are of the same kind.
  */
 export const AUTO_GAME_S = 210;
+// (the generated routes pick their exits about AUTO_TRIP_M away for that.)
 /** A wall route's game time (s): WALL_LEAD_M at a posted 60 km/h, the 5 s at the wall and the stop. */
 export const WALL_GAME_S = 40;
 

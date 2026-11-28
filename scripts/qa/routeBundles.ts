@@ -15,9 +15,26 @@ export const OPEN_S = 58;
 export const REOPEN_EVERY = 10;
 /** Real seconds per game second while driving (手順 0: 0.92–1.03 over three routes; the higher). */
 export const WALL_PER_GAME = 1.03;
+/**
+ * Real seconds per `advance(1)` (60 frames): an autopilot route's limit counts these, not game
+ * seconds (drive-deck.ts driveAuto), and a frame under the 50 ms cap (MAX_FRAME_S) takes about that
+ * long while it draws (手順 0: advance(10) 26–29 s). Its worst case is limit × this.
+ */
+export const WALL_PER_ADVANCE_S = 2.9;
+
+/** A route's worst real time on a page already open (s): its whole limit (drive-deck.ts --budget-min). */
+export const routeWorstSeconds = (r: DeckRoute) =>
+  r.seconds * (r.kind === "auto" ? WALL_PER_ADVANCE_S : WALL_PER_GAME) + MOVE_S;
+
+/**
+ * Real seconds per game second on the autopilot (R1-1b's auto-shibakoen-shiodome: 210–233 s of game
+ * time in 345–375 s with 58 s of opening, about 1.4): the traffic and the planner cost more frames.
+ */
+export const AUTO_WALL_PER_GAME = 1.4;
 
 /** A route's real time on a page already open (s). */
-export const routeWallSeconds = (r: DeckRoute) => routeGameSeconds(r) * WALL_PER_GAME + MOVE_S;
+export const routeWallSeconds = (r: DeckRoute) =>
+  routeGameSeconds(r) * (r.kind === "auto" ? AUTO_WALL_PER_GAME : WALL_PER_GAME) + MOVE_S;
 
 /**
  * The routes cut in order into bundles of at most `budgetS` real seconds, each with one page opened

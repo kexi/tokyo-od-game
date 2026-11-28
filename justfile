@@ -440,6 +440,18 @@ measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
 check-deck-drive label="run" route="" base="http://localhost:5173/tokyo-od-game/" out="" throttle="1":
     pnpm exec tsx scripts/qa/drive-deck.ts --label {{ label }} --base {{ base }} {{ if route != "" { "--route " + route } else { "" } }} {{ if out != "" { "--out " + out } else { "" } }} --cpu-throttle {{ throttle }}
 
+# 計測のフォルダ dir の地区 district の走行の表（本線の車線 0 を入口 → 本線 → 出口の鎖で、ランプの全車線、先の無い端の壁、自動運転 20 本、ランプの足の街路の場所）を作り、.qa/district-routes/<label>.json に書く（commit しない、同じデータからは同じ表、見積もりの実時間と 25 分の束の数つき）
+make-district-routes dir district label="":
+    pnpm exec tsx scripts/qa/make-district-routes.ts {{ dir }} {{ district }} {{ label }}
+
+# 走行の表が計測のフォルダの地区をどれだけ走るか（長さ × 車線の割合、走らない run と理由）を 1 行の JSON に書く（理由の無い run があれば終了コード 1）
+measure-route-coverage dir table:
+    pnpm exec tsx scripts/qa/measure-route-coverage.ts {{ dir }} {{ table }}
+
+# 生成した走行の表 table を、開発サーバーの 1 枚のページで経路から経路へ移しながら走らせ（10 本ごとと JS のヒープ 1.5 GB で開き直す）、.qa/drive-deck-<label>/<route>.json に書く（済んだ経路は飛ばす、見込み時間が budget 分を超える前に止めて次の経路を書く。データは XW_DATA_DIR で開発サーバーと揃える）
+check-district-drive label table budget="20" base="http://localhost:5173/tokyo-od-game/":
+    pnpm exec tsx scripts/qa/drive-deck.ts --label {{ label }} --base {{ base }} --routes {{ table }} --resume --budget-min {{ budget }}
+
 # 街路の場所の表 scripts/qa/streetPlaces.ts（ids をカンマで渡せばその場所だけ）で、車をいちばん近い街路の車線へ 40 m 手前に置き、自動運転で 40 m 先まで走らせ、到着（10 m 以内）・地面からの高さ 0.4〜1.3 m・落下・建物・止まり・置き直しを .qa/street-drive-<label>/<id>.json に書く（事故・検挙の回は撮り直す、flags に --site-lanes <file>・--hole-lanes <file> で探りの事例の内の不合格を known に、--baseline <main の結果のフォルダ> で main の結果に在る種類だけの不合格を known-main に分ける、データは XW_DATA_DIR で開発サーバーと揃える、同じデータ・一覧・baseline の結果は飛ばす、終了コードは失敗 1・invalid 2・まだ結果の無い場所 5・known 3・known-main だけ 4・baseline を読めない 6）
 check-street-drive label="run" ids="" base="http://localhost:5173/tokyo-od-game/" flags="":
     pnpm exec tsx scripts/qa/street-drive.ts --label {{ label }} --base {{ base }} {{ if ids != "" { "--only " + ids } else { "" } }} {{ flags }}
