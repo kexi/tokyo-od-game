@@ -1425,10 +1425,15 @@ export function planNetwork(
     return false;
   });
   plan.wanted = new Set(wanted.map((r) => r.run.id));
+  const wantedChains = new Set([...plan.wanted].map((id) => plan.runs.get(id)!.chain.id));
   // Only a plan whose feet were cut knows them (the first plan without roads, a tags build: not).
+  // A deferred foot's run is in no plan, so where the range is chosen (--range ship: shipRuns picks
+  // planned runs) it is asked of its chain, as a deferred below run is (R1-3; below). Why not
+  // `chosen.has(run)` (as first made): a deferred run is never chosen, and ship's report.json and
+  // scorecard lost `ground.deferred` (203832842). Where the range is boxes, its own line as before.
   if (feetRoads !== null)
     checkFootDeferrals(plan, deferrals, deferredPlans, (rp) => {
-      if (chosen) return chosen.has(rp.run.id);
+      if (chosen) return wantedChains.has(rp.chain.id);
       if (!ranges) return true;
       for (let i = rp.i0; i <= rp.i1; i += 5) {
         const [lon, lat] = lonLatAt(rp, i);
@@ -1439,7 +1444,6 @@ export function planNetwork(
       }
       return false;
     });
-  const wantedChains = new Set([...plan.wanted].map((id) => plan.runs.get(id)!.chain.id));
   for (const j of plan.belowJunctions ?? []) j.inRange = j.chains.some((c) => wantedChains.has(c));
   // A deferred run is in no file, so the range is asked of its own line where the range is boxes, and
   // of its chain where it is chosen (--range ship: shipRuns picks planned runs, which a deferred run is
