@@ -11,7 +11,8 @@
       const source = await (await fetch(new URL("../../src/world/facade.ts", import.meta.url))).text();
       const pattern =
         /const shadowMaterial = builder.material;\s*const isShadowPass = shadowMaterial.isShadowPassMaterial === true;[\s\S]*?if \(isShadowPass\) return vec4\(0, 0, 0, 1\);/;
-      if (!pattern.test(source)) throw new Error("opaque-alpha block not found in served module");
+      const hasShortcut = pattern.test(source);
+      if (!hasShortcut) throw new Error("opaque-alpha block not found in served module");
       const oldSource = source
         .replace(pattern, "")
         .replace("return Fn((builder) => {", "return Fn(() => {")
@@ -29,7 +30,8 @@
           max = 0;
         for (let i = 0; i < a.length; i++) {
           const delta = Math.abs(a[i] - b[i]);
-          if (delta !== 0) changed++;
+          const isDifferent = delta !== 0;
+          if (isDifferent) changed++;
           max = Math.max(max, delta);
         }
         return { changed, max, values: a.length };
@@ -97,7 +99,8 @@
             try {
               return build.apply(this, args);
             } finally {
-              if (this.material.isShadowPassMaterial === true)
+              const isShadowBuild = this.material.isShadowPassMaterial === true;
+              if (isShadowBuild)
                 shadowBuilds.push({
                   ms: performance.now() - start,
                   fragment: this.fragmentShader?.length ?? 0,
@@ -148,22 +151,35 @@
               ];
               const beforeRefresh = difference(before.moved, freshBefore.pixels);
               const afterRefresh = difference(after.moved, freshAfter.pixels);
+              // After the move too: the old and the new each drew, then moved a building and drew again.
+              const movedDifferences = [
+                difference(before.moved, after.moved),
+                difference(freshBefore.moved, freshAfter.moved),
+              ];
               const shadowEffect = difference(before.moved, before.noShadows);
               const movementEffect = difference(before.pixels, before.moved);
-              const valid =
-                differences.every((d) => d.changed === 0) &&
-                shadowEffect.changed > 100 &&
-                movementEffect.changed > 100;
               const build = (run) => ({
                 count: run.shadowBuilds.length,
                 ms: run.shadowBuilds.reduce((a, b) => a + b.ms, 0),
                 fragments: run.shadowBuilds.map((b) => b.fragment),
               });
+              // The shortcut taken: every new shadow fragment shorter than the shortest old one (three
+              // hands the shadow pass its override as builder.material, which no unit test can see).
+              const oldShortest = Math.min(...build(before).fragments);
+              const newLongest = Math.max(...build(after).fragments);
+              const isShorter = build(after).count > 0 && newLongest < oldShortest;
+              const valid =
+                differences.every((d) => d.changed === 0) &&
+                isShorter &&
+                shadowEffect.changed > 100 &&
+                movementEffect.changed > 100;
               rows.push({
                 backend: forceWebGL ? "webgl2" : "webgpu",
                 mode,
                 night,
                 differences,
+                movedDifferences,
+                isShorter,
                 shadowEffect,
                 movementEffect,
                 beforeRefresh,
