@@ -4,7 +4,7 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
-- [不透明な外壁の影で、色の段を組み立てない（性能 PR #9 の作り直し）](opaque-facade-shadow-performance.md) - 影のパスで外壁の surface() が vec4(0,0,0,1) を返す。main で 8 棟の影の組み立て 13〜38 → 1.2〜3.3 ms（12 組とも同じ向き）、WebGPU・WebGL2 の 24 画像が一致、ワープの影の組み立ての 1 フレーム最大 432〜470 → 50〜95 ms
+- [不透明な外壁の影で、色の段を組み立てない（性能 PR #9 の作り直し）](opaque-facade-shadow-performance.md) - 影のパスで外壁の surface() が vec4(0,0,0,1) を返す。main と枝を交互に 4 往復した帰属で、1 回のワープのノードの組み立て −65〜−91 %（8 組とも同じ向き）、最長フレーム 467〜617 → 133〜167 ms、WebGPU・WebGL2 の 24 画像が一致
 
 - [地形の水域マスクのシェーダーをチャンクの間で共有する（性能 PR #11 の作り直し）](terrain-mask-performance.md) - チャンクごとの TextureNode をやめ、materialReference で同じ式を共有。main で 8 チャンクのシェーダーの作成 8 → 1 回、WebGPU・WebGL2 の昼夜で 20 画像が旧処理と一致
 
