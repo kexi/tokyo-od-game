@@ -162,6 +162,25 @@ export function decisionsRefusal(mode: string): string | null {
 }
 
 /**
+ * The reason a flag that takes a value is given in a form the build does not read, or null (PR #136
+ * review 1): scripts/expressway.ts reads `--name value` (the next argument), so `--name=value` and a
+ * `--name` with nothing after it read as the flag left out, and `--decisions=none` built with both
+ * tables under a label saying none. Why stop and not also read `=`: one form for every flag of the
+ * build, as `arg()` reads them; a second form for one flag would be a reading the others lack.
+ */
+export function flagFormRefusal(argv: readonly string[], name: string): string | null {
+  const flag = `--${name}`;
+  const isJoined = argv.some((a) => a.startsWith(`${flag}=`));
+  if (isJoined) return `give ${flag} <value>, not ${flag}=<value> (the build reads --name value)`;
+  const at = argv.indexOf(flag);
+  const isGiven = at >= 0;
+  if (!isGiven) return null;
+  const isLast = at === argv.length - 1;
+  if (isLast) return `${flag} needs a value`;
+  return null;
+}
+
+/**
  * The decisions' tables a `--decisions` value applies (R1-3). The value names the tables applied, not
  * those left out: `feet-only` applies the feet's row and leaves the two structure rows out. Null for
  * `all`: the build passes no table, and planNetwork and the scorecard read the modules' as before the
