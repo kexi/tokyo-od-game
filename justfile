@@ -291,7 +291,7 @@ make-guide-data:
 make-expressway-data range="hamazakibashi,rainbow,azabudai,azabudai_exit,shiodome" flags="":
     pnpm exec tsx scripts/expressway.ts --range {{ range }} {{ flags }}
 
-# 高速道路を計測用に生成し（.cache/expressway-area/<label>/、public/data/expressway は触らない）、スコアカードを .qa/expressway/<label>.report.json に書く（range は ship・all か名前付き範囲、below は pruned か all＝トンネル・掘割を見送らない計測専用、flags は --accept-extract や --baseline tests/fixtures/expresswayScorecard.ship.json、固定点 block の計測なら --partition blocks --quiet-factor 1.5、縦断の目的は既定 v2 で重みの掃引なら --grade-change 1 --reach 150、比較用の旧い目的なら --objective v1 など）
+# 高速道路を計測用に生成し（.cache/expressway-area/<label>/、public/data/expressway は触らない）、スコアカードを .qa/expressway/<label>.report.json に書く（range は ship・all か名前付き範囲、below は pruned か all＝トンネル・掘割を見送らない計測専用、flags は --accept-extract や --baseline tests/fixtures/expresswayScorecard.ship.json、固定点 block の計測なら --partition blocks --quiet-factor 1.5、縦断の目的は既定 v2 で重みの掃引なら --grade-change 1 --reach 150、比較用の旧い目的なら --objective v1、決定の表を外すなら --decisions none・feet-only・structures-only（値は当てる表）など）
 measure-expressway-area label range="ship" below="pruned" flags="":
     pnpm exec tsx scripts/expressway.ts --range {{ range }} --below {{ below }} --out .cache/expressway-area/{{ label }} --label {{ label }} --report .qa/expressway/{{ label }}.report.json {{ flags }}
 
@@ -432,6 +432,10 @@ measure-shader-prebuild label="run" base="http://localhost:5173/tokyo-od-game/" 
 measure-tile-memory label="run" base="http://localhost:4174/tokyo-od-game/" *args:
     pnpm exec tsx scripts/qa/memory-tiles.ts --label {{ label }} --base {{ base }} {{ args }}
 
+# 夜雨の東京駅から、未読込の地域へのワープと移動中のワープの置き換えで CPU プロファイルを取り、50 ms を超えたフレームの中の時間を関数・ゲームのファイル・旧性能 PR の候補ごとに足し上げて .qa/frame-attribution/<label>/ に書く（開発サーバーが必要。args に --modes coldWarp,latestWarp・--interval（µs）・--over（ms））
+measure-frame-attribution label="run" base="http://localhost:5173/tokyo-od-game/" *args:
+    pnpm exec tsx scripts/qa/frame-attribution.ts --label {{ label }} --base {{ base }} {{ args }}
+
 # 首都高の床版の上に自車を置き、昼と雨の夜のフレーム間隔を 12 秒ずつ測って .qa/perf-deck-<label>.json に書く（A/B は変更前を別の開発サーバーで配って base を替える）
 measure-perf-deck label="run" base="http://localhost:5173/tokyo-od-game/":
     pnpm exec tsx scripts/qa/perf-deck.ts --label {{ label }} --base {{ base }}
@@ -467,6 +471,14 @@ measure-road-worker:
 # 道路の分割反映・原点変更・未読込地域への移動を夜雨で最後まで計測する
 measure-road-streaming:
     node scripts/qa/perf-road-streaming.mjs
+
+# 地形の共有マスク式を両backend・昼夜・別タイル・更新・交換で全画素比較し、生成CPUを測る
+measure-terrain-mask:
+    node scripts/qa/terrain-mask-parity.mjs
+
+# 車内の行列更新を旧処理と交互比較し、昼晴れ・夜雨の画素と行列の一致を確認する
+measure-scene-matrices:
+    node scripts/qa/perf-scene-matrices.mjs
 
 # 型チェックを行う
 check-types:

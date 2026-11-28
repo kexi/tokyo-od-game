@@ -44,10 +44,15 @@
 // "height-structures" in meta's features; --structures tags (comparing, --out) draws them by the tags.
 import {
   belowJoinsRefusal,
+  type Decisions,
+  decisionsRefusal,
+  decisionTablesOf,
   districtsRefusal,
+  flagFormRefusal,
   portalApproachRefusal,
   shippedFolderRefusal,
 } from "./expresswayGuards";
+import { scorecardViolationsOf } from "./expresswayScorecardViolations.ts";
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -59,7 +64,6 @@ import {
   EXPECTED_EXTRACT_TIMESTAMP,
   pinnedExtractName,
 } from "../src/expressway/extract.ts";
-import { violationsOf } from "../src/expressway/violations.ts";
 import { isAllowed } from "../src/expressway/allowlist.ts";
 import { caseContextOf, type Ledger, ledgerVerdict, rampFloorOf } from "../src/expressway/ledger.ts";
 import { BLOCK_QUIET_FACTOR, COMPANIONS, HEIGHT_STRUCTURES } from "../src/expressway/assumptions.ts";
@@ -330,6 +334,15 @@ const portalApproachArg = arg("portal-approach") ?? "off";
 const portalApproachReason = portalApproachRefusal(portalApproachArg, belowJoinsArg);
 if (portalApproachReason) throw new Error(portalApproachReason);
 const isPortalApproachCut = portalApproachArg === "cut";
+// R1-3: --decisions all|none|feet-only|structures-only names the decisions' tables applied (all, the
+// default, both: footDeferrals.ts and structureDecisions.ts); measuring only, the rows stay through R1.
+const decisionsFormReason = flagFormRefusal(process.argv, "decisions");
+if (decisionsFormReason) throw new Error(decisionsFormReason);
+const decisionsArg = arg("decisions") ?? "all";
+const decisionsReason = decisionsRefusal(decisionsArg);
+if (decisionsReason) throw new Error(decisionsReason);
+const decisionsMode = decisionsArg as Decisions;
+const decisionTables = decisionTablesOf(decisionsMode);
 const districtsArg = arg("districts");
 const districtsReason = districtsRefusal(districtsArg, scope === "ship", isRunBordersCut, DISTRICTS);
 if (districtsReason) throw new Error(districtsReason);
@@ -354,6 +367,7 @@ const refusal = shippedFolderRefusal({
   isRunBordersCut,
   isBelowJoinsCompile,
   isPortalApproachCut,
+  isDecisionsOff: decisionTables !== null,
 });
 if (refusal) throw new Error(refusal);
 const stagesMs: Record<string, number> = {};
@@ -380,6 +394,7 @@ log("expressway_extract_checked", {
   sha256,
   pinned: timestamp === EXPECTED_EXTRACT_TIMESTAMP && sha256 === EXPECTED_EXTRACT_SHA256,
   accepted: acceptExtract,
+  decisions: decisionsMode,
 });
 if (!extractCheck.ok) throw new Error(extractCheck.reason);
 endStage("extract");
@@ -422,6 +437,7 @@ const planOptions: Parameters<typeof planNetwork>[4] = {
   ...(isRunBordersCut ? { runBorders: "cut" as const } : {}),
   ...(isBelowJoinsCompile ? { belowJoins: "compile" as const } : {}),
   ...(isPortalApproachCut ? { portalApproach: "cut" as const } : {}),
+  ...decisionTables,
 };
 // Planned again with the ramps moved (--ramp-shift) once the first solve says where.
 // With --ground compile the plan is made again once the roads are read (S6 PR 7c2, below): the
@@ -1170,7 +1186,13 @@ if (reportPath) {
           km: Math.round(lengthOf(chosenShip.rampsOutside)) / 1000,
         }
       : null,
-    violations: violationsOf(record, result.chunks, rampFloorOf(ledger), structuresMode === "height"),
+    violations: scorecardViolationsOf(
+      decisionsMode,
+      record,
+      result.chunks,
+      rampFloorOf(ledger),
+      structuresMode === "height",
+    ),
     structureDecks: meta.structures.flatMap((st) => st.decks),
     runs: result.runs,
     closed: result.closed,

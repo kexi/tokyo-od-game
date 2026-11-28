@@ -26,7 +26,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launch } from "./browser.mjs";
-import { COUNT_PIPELINES } from "./pipelineCount.ts";
+import { COUNT_PIPELINES, countKinds } from "./pipelineCount.ts";
 import { freePort } from "./ports.ts";
 
 const ROOT = join(import.meta.dirname, "..", "..");
@@ -75,10 +75,14 @@ type Page = {
   readyAt: number | null;
   compiled: number | null;
   skipped: boolean;
-  pipelines?: { n: number; at: number[] };
+  pipelines?: { n: number; at: number[]; kinds?: string[] };
 };
 
-/** Frame gaps (ms) whose frame ends within [from, to), the long ones counted, and the pipelines built then. */
+/**
+ * Frame gaps (ms) whose frame ends within [from, to), the long ones counted, and the pipelines built
+ * then, in all and by what they were built for (pipelineCount.ts's kinds: which material the first
+ * second of a drive builds, shader-prebuild.md's open question).
+ */
 export function windowStats(page: Page, from: number, to: number) {
   const gaps: Array<[number, number]> = [];
   for (let i = 1; i < page.frames.length; i++) {
@@ -95,6 +99,7 @@ export function windowStats(page: Page, from: number, to: number) {
     longestMs: longest ? Math.round(longest[1] * 10) / 10 : null,
     longestAtMs: longest ? Math.round(longest[0] - from) : null,
     pipelines: built,
+    pipelinesByKind: countKinds(page.pipelines?.at ?? [], page.pipelines?.kinds, from, to),
   };
 }
 
@@ -175,6 +180,7 @@ if (isMain) {
       violation: { ...around(violationAt), ...violation },
       rain: { ...around(rainAt), raining },
       pipelinesTotal: page.pipelines?.n ?? null,
+      pipelinesTotalByKind: countKinds(page.pipelines?.at ?? [], page.pipelines?.kinds, 0, Infinity),
     };
     writeFileSync(
       join(dir, `${label}.json`),
