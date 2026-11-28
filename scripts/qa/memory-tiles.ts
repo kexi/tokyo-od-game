@@ -29,6 +29,7 @@ import { join } from "node:path";
 import { launch } from "./browser.mjs";
 import { freePort } from "./ports.ts";
 import { waitQuiet } from "./quietWatch.ts";
+import { servedBuild, servedRecord, warnIfNotSame } from "./servedBuild.ts";
 
 const ROOT = join(import.meta.dirname, "..", "..");
 const argv = process.argv.slice(2);
@@ -205,7 +206,9 @@ const until = async (expr: string, tries = 180): Promise<boolean> => {
   }
   return false;
 };
-let out: Record<string, unknown> = { label, base, url, view };
+// The tree the page came from, at the start and (below) the end (servedBuild.ts).
+const servedAtStart = await servedBuild(base);
+let out: Record<string, unknown> = { label, base, url, view, served: servedRecord(servedAtStart, null) };
 try {
   await b.send("Page.navigate", { url });
   await until("window.__game?.getState() === 'ready'");
@@ -294,6 +297,9 @@ try {
   out = { ...out, failure: String(error) };
   process.stdout.write(`${JSON.stringify({ failure: String(error) })}\n`);
 } finally {
+  const served = servedRecord(servedAtStart, await servedBuild(base));
+  out.served = served;
   writeFileSync(join(outDir, `${label}.json`), `${JSON.stringify(out, null, 2)}\n`);
+  warnIfNotSame(served, join(outDir, `${label}.json`));
   await b.close();
 }
