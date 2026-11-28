@@ -1,5 +1,6 @@
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { BoxGeometry, Mesh, MeshStandardMaterial, Vector3, type Scene } from "three";
+import { CAR_RIDE_HEIGHT } from "../physics/carBody";
 import { OFFICER_KG, RIDER_KG } from "../physics/masses";
 import { Vehicle, type DriveInput } from "../physics/vehicle";
 import { createVehicle, setBeacons, type VehicleInstance } from "./vehicleModels";
@@ -42,7 +43,6 @@ const FIELD = Math.cos((75 * Math.PI) / 180);
 const LOST = 450; // m: the car got away (the plate was read, so a notice follows)
 const STOPPED = 2.5; // s the pursued car must stand still near the patrol
 const CALLOUT_EVERY = 9000; // ms between loudspeaker calls
-const RIDE_HEIGHT = 0.86;
 
 export class PolicePatrol {
   state: PatrolState = "cruising";
@@ -101,7 +101,7 @@ export class PolicePatrol {
     this.model = createVehicle(kind);
     if (this.model) {
       for (const child of this.car.object.children) child.visible = false;
-      this.model.object.position.y = -RIDE_HEIGHT;
+      this.model.object.position.y = -CAR_RIDE_HEIGHT;
       this.car.object.add(this.model.object);
     } else {
       this.bar.position.set(0, 0.86, -0.15);
@@ -142,7 +142,7 @@ export class PolicePatrol {
     const travel = d.multiplyScalar(dir);
     // The left lane's centre (laneChange.ts), not a quarter of the GSI 幅員 (which may hold the pavement).
     const at = pos.add(new Vector3(travel.z, 0, -travel.x).multiplyScalar(laneCentreOffset(seg, 0)));
-    at.y = (this.groundAt(at.x, at.z) ?? at.y) + RIDE_HEIGHT;
+    at.y = (this.groundAt(at.x, at.z) ?? at.y) + CAR_RIDE_HEIGHT;
     this.car.setCoasting(true);
     this.car.teleport(at, Math.atan2(travel.x, travel.z));
     this.car.syncVisuals();
@@ -206,7 +206,7 @@ export class PolicePatrol {
   /** Put it at `at` facing `yaw` and hold it there (behind the stopped car, across a lane). */
   placeAt(at: Vector3, yaw: number): void {
     const p = at.clone();
-    p.y = (this.groundAt(p.x, p.z) ?? p.y) + RIDE_HEIGHT;
+    p.y = (this.groundAt(p.x, p.z) ?? p.y) + CAR_RIDE_HEIGHT;
     this.car.teleport(p, yaw);
     this.car.syncVisuals();
     this.driver.place(p, yaw);

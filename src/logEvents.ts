@@ -1859,6 +1859,39 @@ export const LOG_EVENTS = {
     durationMs: count,
   }),
   /**
+   * Where RoadGraph.locate answers a car on a deck with another run of a data folder
+   * (scripts/expresswayLocateProbe.ts, P2.7 R1-4a-1): the lane-centre points asked, those with no answer,
+   * those answered otherwise than main's rule before R1-4a-1 (and of them those where main's answer was on
+   * the car's own surface), the answers on the same run /
+   * another run on the same surface (and of those, a lower posted limit by the asking deck's class) /
+   * another surface, the pairs, where a car can be and cannot be, the mix-ups whose limits differ, and
+   * per form of the fix (--forms) what it leaves and the same-surface answers it changes (and of those,
+   * the points a car cannot be at: a deck over its road past MERGE_MAX_DZ within the car's height).
+   */
+  expressway_locate_probed: info({
+    dir: z.string(),
+    points: count,
+    none: count,
+    differsFromMain: count,
+    sameSurfaceChanged: count,
+    sameRun: count,
+    sameSurface: count,
+    sameSurfaceLowerLimit: z.object({ ownMain: count, ownRamp: count }),
+    otherSurface: count,
+    otherSurfacePairs: count,
+    canBe: count,
+    canBePairs: count,
+    cannotBe: count,
+    limitDiffers: count,
+    forms: z
+      .record(
+        z.string(),
+        z.object({ canBeLeft: count, cannotBeLeft: count, sameChanged: count, sameChangedCannotBe: count }),
+      )
+      .nullable(),
+    durationMs: count,
+  }),
+  /**
    * The drops with no wall at their edge of a data folder (scripts/expresswayBareDrops.ts, A1 test 22):
    * the points, their pairs, and against another list the new and the gone points (the first new ones).
    */
