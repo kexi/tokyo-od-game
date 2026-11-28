@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [不透明な外壁の影で、色の段を組み立てない（性能 PR #9 の作り直し）](opaque-facade-shadow-performance.md) - 影のパスで外壁の surface() が vec4(0,0,0,1) を返す。main と枝を交互に 4 往復した帰属で、1 回のワープのノードの組み立て −65〜−91 %（8 組とも同じ向き）、最長フレーム 467〜617 → 133〜167 ms、WebGPU・WebGL2 の 24 画像が一致
+
 - [地形の水域マスクのシェーダーをチャンクの間で共有する（性能 PR #11 の作り直し）](terrain-mask-performance.md) - チャンクごとの TextureNode をやめ、materialReference で同じ式を共有。main で 8 チャンクのシェーダーの作成 8 → 1 回、WebGPU・WebGL2 の昼夜で 20 画像が旧処理と一致
 
 - [車内の連続描画で、シーンの行列更新を 1 回にする（性能 PR #7 の作り直し）](scene-matrix-performance.md) - 車内視点の 1 フレームで約 4.7 回だった updateMatrixWorld を 1 回に。main で行列の CPU 1.40〜1.46 → 0.38〜0.40 ms（−73 %、8 組とも同じ向き）、WebGPU・WebGL2 の昼夜で画素と行列が旧処理と一致

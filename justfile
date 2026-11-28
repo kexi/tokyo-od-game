@@ -460,6 +460,10 @@ measure-road-worker:
 measure-road-streaming:
     node scripts/qa/perf-road-streaming.mjs
 
+# 不透明な外壁の影を旧処理と両backend・全窓設定で全画素比較し、生成CPUを計測する
+measure-facade-shadows:
+    node scripts/qa/facade-shadow-parity.mjs
+
 # 地形の共有マスク式を両backend・昼夜・別タイル・更新・交換で全画素比較し、生成CPUを測る
 measure-terrain-mask:
     node scripts/qa/terrain-mask-parity.mjs
