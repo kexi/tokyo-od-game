@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   attribute,
   CANDIDATES,
+  NAMED_WRAPPERS,
   longGaps,
   markerCheck,
   selfShare,
@@ -176,5 +177,22 @@ describe("measure-frame-attribution's analysis (scripts/qa/frame-attribution.ts)
     expect(
       hit(frame("Q$1", `${base}/node_modules/.vite/deps/renderer-CUfHAmYW-DGeGN-4p.js?v=1`, 921)),
     ).toEqual([]);
+  });
+
+  it("makes in the page every function name a candidate matches by, under that same name", () => {
+    // The page's wrappers are a string: renamed there alone, their candidate would count 0.
+    const made = [
+      { name: "__qaParseTile", candidate: "tileParseSync" },
+      { name: "__qaLoadModel", candidate: "buildingLoadModel" },
+    ];
+    for (const { name, candidate } of made) {
+      expect(NAMED_WRAPPERS).toContain(`const ${name} = `);
+      const hits = CANDIDATES.filter((c) => c.match(frame(name, "", 0))).map((c) => c.id);
+      expect(hits).toEqual([candidate]);
+    }
+    expect(NAMED_WRAPPERS).toContain("function __qaMarker(");
+    // And the wrapped methods go through them (a name that is made but not called counts 0 too).
+    expect(NAMED_WRAPPERS).toContain("return __qaParseTile(this, args)");
+    expect(NAMED_WRAPPERS).toContain("? __qaLoadModel(e)");
   });
 });
