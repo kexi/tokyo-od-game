@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   attribute,
+  CANDIDATES,
   longGaps,
   markerCheck,
   selfShare,
@@ -116,5 +117,64 @@ describe("measure-frame-attribution's analysis (scripts/qa/frame-attribution.ts)
     // The marker ran from page 10 ms for 30 ms: its samples end at 20, 30 and 40 ms.
     expect(markerCheck(profile, NAV_US + 10_000, 30).isMapped).toBe(true);
     expect(markerCheck(profile, NAV_US + 200_000, 30).isMapped).toBe(false);
+  });
+
+  it("splits a sample that straddles a frame's edge by the part inside it", () => {
+    // Samples of 10 ms end at page 10, 20, 30; the gap [15, 25] holds half of the 2nd and of the 3rd.
+    const stacks = [[STEP], [NEAREST, STEP], [NEAREST, STEP]];
+    const r = attribute(profileOf(stacks, 0), [{ start: 15, end: 25, ms: 10 }], NAV_US);
+    expect(r.perGap[0].observedMs).toBe(10);
+    expect(r.candidates.find((c) => c.id === "roadNearest")?.ms).toBe(10);
+    const one = attribute(profileOf(stacks, 0), [{ start: 5, end: 15, ms: 10 }], NAV_US);
+    expect(one.candidates.find((c) => c.id === "roadNearest")?.ms).toBe(5);
+  });
+
+  it("takes a gap of exactly the threshold as not long", () => {
+    expect(longGaps([0, 50, 100.1], 50)).toEqual([{ start: 50, end: 100.1, ms: expect.closeTo(50.1, 5) }]);
+  });
+
+  it("counts a frame where a candidate took exactly 8 ms", () => {
+    const stacks = [[NEAREST, STEP], [STEP]];
+    const r = attribute(profileOf(stacks, 0, 8), [{ start: 0, end: 16, ms: 16 }], NAV_US);
+    expect(r.candidates.find((c) => c.id === "roadNearest")).toMatchObject({ ms: 8, framesOver8: 1 });
+  });
+
+  it("does not take a library's own src/ folder for the game's", () => {
+    const lib = frame("inner", "http://localhost/tokyo-od-game/node_modules/.vite/deps/x/src/a.js");
+    const r = attribute(profileOf([[lib]], 0), [{ start: 0, end: 10, ms: 10 }], NAV_US);
+    expect(r.files).toEqual([{ name: "(library or native)", ms: 10 }]);
+  });
+
+  it("does not hold the clock mapping when only two thirds of the marker are in its window", () => {
+    const stacks = [[STEP], [MARKER], [MARKER], [MARKER], [STEP]];
+    // Mapped from 20 ms: the marker's samples ending at 30 and 40 are inside (20 ms), the one at 20 is not.
+    expect(markerCheck(profileOf(stacks, 0), NAV_US + 20_000, 30)).toMatchObject({
+      insideMs: 20,
+      isMapped: false,
+    });
+  });
+
+  it("hits the candidates on the URLs the dev server serves (three and the libraries pre-bundled under .vite/deps)", () => {
+    const base = "http://localhost:5191/tokyo-od-game";
+    const hit = (f: CallFrame) => CANDIDATES.filter((c) => c.match(f)).map((c) => c.id);
+    expect(hit(frame("build", `${base}/node_modules/.vite/deps/three_webgpu.js?v=6568a4eb`, 1583))).toContain(
+      "nodeBuild",
+    );
+    expect(
+      hit(frame("updateMatrixWorld", `${base}/node_modules/.vite/deps/three.core-B-yWLuEf.js?v=1`, 10057)),
+    ).toContain("matrixWorld");
+    expect(hit(frame("nearestWhere", `${base}/src/world/roads.ts?t=1795`, 353))).toContain("roadNearest");
+    expect(hit(frame("readFields", `${base}/node_modules/.vite/deps/pbf.js?v=1`, 10))).toContain(
+      "vectorTiles",
+    );
+    expect(hit(frame("", `${base}/src/world/roadNetworkBuilder.ts`, 68))).toContain("roadReply");
+    expect(hit(frame("restoreRoadNetwork", `${base}/src/world/roadNetworkData.ts`, 120))).toContain(
+      "roadReply",
+    );
+    // The tables: by the page's named wrapper, not by the library's (minified) classes.
+    expect(hit(frame("__qaParseTile", "", 0))).toEqual(["tileParseSync"]);
+    expect(
+      hit(frame("Q$1", `${base}/node_modules/.vite/deps/renderer-CUfHAmYW-DGeGN-4p.js?v=1`, 921)),
+    ).toEqual([]);
   });
 });

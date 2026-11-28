@@ -46,10 +46,14 @@ describe("the render pipelines' kinds (scripts/qa/pipelineCount.ts)", () => {
     const kinds = ["facade", "shadow:facade", "facade", "terrain"];
     expect(countKinds(at, kinds, 0, 20)).toEqual({ facade: 2, "shadow:facade": 1 });
     expect(countKinds(at, undefined, 20, 40)).toEqual({ "?": 1 });
+    // The window's right end is open: a pipeline at its end belongs to the next window.
+    expect(countKinds(at, kinds, 0, 15)).toEqual({ facade: 1, "shadow:facade": 1 });
   });
 
   it("puts pipelineKind in the page as plain JS (no TS types left in the counter's source)", () => {
     expect(COUNT_PIPELINES).toContain("function pipelineKind(");
+    // Classified by the render object, three's first argument to createRenderPipeline.
+    expect(COUNT_PIPELINES).toContain("__pipelineKind(args[0], window.__game)");
     expect(COUNT_PIPELINES).not.toMatch(/:\s*(Node|Game|string)\b/);
     // The page-side source evaluates and gives the same answer as the module's function.
     const kindOf = new Function(`return ${pipelineKind.toString()}`)() as typeof pipelineKind;

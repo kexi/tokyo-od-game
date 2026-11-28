@@ -15,7 +15,20 @@
 // counted in the gap that holds the interval since the sample before it.
 //
 // Named wrappers make code the profile cannot name show up by name: the near and far tiles'
-// load-model dispatch (the game's listeners are arrow functions) runs inside __qaLoadModel.
+// load-model dispatch (the game's listeners are arrow functions) runs inside __qaLoadModel, and the
+// synchronous prefix of a tile's parse (the b3dm's header, its feature and batch tables' JSON, the
+// glTF's JSON chunk) inside __qaParseTile. Why not match the library's files or classes by name: the
+// dev server serves 3d-tiles-renderer pre-bundled and minified (node_modules/.vite/deps/renderer-*.js,
+// FeatureTable is `Q$1` there), so a match on FeatureTable.js never hit (Phase 0, review of #134), and
+// a match on the minified name would stop hitting without a word when the library is updated.
+//
+// Matches are what the candidates can be told by; three of them count more than their PR changes:
+// matrixWorld is every updateMatrixWorld of the scene (#7 changes the cockpit's only: an upper
+// bound), colliderBuild every Rapier createCollider (#21 moves the terrain's and the buildings'
+// only; the pavements', shores', lamps' and signals' are in it too), and roadReply the road
+// worker's reply listener (an arrow function in roadNetworkBuilder.ts: any anonymous frame of that
+// file) with restoreRoadNetwork: the listener's own time is reading `event.data`, which is where the
+// structured clone is restored (expected, not separated from what the engine inlined into it).
 //
 // Why not perf-road-streaming.mjs with QA_PROFILE: that script is the baseline every later PR is
 // compared with and stays as it is (the October stack's conflicts were mostly in it); it also keeps
@@ -68,7 +81,7 @@ export const CANDIDATES: Candidate[] = [
   { id: "matrixWorld", prs: "#7", match: fn(/^updateMatrixWorld$/) },
   { id: "roadNearest", prs: "#6 #12b", match: fn(/^(nearestWhere|nearestOnSurface|locate)$/, /roads\.ts/) },
   { id: "waterMasks", prs: "#8", match: fn(/^(rasterize|coverage|dilate)$/, /waterGeometry\.ts/) },
-  { id: "tileTables", prs: "#10", match: fn(/.*/, /(FeatureTable|BatchTable)\.js/) },
+  { id: "tileParseSync", prs: "#10", match: fn(/^__qaParseTile$/) },
   {
     id: "routePlan",
     prs: "#12 #14",
@@ -77,13 +90,17 @@ export const CANDIDATES: Candidate[] = [
   { id: "signalMatch", prs: "#13", match: fn(/^buildSignals$/, /trafficControl\.ts/) },
   { id: "buildingLoadModel", prs: "#16", match: fn(/^__qaLoadModel$/) },
   { id: "terrainChunk", prs: "#17", match: fn(/^buildChunk$/, /terrain\.ts/) },
-  { id: "roadReply", prs: "#18", match: fn(/^restoreRoadNetwork$/) },
+  {
+    id: "roadReply",
+    prs: "#18",
+    match: (f) => fn(/^restoreRoadNetwork$/)(f) || fn(/^$/, /roadNetworkBuilder\.ts/)(f),
+  },
   { id: "colliderBuild", prs: "#21", match: fn(/^(createCollider|trimesh)$/) },
   {
     id: "groundQuery",
     prs: "#25",
     match: (f) =>
-      fn(/^(sampleGlobal|pixel|surveyedAt)$/, /dem\.ts/)(f) ||
+      fn(/^(sampleGlobal|surveyedAt)$/, /dem\.ts/)(f) ||
       fn(/^toGeodetic$/, /frame\.ts/)(f) ||
       fn(/^groundY$/, /main\.ts/)(f),
   },
@@ -92,7 +109,7 @@ export const CANDIDATES: Candidate[] = [
   {
     id: "vectorTiles",
     prs: "#31",
-    match: (f) => /vector-tile|\/pbf\//.test(f.url) || fn(/^roadLinesOfTile$/)(f),
+    match: (f) => /vector-tile|\/pbf[/.]/.test(f.url) || fn(/^roadLinesOfTile$/)(f),
   },
   { id: "humans", prs: "#33", match: fn(/^(createHuman|animateHuman)$/, /human\.ts/) },
   { id: "gc", prs: "—", match: fn(/^\(garbage collector\)$/) },
@@ -294,6 +311,9 @@ if (isMain) {
   const label = flag("label") ?? "run";
   const base = flag("base") ?? "http://localhost:5173/tokyo-od-game/";
   const modes = (flag("modes") ?? "coldWarp,latestWarp").split(",");
+  const unknown = modes.filter((m) => m !== "coldWarp" && m !== "latestWarp");
+  const hasUnknown = unknown.length > 0;
+  if (hasUnknown) throw new Error(`unknown --modes ${unknown.join(",")} (coldWarp, latestWarp)`);
   const intervalUs = Number(flag("interval") ?? 1000);
   const overMs = Number(flag("over") ?? 50);
   const out = join(ROOT, ".qa", "frame-attribution", label);
@@ -333,13 +353,24 @@ if (isMain) {
     // Named wrappers (see the header) and the marker.
     await b.evaluate(`(() => {
       const wrap = (tiles) => {
-        if (!tiles || tiles.__qaNamed) return;
+        const isNamed = !tiles || tiles.__qaNamed;
+        if (isNamed) return;
         const dispatch = tiles.dispatchEvent.bind(tiles);
         const __qaLoadModel = (e) => dispatch(e);
         tiles.dispatchEvent = (e) => e?.type === "load-model" ? __qaLoadModel(e) : dispatch(e);
         tiles.__qaNamed = true;
       };
       window.__qaNameTiles = () => { wrap(__game.buildings.tiles); wrap(__game.buildings.far); };
+      const proto = Object.getPrototypeOf(__game.buildings.tiles);
+      const isParseNamed = proto.__qaParseNamed === true;
+      if (!isParseNamed) {
+        const parse = proto.parseTile;
+        // Only the synchronous prefix runs inside the wrapper: what resumes after the parse's awaits
+        // (the glTF after Draco) is not under it.
+        const __qaParseTile = (self, args) => parse.apply(self, args);
+        proto.parseTile = function (...args) { return __qaParseTile(this, args); };
+        proto.__qaParseNamed = true;
+      }
       window.__qaNameTiles();
       setInterval(window.__qaNameTiles, 500);
       window.__qaMarker = function __qaMarker(ms) { const t0 = performance.now(); while (performance.now() - t0 < ms) {} return t0; };
@@ -390,7 +421,8 @@ if (isMain) {
           const isNear = Math.abs(input.center.lat - goal.lat) < 0.002 && Math.abs(input.center.lon - goal.lon) < 0.002;
           const isDone = landed?.to === name && input.lines !== beforeLines && isNear && !input.loading;
           if (isDone) { landedAt = performance.now() - start; break; }
-          if (i === 359) throw new Error('warp or new road data did not finish');
+          const isLast = i === 359;
+          if (isLast) throw new Error('warp or new road data did not finish');
           await new Promise((r) => setTimeout(r, 250));
         }
         await new Promise((r) => setTimeout(r, 10000));
@@ -421,7 +453,8 @@ if (isMain) {
         humansSelf: humans,
         ...result,
       };
-      report.scenes.push({ ...summary, errors: scene.errors, session: scene.session });
+      // The rAF stamps too, so the frames can be cut again (another threshold) from the profile.
+      report.scenes.push({ ...summary, errors: scene.errors, session: scene.session, stamps: scene.stamps });
       save();
       const hasErrors = Array.isArray(scene.errors) && scene.errors.length > 0;
       if (hasErrors) throw new Error(`${mode} logged a runtime failure; see ${out}/report.json`);
