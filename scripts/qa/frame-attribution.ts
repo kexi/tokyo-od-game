@@ -27,7 +27,8 @@
 // bound), colliderBuild every Rapier createCollider (#21 moves the terrain's and the buildings'
 // only; the pavements', shores', lamps' and signals' are in it too), and roadReply the road
 // worker's reply listener (an arrow function in roadNetworkBuilder.ts: any anonymous frame of that
-// file) with restoreRoadNetwork: the listener's own time is reading `event.data`, which is where the
+// file, so the request side's closures too: about 3 ms of the chained warp's 32.6 in Phase 0) with
+// restoreRoadNetwork: the listener's own time is reading `event.data`, which is where the
 // structured clone is restored (expected, not separated from what the engine inlined into it).
 //
 // Why not perf-road-streaming.mjs with QA_PROFILE: that script is the baseline every later PR is
@@ -298,6 +299,36 @@ export function markerCheck(profile: CpuProfile, startUs: number, ms: number) {
   return { insideMs: round(inside), outsideMs: round(outside), isMapped };
 }
 
+/**
+ * Page-side JS: the named wrappers the candidates match by (the header) and the clock's marker.
+ * Exported so a test ties every page-made name a candidate matches to this source: renamed here
+ * alone, a candidate would count 0 without a word (the review of #134, R3).
+ */
+export const NAMED_WRAPPERS = `(() => {
+      const wrap = (tiles) => {
+        const isNamed = !tiles || tiles.__qaNamed;
+        if (isNamed) return;
+        const dispatch = tiles.dispatchEvent.bind(tiles);
+        const __qaLoadModel = (e) => dispatch(e);
+        tiles.dispatchEvent = (e) => e?.type === "load-model" ? __qaLoadModel(e) : dispatch(e);
+        tiles.__qaNamed = true;
+      };
+      window.__qaNameTiles = () => { wrap(__game.buildings.tiles); wrap(__game.buildings.far); };
+      const proto = Object.getPrototypeOf(__game.buildings.tiles);
+      const isParseNamed = proto.__qaParseNamed === true;
+      if (!isParseNamed) {
+        const parse = proto.parseTile;
+        // Only the synchronous prefix runs inside the wrapper: what resumes after the parse's awaits
+        // (the glTF after Draco) is not under it.
+        const __qaParseTile = (self, args) => parse.apply(self, args);
+        proto.parseTile = function (...args) { return __qaParseTile(this, args); };
+        proto.__qaParseNamed = true;
+      }
+      window.__qaNameTiles();
+      setInterval(window.__qaNameTiles, 500);
+      window.__qaMarker = function __qaMarker(ms) { const t0 = performance.now(); while (performance.now() - t0 < ms) {} return t0; };
+    })()`;
+
 const MARKER_MS = 30;
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
@@ -347,34 +378,19 @@ if (isMain) {
     if (!isReady) throw new Error("game did not become ready");
     await b.evaluate("__game.start()");
     await b.sleep(30000);
-    const isWarm = await b.evaluate<boolean>(`__game.getState() === 'playing' &&
-      __game.debug.roads.input().lines.length > 100 && !__game.debug.roads.input().loading`);
+    // Then up to WARM_MAX_S more for the roads: on a busy machine they were still loading at 30 s
+    // (2026-11-28). The scenes start from settled roads either way.
+    const WARM = `__game.getState() === 'playing' &&
+      __game.debug.roads.input().lines.length > 100 && !__game.debug.roads.input().loading`;
+    const WARM_MAX_S = 90;
+    let isWarm = await b.evaluate<boolean>(WARM);
+    for (let i = 0; i < WARM_MAX_S && !isWarm; i++) {
+      await b.sleep(1000);
+      isWarm = await b.evaluate<boolean>(WARM);
+    }
     if (!isWarm) throw new Error("game or road data not ready after warmup");
     // Named wrappers (see the header) and the marker.
-    await b.evaluate(`(() => {
-      const wrap = (tiles) => {
-        const isNamed = !tiles || tiles.__qaNamed;
-        if (isNamed) return;
-        const dispatch = tiles.dispatchEvent.bind(tiles);
-        const __qaLoadModel = (e) => dispatch(e);
-        tiles.dispatchEvent = (e) => e?.type === "load-model" ? __qaLoadModel(e) : dispatch(e);
-        tiles.__qaNamed = true;
-      };
-      window.__qaNameTiles = () => { wrap(__game.buildings.tiles); wrap(__game.buildings.far); };
-      const proto = Object.getPrototypeOf(__game.buildings.tiles);
-      const isParseNamed = proto.__qaParseNamed === true;
-      if (!isParseNamed) {
-        const parse = proto.parseTile;
-        // Only the synchronous prefix runs inside the wrapper: what resumes after the parse's awaits
-        // (the glTF after Draco) is not under it.
-        const __qaParseTile = (self, args) => parse.apply(self, args);
-        proto.parseTile = function (...args) { return __qaParseTile(this, args); };
-        proto.__qaParseNamed = true;
-      }
-      window.__qaNameTiles();
-      setInterval(window.__qaNameTiles, 500);
-      window.__qaMarker = function __qaMarker(ms) { const t0 = performance.now(); while (performance.now() - t0 < ms) {} return t0; };
-    })()`);
+    await b.evaluate(NAMED_WRAPPERS);
     // The two clocks (see the header).
     await b.send("Performance.enable", { timeDomain: "timeTicks" });
     const before = await b.evaluate<number>("performance.now()");
