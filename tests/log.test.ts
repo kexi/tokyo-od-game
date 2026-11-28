@@ -239,6 +239,7 @@ const SAMPLES: { [E in LogEventName]: LogFields<E> } = {
   buildings_cut_above_deck: { reason: "decks", features: 3, meshes: 2, points: 4200 },
   expressway_chunk_failed: { chunk: "24402611:3", error: "TypeError: x" },
   expressway_hold_expired: { chunks: ["24402611:3"], heldMs: 5000 },
+  xw_data_served: { dir: "/tmp/xw/r1-cs-48dc699", metaSha256: "ab12" },
   expressway_merge_skipped: {
     chunk: "4853798:0",
     with: "45021976",

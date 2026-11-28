@@ -54,7 +54,9 @@ import {
   type WallRoute,
 } from "./deckRoutes.ts";
 import { type DeckStall, judgeStalls, parseLogged, type StopTrace } from "./deckStops.ts";
+import { invalidOf } from "./driveInvalid.ts";
 import { freePort } from "./ports.ts";
+import { checkServedData } from "./servedData.ts";
 
 const ROOT = join(import.meta.dirname, "..", "..");
 const argv = process.argv.slice(2);
@@ -73,6 +75,8 @@ const routes: DeckRoute[] =
   routeArg === "all" ? [...DEFAULT_DATA_ROUTES] : [routeOf(routeArg === "" ? DEFAULT_ROUTE : routeArg)];
 /** The data the dev server serves (XW_DATA_DIR else public/data/expressway): where a run distance lies. */
 const files = readExpresswayFiles();
+/** The dev server serves the same data (R1-5 PR A, servedData.ts): else nothing is driven. */
+const served = await checkServedData(base);
 
 type Browser = Awaited<ReturnType<typeof launch>>;
 
@@ -115,25 +119,6 @@ async function open(start: string): Promise<{ b: Browser; url: string; before: s
     await b.sleep(1000);
   }
   return { b, url, before };
-}
-
-/** Why the drive does not count, from the logs since it began, or null. */
-function invalidOf(
-  before: string | null,
-  blocked: string | null | undefined,
-  during: (e: string) => string[],
-) {
-  const wasBlocked = before !== null;
-  if (wasBlocked) return `blocked before the drive: ${before}`;
-  if (blocked) return `blocked: ${blocked}`;
-  // A blow the car took standing is no accident any more (vehicle_bump), but the drive still met it.
-  const hadAccident = during("accident").length > 0 || during("vehicle_bump").length > 0;
-  if (hadAccident) return "accident during the drive";
-  const wasCited = during("violation_cited").length > 0;
-  if (wasCited) return "violation cited during the drive";
-  const isArrested = during("story_begin").some((l) => l.includes(`"kind":"arrest"`));
-  if (isArrested) return "arrest during the drive";
-  return null;
 }
 
 async function driveCruise(r: CruiseRoute) {
@@ -478,7 +463,7 @@ for (const r of routes) {
     const counts = result.invalid === null;
     if (counts) break;
   }
-  const out = { label, cpuThrottle, preWaitS, ...result!, attempts };
+  const out = { label, served, cpuThrottle, preWaitS, ...result!, attempts };
   const file = outDir
     ? join(outDir, `${r.id}.json`)
     : join(ROOT, ".qa", routeArg === "" ? `drive-deck-${label}.json` : `drive-deck-${label}-${r.id}.json`);

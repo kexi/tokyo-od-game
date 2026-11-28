@@ -7,6 +7,13 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:vitest-r1-5-pr133, at: 2026-11-24T04:00:00Z }
+  - { by: process:control-heights-r1-5a, at: 2026-11-24T00:40:00Z }
+  - { by: process:vitest-format-main-r1-cs, at: 2026-11-24T00:45:00Z }
+  - { by: process:check-street-drive-r1-5a-a1, at: 2026-11-23T15:02:00Z }
+  - { by: process:check-deck-drive-r1-5a-a5, at: 2026-11-23T13:38:00Z }
+  - { by: process:vite-build-r1-5a-a4, at: 2026-11-23T13:20:00Z }
+  - { by: process:vitest-r1-5a, at: 2026-11-23T15:05:00Z }
   - { by: process:measure-expressway-area-s7-2-cut2, at: 2026-11-23T03:02:00Z }
   - { by: process:measure-expressway-area-s7-2-baselines, at: 2026-11-23T07:26:00Z }
   - { by: process:vitest-s7-2, at: 2026-11-23T07:32:00Z }
@@ -4685,6 +4692,87 @@ S7-3 の `openings` を読み、トンネル・掘割の分合流の側の壁を
 
 **trust signal**: `scripts/measureStreetBands.ts --moves`（既定範囲と central、2026-11-23、build df58235 + この節の道具の差分。結果は枝 `feat/expressway-street-moves-e` の commit 0e015d3 の `.qa/r1-2/e0a-*.json`）、飛ばしたチャンク 0・終了コード 0。central の探り 3 本・島（`scripts/expresswaySameRoadIslands.ts`）・安定（`scripts/expresswaySameRoadStability.ts`）・`just check-same-road-pieces` を、欠けを埋めた網で測り直した（2026-11-23。無いタイル 0・終了コード 0）。設計の判定は scratchpad の `r1-2b-pr2-instructions.md` 追記 1（消える）。
 
+# P2.7 R1-5 PR A: 街路の走行の道具と、計測のフォルダを配る方法（道具、既定データ不変、2026-11-23）
+
+S6 PR 7c の街路の走行（`.qa/street-drive.mts`、git に無く古い worktree に 1 つだけ在った）を `scripts/qa/street-drive.ts` と `just check-street-drive` に上げ、計測のフォルダを開発サーバーから配る口を足した。S7-6 の街路の走行と、R1-7 の地区の走行はこれで走らせる[^r1-5a]。
+
+## 道具
+
+- 場所の表 `scripts/qa/streetPlaces.ts`: 7c の 18 か所（7c の 13・決定で高架に戻した 2・対照 3）を、id・文言・数のまま移した。場所は run と run 距離（壁際は横の m `left`）か、緯度経度（床版から遠い対照）。点の求め方は控えの式のまま（`placeLatLon`。既定のデータで 18 か所とも控えと差 0 を確かめた）。生成する表（PR B）は同じ形の別ファイル。
+- 判定 `scripts/qa/streetDriveVerdict.ts`: 控えの式と数のまま（到着が終点から 10 m 以内、地面からの車体の高さ 0.4〜1.3 m を 0.25 秒ごと、落下・建物との交差・止まり・respawn 0）。不合格は、種類（`no-route`・`no-sample`・`stopped-short`・`under`・`over`・`fell`・`crossed`・`stalled`・`respawned`、置けない `unplaced`・run の無い `no-run`）・文・起きた点の 3 つで持つ。
+  - **到着は丸める前の距離で比べる**（控えと同じ）。#132 の初めの版は 0.1 m に丸めてから比べ、10.04 m を 10.0 m と読んで到着にしていた（線が 10.05 m に緩む。レビュー M4）。
+  - **地面は DEM**: `__game.groundY(x, z)` は高さを渡さないと DEM（川の上は橋の床版）を返す。掘割の穴に落ちた車は DEM の数 m 下になり、帯の下で落ちる。7c1 の「落ちても到着と読んだ」例（車を幅 40 m の街路の中心線に置いて P9 の掘割に落とした、7c の前の版）は、今の式では不合格になる。
+  - **街路では効かない 2 項**: `stop()` の `fell` は床版の上の測りだけから出し、`expressway_car_stalled` も床版の上でしか出ない。街路の落下は高さの帯と respawn（DEM の 6 m 下で出る）、止まりは到着の距離だけが捕まえる。
+  - **穴埋め（線の変更ではない）**: 測った数が 0（自動運転が経路を引けず動かない）は、帯の検査が空のまま通り、到着の距離だけが不合格にしていた。測った数 0 を、それだけで不合格と書く。
+  - 事故・小突かれ・検挙・逮捕の回は invalid にし、3 回まで走り直す（床版の走行と同じ `scripts/qa/driveInvalid.ts`。`drive-deck.ts` から中身を変えずに移した）。控えは事故を数えず、合否にも入れていなかった。
+  - **known**: 探りの事例の一覧（`--site-lanes`: `check-expressway-lanes --cases`、`--hole-lanes`: `check-hole-lanes --cases`）を渡すと、**全部の不合格の全部の点**（帯の下・上を外れた全部の測り、建物・止まり・respawn のログの lat/lon、止まった点）がどれかの事例の内にあるとき `known`（事例の key つき）。点を持たない不合格（落下・測った数 0・経路なし・置けない）が 1 つでもあれば known にしない。#132 の初めの版は帯を外れた最初の 1 点だけを見て、点の無い建物・止まりを見ず、事例の内で沈んでから外で建物に当たった走行を known にしていた（レビュー M2、テストに再現）。合格には数えず、結果の `summary.json` で pass・fail・known・invalid を分ける。事例の届く幅は探りと同じ（lane-in-site は床版の半幅 + 壁高欄 `PARAPET_WIDTH`、street-lane-over-cut は穴の半幅 `holeHalfM` + 探りの余裕 `HOLE_SITE_MARGIN_M` 1 m を掘割のチャンクの区間で。余裕は `expresswayHoleLanes.ts` から `expresswaySiteLanes.ts` へ移して共有した）。
+- **main との比べ**（`--baseline <main の結果のフォルダ>`、コーディネーターの決定 2026-11-24）: S7-6 の線は「main の結果に無い不合格 0」（床版の走行の「main と同じ合否」と同じ考え）。**main の結果は、main の checkout を main のデータで走らせた物**（同じ新しいデータを main のコードで走らせた物ではない: データだけを変える PR でそれを読むと、コードが同じなので全部が同じ結果になる）。
+  - **種類で比べる**: 今の回の不合格の種類（数を除く）が、main の回のその場所の不合格の種類の部分集合のときだけ `known-main`。新しい種類が 1 つでもあれば不合格（main で沈んだだけの場所の respawn など）。止まった距離・帯の外の数が増えたのは、同じ種類として読む。#132 の初めの版は場所で比べ、main でも落ちる 13 か所では新しい不合格も隠れていた（レビュー M3）。
+  - **baseline は main の `summary.json` の鍵と同じ鍵の結果だけを読む**（`readMainResults`）。main のフォルダに main の古いデータの結果（main の側の `stale`）が残っていても、main の結果として比べない。summary の無いフォルダ・鍵の無い summary・その回の結果で `kinds` の無い物（種類を持つ前の版）は、使えないと言って止まる: 種類が無いと、無しと読めば全部が新しい不合格になり、全部と読めば隠れる（再レビュー r1・r3）。
+  - `known-main` は合格に数えず、`summary.json` の `knownMain` に分ける。main が合格・未走行・invalid の場所は、そのまま不合格。結果のファイルに main の判定・種類・`served` を写す。
+- 結果は場所ごとに `.qa/street-drive-<label>/<id>.json`（配ったデータの鍵・場所・点・判定・各回）。**再開は、配ったデータ（meta とタイルのハッシュ）・事例の一覧（ファイルの中身の SHA-256）・`--baseline`（main の summary の鍵と、読んだ main の場所ごとの判定・種類の SHA-256、`baselineSha256`）が今の回と同じ結果だけを飛ばす**。パスではなく中身なので、同じパスに書き直した一覧は別の回になる。main の判定が 1 か所でも変われば（同じフォルダに走り直して合格になった、実行時のコードだけが変わった）別の回になり、古い `known-main` は残らない（#133 のレビュー B1: main の鍵だけでは、main が合格に戻った場所の known-main が再開で残った）（`scripts/qa/streetResults.ts`）。違う結果は走り直し、走らない場所の違う結果は `summary.json` の `stale` に出して数えない。invalid の結果も残るので、走り直すにはファイルを消す。
+- `summary.json` の `missing` は、表の場所のうち今の回の結果が無い物（`--only` で分けて走らせた途中など）。**終了コードは、不合格 1、invalid 2、missing 5、known 3、known-main だけ 4、全部合格 0**（`exitCodeOf`）。missing があると 0 にならないので、分けて走らせた途中のフォルダは緑に読めない。 baseline を読めない（summary が無い: main をそこで走らせていない・途中で止まった、鍵が無い、種類が無い）ときは、走る前に終了コード 6 で止まる。配ったデータの照らし合わせ（`servedData.ts`）で止まるときは 1（床版の走行と同じ）。走りの初めに `summary.json` を消し、終わりに書くので、途中で止まった main のフォルダは baseline に使えない（#133 のレビュー o1）。
+
+## 計測のフォルダを配る（`scripts/xwDataServe.ts`、`just serve-expressway-data <dir> [port]`）
+
+- 開発サーバーだけ: `XW_DATA_DIR` が在ると、`<base>data/expressway/<file>` をそのフォルダから配り（無いファイルは 404。public のファイルで埋めない）、`<base>__xw-data` がフォルダと meta.json の SHA-256 を返す。起動のログ `xw_data_served`。
+- **vitest も `configureServer` を呼ぶ**（`apply: "serve"` でも。小さい config で実測）。データテストは `XW_DATA_DIR` を付けて走るので、`VITEST` のときは何もしない。変数が無いときも何も足さない。`vite build`（`apply: "serve"`）と `vite preview`（`just serve-qa-bundle`、`dist-qa` の写しを配る）は対象外。
+- 道具の確かめ（`scripts/qa/servedData.ts`、`drive-deck.ts` と `street-drive.ts`）: 走る前に、ページが取る `data/expressway/meta.json` と、**meta に並ぶタイルの全部**をサーバーから取り、SHA-256 を自分の読むフォルダ（`XW_DATA_DIR` か既定）のファイルと比べ、1 つでも違えば走らない。meta.json だけでは足りない: meta にはタイルの一覧・数・バイト数しか無く、ビルドのハッシュは無い。高さだけ違うビルドは同じ meta になる（実例: `agent-aa43e76f60779f386` の `s9-base-default` と `s10-base-default` は meta.json が同じで、タイル 14551-6452・14552-6455 の中身が同じバイト数で違う。レビュー M1、テストに同じ形）。central はタイル 54 枚で、走る前に 1 回取るだけ。結果のファイルに `served`（サーバーの名乗るフォルダ・道具のフォルダ・ハッシュ）を書く。フォルダの名前で比べないのは、別の worktree の開発サーバーも同じ名前の `public/data/expressway` を配り、写した物は別の名前でも同じデータだから。
+- Why not 別の worktree の `public/data/expressway` へ写す（R1-1b の `r1b_qa_setup2.sh`、7c1）: 写し忘れ・戻し忘れが起きる。7c1 は済んでから両方を main に手で戻していた。
+- 落とし穴: Vite は無いパスにも `index.html` を 200 で返す（`__xw-data` の無い既定のサーバーで `text/html`）。道具は `application/json` のときだけ答えと読む。
+- 落とし穴: シェルで `XW_DATA_DIR` を export したままだと、普通の `just serve-dev` も計測のフォルダを配る（前は開発サーバーがこの変数を見なかった）。起動のログ `xw_data_served` で気づける。道具も同じ変数を見るので、照らし合わせは一致する。
+- vite.config.ts が `scripts/xwDataServe.ts` 経由で `src/log.ts` を読むので、`src/log.ts` の import に `.ts` を付けた（拡張子なしだと `vite`・`vite build` が `configLoader: native` の警告を出した。配るバイトは変わらない）。
+
+## 確かめ（trust signal、2026-11-23、M2 Max、48dc699 + この節の差分）
+
+- A4: `vite build` を変数あり（r1b-g3）・なしで 2 回、`dist` 全体が `diff -r` で一致、`dist/data/expressway` は `public/data/expressway` と一致。開発サーバー（変数なし）の既定のタイル 14551-6452.json と meta.json は public の物とバイト一致、`__xw-data` は `text/html`（Vite の HTML の代わり）。
+- A5: G3（r1b-g3）と S7 の形の central（`r1-cs-48dc699`、`--below-junctions compile --portal-approach cut --run-borders cut --districts central`）を配って、既定のデータに無い run 756785283 の経路 `onward-756785283-by-203832847` を `drive-deck.ts` で走らせた。どちらも車が 756785283:0 に置かれ、結果の `served` にそのフォルダが出た。G3 は合格。**central では不合格**（756785283:0 で目標から 41 km/h 落ち込み、17 m で止まる、drops 1）: 経路の不合格として R1-4・R1-7 へ渡す（直していない）。
+- レビューの直しの後（63fba1c、2026-11-23 16:00〜16:26Z、鍵 R15）: 既定のデータで wall-45068169-left・control-narrow を走らせ（合格・`under` の不合格）、その結果を `--baseline` にもう一度走らせて、control-narrow が `known-main`（種類 `under` が main に在る）、終了コードはまだ結果の無い 16 か所の missing で 5 になった。照らし合わせは meta とタイル 0 枚の差で通った（既定のサーバー、`servedDir` null）。
+- A1: 下の表（既定のデータ、新しい道具と控えの両方、1 本ずつ鍵）。両方で同じ合否。7c の記録の在る 13 か所のうち 7 か所が違い、対照 2 か所も帯の下で落ちる（理由は確かめていない）。
+- データテストを `XW_DATA_DIR`（r1-cs-48dc699）で走らせても `xw_data_served` は出ない（vitest の下で何もしない）。
+- `XW_DATA_DIR`（r1-cs-48dc699、`--districts central`）で `tests/expresswayFormat.test.ts` を走らせると、meta の欄の検査が `districts` で 1 件落ちる。**main（48dc699 のきれいな worktree）でも同じに落ちる**（地区のフォルダの meta に `districts` が在り、`META_FIELDS` に無い。この PR とは別）。全テスト 207 files・2,898 passed（変数なし）。
+- テスト: `tests/xwDataServe.test.ts`（変数なし・vitest の下で何も足さない、build・preview のフックが無い、配るファイル・404・`__xw-data`、meta の比べ）、`tests/streetDrive.test.ts`（7c の数、main も落ちる不合格は known-main で合格でない、掘割に落ちて 10 m 以内に止まった・respawn した・測った数 0 の走行は不合格、known と外、known は合格でない、事例の届く幅、場所の表が既定のデータの run に解ける）。
+
+### 対照の街路が帯の下に出る: R1-4 の a2 の形（地形のコライダーが DEM より低い）
+
+対照 2 か所の、帯を外れた最初の点で、DEM の路面（ゲームの `groundY` と同じ双線形）・地形のコライダー（`terrainSurface.ts meshHeightAt`、メッシュの三角形）・車体の最低（DEM + 結果の over.min）を並べた（`.qa/r15-tools/control-heights.ts`、Node、z15 の DEM）。**どちらもコライダーが DEM より低い**: 帯の基準（DEM）より車が沈むのは、道具の誤りでなく、今のゲームの欠陥（R1-4 の a2: 街路の地形のコライダーが DEM の路面より最大 2.37 m 低い）を道具が拾っている、と読む。帯の数は変えない。
+
+| 場所            | 点                   | DEM（m） | コライダー（m） | コライダー − DEM | 点の ±4 m で最も低い | 車体の最低 − DEM |
+| --------------- | -------------------- | -------- | --------------- | ---------------- | -------------------- | ---------------- |
+| control-one-way | 35.664227,139.756200 | 2.049    | 1.533           | −0.516           | −1.069               | −0.67            |
+| control-narrow  | 35.664202,139.756216 | 1.535    | 0.826           | −0.709           | −1.346               | −0.12            |
+
+- 車体の最低は走行の全体の最低で、この点の値とは限らない（点は帯を外れた最初の点）。
+
+### central の走行 1 周の見積もり（手順 1 の後半、PR B の設計へ。r1-cs-48dc699、Node で数えただけ）
+
+- 規模（`.qa/r15-tools/scale.ts`）: 本線 129 run・197.9 km・車線の延長 440.9 km（1 車線 10.1・2 車線 138.8・3 車線 42.8・4 車線 6.2 km）、ランプ 228 run・56.4 km・車線の延長 65.1 km、街路 2 run・6.7 km。本線の鎖 22、タイル 54。ランプは出口 55・入口 53・JCT の連絡路 12・**分けられない 108**（ランプからランプ）。閉鎖はランプ 3。本線の端 21（ground/scope 11・open/operator 4・open/ref 2・open/scope 4）、ランプの端 10、口 23。
+- 1 本の実時間 ≈ 58 秒 + 1.12 × ゲームの時間（一定速。自動運転は約 1.4 倍）。R1-1b の走行の記録（`.qa/r1b/drives-*`）から。58 秒は 6 秒の経路 2 本からで、弱い。
+- (全): 規制速度で、ゲームの時間 約 8.5 h（本線 7.24 h・ランプ 1.23 h）、実時間 約 9.5 h + 経路ごとの読み込み。
+- (絞): 本線の車線 0 約 3.25 h・ランプの全車線 1.23 h・分合流の前後 300 m × 120 本 約 0.9 h で、ゲームの時間 約 5.4 h。実時間は 約 6.0 h + 読み込み（約 170 本 × 58 秒 ≈ 2.7 h）≈ 8.7 h、さらに短い経路 (i)〜(iv) と自動運転 20 本（約 2 h）。**実時間で数えると (絞) でも 6 時間を超える**。1 本ごとに町を読み直す分が大きいので、ブラウザ（読み込んだ町）を使い回す案を PR B の設計に回した。
+
+### A1: 7c の 18 か所（既定のデータ 48dc699、2026-11-23 13:28〜15:02Z、新しい道具と控えを 9 か所ずつ 4 回、1 本ずつ鍵 R15）
+
+**両方の道具で、18 か所とも合否が同じ**（止まった距離・帯の外の数・respawn もほぼ同じ。ゲームの時間で進めるので、走りは決まっている）。合格は 5 か所（wall-24039751-left・wall-45068169-left・-right・kasumi-24402611-84・control-two-way）。
+
+- 7c の記録が在るのは 13 か所（麻布台 2・壁際 5・霞が関 6）。そのうち **7 か所が 7c と違い、理由は未確認**（この PR では追わない、コーディネーターの決定 2026-11-24。一覧として残す）。決定の 2 か所と対照 3 か所には、7c の記録が見当たらない。
+- **対照の 2 か所も落ちる**: 床版から遠い街路（control-one-way・control-narrow）で、車体が DEM の上 0.4 m を下回る（最低 −0.67・−0.12 m、3〜4 回）。地形のコライダーが DEM より低い所で、R1-4 の a2 の形（上の節）。帯の数は変えない。
+- **自動運転が自分で終わる**: 終点の 10 m より手前で終わった 10 か所（置けない wall-24402611-start を除く）のうち 5 か所（azabudai-north-portal-over・-2・kasumi-24402611-90・895902565-850・-856）は、測った数が 14〜18（約 4 秒）で自動運転が切れた。ページのログが残っていた所では、kasumi-24402611-90・895902565-850 が `expressway_route_driven` の `arrived: true`、azabudai-north-portal-over が `gaveUp: stopped`。フックの `arrived` は 80 m の内（`expresswayDrive.ts ARRIVED_M`）なので、この確かめの 10 m とは別。決定の 2 か所は 60 秒の上限（240 回）まで走って終点の 47〜71 m 手前。kasumi-895902565-865 は 392 m 回り道をした。結果のファイルに自動運転の答え（`autopilot`）を残すようにした。
+
+| 場所                                        | 今（両方の道具）                                                           | 7c の記録               | 理由の候補（確かめていない）                  |
+| ------------------------------------------- | -------------------------------------------------------------------------- | ----------------------- | --------------------------------------------- |
+| azabudai-north-portal-over                  | 83.4 m で止まる、帯の下 1・上 13、respawn 1                                | 到着しない              | 7c と同じ                                     |
+| kasumi-24402611-75                          | 232 m 離れる、帯の下 5〜7、respawn 1                                       | 到着しない（respawn 1） | 7c と同じ                                     |
+| azabudai-north-portal-over-2                | 60 m で止まる（幅 4.3 m の道に置かれる、約 3 秒で自動運転が切れる）        | 到着                    | 置かれる街路が変わった（R1-2b M1 の線の外し） |
+| wall-24039751-right                         | 16.1 m で止まる、帯の下 12〜18（最低 −0.06 m）                             | 到着・落下 0            | 端の壁（R1-1b）か穴の縁（S7-4b）の地形        |
+| wall-24402611-start                         | 置けない（40 m 手前の点から 30 m の内に、向きの合う車線が無い）            | 到着（事故 1）          | 近くの街路が変わった（R1-2b M1）              |
+| kasumi-24402611-90・895902565-850・-856     | 11.9・25.6・15.6 m 手前で、自動運転が自分で終わる（arrived: true）、帯の内 | 到着                    | 自動運転の着き方                              |
+| kasumi-895902565-865                        | 392 m 回って 37.6 m 手前で終わる、帯の内                                   | 到着                    | 同上                                          |
+| decided-895902565-80・decided-45021976-3412 | 60 秒で 70.9・46.8 m 手前、帯の内                                          | （記録なし）            | —                                             |
+| control-one-way・control-narrow             | 到着、帯の下 3〜4                                                          | （記録なし）            | 帯の基準（DEM）と描かれた路面の差             |
+
+- 機械の負荷は高かった（load average 13〜15、ほかの担当の生成とエディタ）。9 か所で 9〜21 分。2 つの道具を別の時刻に走らせて同じ数が出たので、負荷のせいではないと読んでいる。1 回の鍵（25 分）に収めるには、ids で 6〜9 か所ずつに分けて走らせる。
+
 # 未対応・既知の欠落
 
 - S7-3c（S7-3 の判定 0 から）: 格子の測点の間で地表が半ステップの内に大きく下がると、T12 が出る。コンパイラは 5 m の格子の測点でだけ、3 点の最低の地表で天井を守り、検査はファイルの測点ごとに、その測点の地表で見るため。
@@ -4796,3 +4884,5 @@ S7-3 の `openings` を読み、トンネル・掘割の分合流の側の壁を
 [^r1-1b]: 指示は scratchpad の p27/s7r/r1-1b-instructions.md と r1-1b-review0.md（追記を含む、設計 Fable）。計測は `just check-expressway-ends`・`just check-expressway-end-walls`、`.cache/expressway-area/r1b-*`・`.qa/expressway/end-walls-*.json`・`ends-*.json`・`.qa/r1b/`（ローカル、git 管理外）。
 
 [^r1-1a-review1]: レビューは scratchpad の p27/s7r/r1a-review1.md（Fable、2026-11-18）と s7-notes.md、ユーザーの決定 U3（2026-11-18）。計測は `.cache/expressway-area/r1-*`・`r1b-*`、`.qa/expressway/r1*`（ローカル、git 管理外）。生成は devshell の node（`just measure-expressway-area`）。
+
+[^r1-5a]: 指示は scratchpad の p27/s7r/r1-5-instructions.md（設計 Fable、2026-11-23）とコーディネーターの返事（配り方・事故の扱い・測った数 0・場所の表の型）。控えは `.qa/street-drive.mts`（7c、SHA-256 feae73bc…、git 管理外）。走行の記録は `.qa/street-drive-a1-new/`・`.qa/r15-runs/`（ローカル、git 管理外）。計測のフォルダは R1-1b の `.cache/expressway-area/r1b-g3` と R1-3 の `r1-cs-48dc699`（読むだけ）。

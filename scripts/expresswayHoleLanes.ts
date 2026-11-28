@@ -24,10 +24,11 @@ import { isExpressway } from "../src/world/roadClass.ts";
 import { leftOf, type RoadLine } from "../src/world/roads.ts";
 import { readExpresswayFiles } from "./expresswayFiles.ts";
 import { gameStreetGraph, gsiTileReader, regulationReader, roadTileOf } from "./gameStreets.ts";
+import { HOLE_SITE_MARGIN_M } from "./expresswaySiteLanes.ts";
 
 const ROOT = join(import.meta.dirname, "..");
-/** How far past the hole's edge a lane's centre counts as over the site (m): half a car's width and a margin. */
-const SITE_MARGIN_M = 1;
+/** How far past the hole's edge a lane's centre counts as over the site (m, expresswaySiteLanes.ts). */
+const SITE_MARGIN_M = HOLE_SITE_MARGIN_M;
 /** The step a lane is checked at (m). */
 const SAMPLE_M = 1;
 /** Shorter than this over the site is a street's end cut at the site's edge (7b), not a lane over it. */
