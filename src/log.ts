@@ -1,6 +1,6 @@
-import { gitBuildLabel } from "./buildLabel";
-import { spanChain } from "./logQuery";
-import { LOG_EVENTS, type EventsAt, type LogEventName, type LogFields, type LogLevel } from "./logEvents";
+import { gitBuildLabel } from "./buildLabel.ts";
+import { spanChain } from "./logQuery.ts";
+import { LOG_EVENTS, type EventsAt, type LogEventName, type LogFields, type LogLevel } from "./logEvents.ts";
 
 /**
  * Structured logs: one JSON object per line, `{ts, level, event, traceId, build, spanId?, parentId?, …fields}`,
@@ -13,8 +13,8 @@ import { LOG_EVENTS, type EventsAt, type LogEventName, type LogFields, type LogL
  *   shot, notice, clip and pursuit it leads to; a warp; a roadside stop), so one grep follows it.
  */
 
-export type { LogEventName, LogFields, LogLevel } from "./logEvents";
-export { spanChain } from "./logQuery";
+export type { LogEventName, LogFields, LogLevel } from "./logEvents.ts";
+export { spanChain } from "./logQuery.ts";
 
 /** A unit of work: its id, and the span that caused it. Kept on the object doing the work. */
 export type Span = { readonly spanId: string; readonly parentId?: string };

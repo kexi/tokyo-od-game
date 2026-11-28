@@ -612,6 +612,11 @@ export const LOG_EVENTS = {
    */
   expressway_hold_expired: warning({ chunks: z.array(z.string()), heldMs: z.number() }),
   /**
+   * The dev server answers data/expressway from XW_DATA_DIR's folder, not public/data/expressway
+   * (scripts/xwDataServe.ts, R1-5): which folder, and the SHA-256 of its meta.json.
+   */
+  xw_data_served: info({ dir: z.string(), metaSha256: z.string() }),
+  /**
    * A steady-speed drive over the decks (dev hook src/debug/expresswayDrive.ts): the chunks it
    * crossed, the car's height over the surface (dy, from the chassis' ride height), its vertical
    * speed and acceleration, and whether it fell through.
