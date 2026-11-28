@@ -464,6 +464,10 @@ measure-road-streaming:
 measure-facade-shadows:
     node scripts/qa/facade-shadow-parity.mjs
 
+# 地形の共有マスク式を両backend・昼夜・別タイル・更新・交換で全画素比較し、生成CPUを測る
+measure-terrain-mask:
+    node scripts/qa/terrain-mask-parity.mjs
+
 # 車内の行列更新を旧処理と交互比較し、昼晴れ・夜雨の画素と行列の一致を確認する
 measure-scene-matrices:
     node scripts/qa/perf-scene-matrices.mjs

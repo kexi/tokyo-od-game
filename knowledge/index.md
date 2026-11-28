@@ -6,6 +6,8 @@ okf_version: "0.2"
 
 - [不透明な外壁の影で、色の段を組み立てない（性能 PR #9 の作り直し）](opaque-facade-shadow-performance.md) - 影のパスで外壁の surface() が vec4(0,0,0,1) を返す。main で 8 棟の影の組み立て 13〜38 → 1.2〜3.3 ms（12 組とも同じ向き）、WebGPU・WebGL2 の 24 画像が一致、ワープの影の組み立ての 1 フレーム最大 432〜470 → 50〜95 ms
 
+- [地形の水域マスクのシェーダーをチャンクの間で共有する（性能 PR #11 の作り直し）](terrain-mask-performance.md) - チャンクごとの TextureNode をやめ、materialReference で同じ式を共有。main で 8 チャンクのシェーダーの作成 8 → 1 回、WebGPU・WebGL2 の昼夜で 20 画像が旧処理と一致
+
 - [車内の連続描画で、シーンの行列更新を 1 回にする（性能 PR #7 の作り直し）](scene-matrix-performance.md) - 車内視点の 1 フレームで約 4.7 回だった updateMatrixWorld を 1 回に。main で行列の CPU 1.40〜1.46 → 0.38〜0.40 ms（−73 %、8 組とも同じ向き）、WebGPU・WebGL2 の昼夜で画素と行列が旧処理と一致
 
 - [性能の基準値と、長いフレームの帰属（性能 PR スタック作り直しの Phase 0）](perf-baseline.md) - main 48dc699 の道路の流し込み 2 本のばらつき（新地域 467〜533 ms・連続ワープ 517〜617 ms）、50 ms 超のフレームを CPU プロファイルで旧 PR の候補ごとに（最長は影のパスのシェーダーの組み立て約 400 ms）、パイプラインを材質の種類ごとに（走り出しと往復の作り直しは InstancedMesh とその影）、近景タイルの parse の内訳（表の JSON 中央値 0.3 ms で #10 は作らない、parse 415 回＝タイル 415 枚）、東京駅 far のメモリ 79〜80 / 514 MB
