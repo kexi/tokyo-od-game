@@ -460,6 +460,10 @@ measure-road-worker:
 measure-road-streaming:
     node scripts/qa/perf-road-streaming.mjs
 
+# 影の材質を元の材質ごとに持つ前後で、固定の場面の全画素を両 backend で比べる（QA_LIVE=1 で、夜雨の通常プレイの getMaterialCacheKey とフレームを同じページで交互に 4 往復測る。開発サーバーが必要）
+measure-shadow-cache:
+    node scripts/qa/shadow-parity.mjs
+
 # 型チェックを行う
 check-types:
     pnpm exec tsc --noEmit

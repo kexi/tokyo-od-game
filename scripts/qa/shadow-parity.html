@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Shadow rendering parity</title>
+  <body>
+    <script type="module">
+      import * as T from "three/webgpu";
+      import { positionLocal, vec3 } from "three/tsl";
+      import { useStableShadows } from "../../src/render/stableShadow";
+
+      const width = 256;
+      const diff = (a, b) => {
+        let changed = 0;
+        let max = 0;
+        for (let i = 0; i < a.length; i++) {
+          const delta = Math.abs(a[i] - b[i]);
+          const differs = delta !== 0;
+          if (differs) changed++;
+          max = Math.max(max, delta);
+        }
+        return { changed, max };
+      };
+
+      async function capture(stable, forceWebGL, initiallyMoved = false) {
+        const renderer = new T.WebGPURenderer({ forceWebGL, antialias: false });
+        await renderer.init();
+        const isExpectedBackend = forceWebGL
+          ? renderer.backend.isWebGLBackend
+          : renderer.backend.isWebGPUBackend;
+        if (!isExpectedBackend) throw new Error("unexpected renderer backend");
+        renderer.setSize(width, width);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = T.PCFShadowMap;
+        document.body.append(renderer.domElement);
+        const target = new T.RenderTarget(width, width, { type: T.UnsignedByteType });
+        const scene = new T.Scene();
+        scene.background = new T.Color(0x999999);
+        const camera = new T.PerspectiveCamera(45, 1, 0.1, 50);
+        camera.position.set(6, 7, 9);
+        camera.lookAt(0, 0, 0);
+        const sun = new T.DirectionalLight(0xffffff, 3);
+        sun.position.set(4, 8, 3);
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(512, 512);
+        Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 0.1, far: 30 });
+        sun.shadow.camera.updateProjectionMatrix();
+        if (stable) useStableShadows(sun);
+        scene.add(sun, sun.target, new T.AmbientLight(0xffffff, 0.2));
+        const floor = new T.Mesh(
+          new T.PlaneGeometry(14, 14),
+          new T.MeshStandardNodeMaterial({ color: 0xeeeeee, roughness: 1 }),
+        );
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+        const opaque = new T.Mesh(
+          new T.BoxGeometry(1.4, 2, 1.4),
+          new T.MeshStandardNodeMaterial({ color: 0x3355aa }),
+        );
+        opaque.position.set(-1.5, 1, 0);
+        opaque.castShadow = true;
+        scene.add(opaque);
+        const texture = new T.DataTexture(
+          new Uint8Array([255, 255, 255, 255, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 255]),
+          2,
+          2,
+        );
+        texture.needsUpdate = true;
+        const cutout = new T.Mesh(
+          new T.PlaneGeometry(2.5, 2.5),
+          new T.MeshStandardNodeMaterial({
+            color: 0x339955,
+            map: texture,
+            alphaTest: 0.5,
+            side: T.DoubleSide,
+          }),
+        );
+        cutout.position.set(1.5, 1.6, 0);
+        cutout.castShadow = true;
+        scene.add(cutout);
+        const move = () => {
+          cutout.material.alphaTest = 0;
+          opaque.material.positionNode = positionLocal.add(vec3(0, 0.5, 0));
+          opaque.material.needsUpdate = true;
+        };
+        if (initiallyMoved) move();
+        const read = async () => {
+          renderer.setRenderTarget(target);
+          // Compare after the same warmup draws so initial pipeline preparation does not
+          // differ between the mutable scene and its fresh reference scene.
+          renderer.render(scene, camera);
+          await renderer.readRenderTargetPixelsAsync(target, 0, 0, width, width);
+          renderer.render(scene, camera);
+          return Array.from(await renderer.readRenderTargetPixelsAsync(target, 0, 0, width, width));
+        };
+        const frames = [];
+        frames.push(await read());
+        move();
+        frames.push(await read());
+        const old = cutout.material;
+        cutout.material = new T.MeshStandardNodeMaterial({
+          color: 0xaa4433,
+          map: texture,
+          alphaTest: 0.5,
+          side: T.DoubleSide,
+        });
+        old.dispose();
+        await Promise.resolve();
+        frames.push(await read());
+        sun.castShadow = false;
+        const withoutShadows = await read();
+        const snapshot = document.createElement("canvas");
+        snapshot.width = snapshot.height = width;
+        const context = snapshot.getContext("2d");
+        const pixels = context.createImageData(width, width);
+        pixels.data.set(frames[2]);
+        context.putImageData(pixels, 0, 0);
+        document.body.append(snapshot);
+        renderer.domElement.remove();
+        for (const mesh of [floor, opaque, cutout]) {
+          mesh.geometry.dispose();
+          mesh.material.dispose();
+        }
+        await Promise.resolve();
+        sun.dispose();
+        target.dispose();
+        texture.dispose();
+        renderer.dispose();
+        return { frames, withoutShadows };
+      }
+
+      window.__shadowParity = (async () => {
+        const rows = [];
+        for (const forceWebGL of [false, true]) {
+          const baseline = await capture(false, forceWebGL);
+          const stable = await capture(true, forceWebGL);
+          const fresh = await capture(false, forceWebGL, true);
+          const differences = [
+            diff(baseline.frames[0], stable.frames[0]),
+            diff(fresh.frames[0], stable.frames[1]),
+            diff(fresh.frames[2], stable.frames[2]),
+          ];
+          const shadowEffect = diff(baseline.frames[2], baseline.withoutShadows);
+          const mutationEffect = diff(baseline.frames[0], baseline.frames[1]);
+          const matches = differences.every((row) => row.changed === 0);
+          const isExercised = shadowEffect.changed > 100 && mutationEffect.changed > 100;
+          const isValid = matches && isExercised;
+          if (!isValid)
+            throw new Error(JSON.stringify({ forceWebGL, differences, shadowEffect, mutationEffect }));
+          rows.push({
+            backend: forceWebGL ? "webgl2" : "webgpu",
+            differences,
+            shadowEffect,
+            mutationEffect,
+            nativeRefreshDifference: diff(baseline.frames[1], fresh.frames[0]),
+          });
+        }
+        return rows;
+      })();
+    </script>
+  </body>
+</html>
