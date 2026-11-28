@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [不透明な外壁の影で、色の段を組み立てない（性能 PR #9 の作り直し）](opaque-facade-shadow-performance.md) - 影のパスで外壁の surface() が vec4(0,0,0,1) を返す。main で 8 棟の影の組み立て 13〜38 → 1.2〜3.3 ms（12 組とも同じ向き）、WebGPU・WebGL2 の 24 画像が一致、ワープの影の組み立ての 1 フレーム最大 432〜470 → 50〜95 ms
+
 - [GPUのuniform転送をまとめても描画CPUはほぼ変わらない](uniform-upload-measurements.md) - 実ワープの転送回数は約28〜36%減るが、交互比較の描画CPUは昼夜とも約0.35%差。全18874368画素byteは一致。50.1msが残るため本番適用を見送った。計測器はclose済みのPR #32に残る
 
 - [GitHub Actionsの開始前キャンセルを調べる](github-actions-runner-delays.md) - ランナー割り当て失敗をstepsとannotationsで確認する。未開始ジョブの再実行と2026-10-06 JSTの障害中の観測

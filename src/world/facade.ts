@@ -557,7 +557,16 @@ function interior(
  * which also fills the façade variables for the later stages.
  */
 function surface(isLit: boolean): Node<"vec4"> {
-  return Fn(() => {
+  return Fn((builder: NodeBuilder) => {
+    const shadowMaterial = builder.material as typeof builder.material & { isShadowPassMaterial?: boolean };
+    const isShadowPass = shadowMaterial.isShadowPassMaterial === true;
+    // Façade alpha is always one. Building its colour graph just to read alpha in a shadow
+    // also builds window lighting and derivatives that opaque shadow depth never needs.
+    // Why not material.castShadowNode: three's Renderer._getShadowNodes still multiplies the
+    // shadow's alpha by colorNode.a when both are set (so the colour graph is built anyway) and
+    // warns unless shadowMap.transmitted is on. Why not a separate shadow material: three picks the
+    // shadow pass's material itself (one override per light) and copies the nodes from ours.
+    if (isShadowPass) return vec4(0, 0, 0, 1);
     const fp = positionWorld.add(facadeUniforms.uOrigin).toVar();
     const fn = normalWorldGeometry;
     fWall.assign(step(0.6, abs(fn.y)).oneMinus());
