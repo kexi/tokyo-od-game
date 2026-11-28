@@ -806,10 +806,23 @@ export class TrafficControl {
     byCrossing: ReadonlySet<TaggedSignal>,
   ): Set<string> {
     const junctions: { node: number; pos: Vector3 }[] = [];
+    // The junctions' bounds, from the same list the snap reads: OSM's signal tiles reach past the
+    // road graph, and a signal SIGNAL_SNAP_M or more outside them cannot snap to any junction.
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
     for (const [node, ids] of graph.nodes) {
-      if (ids.length < 3) continue;
+      const isJunction = ids.length >= 3;
+      if (!isJunction) continue;
       const pos = this.nodePos(graph, node);
-      if (pos) junctions.push({ node, pos });
+      const hasPosition = pos !== null;
+      if (!hasPosition) continue;
+      junctions.push({ node, pos });
+      minX = Math.min(minX, pos.x);
+      maxX = Math.max(maxX, pos.x);
+      minZ = Math.min(minZ, pos.z);
+      maxZ = Math.max(maxZ, pos.z);
     }
     const signalled = new Set<number>();
     const soundAt = new Map<number, boolean[]>();
@@ -818,6 +831,15 @@ export class TrafficControl {
       const isJunctionSignal = tags.junctionCapable && !byCrossing.has(t);
       if (!isJunctionSignal) continue;
       const s = t.pos;
+      // Why not a grid of the junctions (which would also skip the far ones inside the bounds): the
+      // bounds skip every signal outside the graph in a few lines and keep the scan, its strict
+      // < SIGNAL_SNAP_M and its first-wins tie order exactly as they were.
+      const isOutside =
+        minX - s.x >= SIGNAL_SNAP_M ||
+        s.x - maxX >= SIGNAL_SNAP_M ||
+        minZ - s.z >= SIGNAL_SNAP_M ||
+        s.z - maxZ >= SIGNAL_SNAP_M;
+      if (isOutside) continue;
       let best: { node: number; pos: Vector3 } | null = null;
       let bestD = SIGNAL_SNAP_M;
       for (const j of junctions) {
