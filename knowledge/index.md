@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [性能の基準値と、長いフレームの帰属（性能 PR スタック作り直しの Phase 0）](perf-baseline.md) - main 48dc699 の道路の流し込み 2 本のばらつき（新地域 467〜533 ms・連続ワープ 517〜617 ms）、50 ms 超のフレームを CPU プロファイルで旧 PR の候補ごとに（最長は影のパスのシェーダーの組み立て約 400 ms）、パイプラインを材質の種類ごとに（走り出しと往復の作り直しは InstancedMesh とその影）、近景タイルの parse の内訳（表の JSON 中央値 0.3 ms で #10 は作らない、parse 415 回＝タイル 415 枚）、東京駅 far のメモリ 79〜80 / 514 MB
+
 - [GPUのuniform転送をまとめても描画CPUはほぼ変わらない](uniform-upload-measurements.md) - 実ワープの転送回数は約28〜36%減るが、交互比較の描画CPUは昼夜とも約0.35%差。全18874368画素byteは一致。50.1msが残るため本番適用を見送った。計測器はclose済みのPR #32に残る
 
 - [GitHub Actionsの開始前キャンセルを調べる](github-actions-runner-delays.md) - ランナー割り当て失敗をstepsとannotationsで確認する。未開始ジョブの再実行と2026-10-06 JSTの障害中の観測
