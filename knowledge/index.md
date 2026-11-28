@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [車内の連続描画で、シーンの行列更新を 1 回にする（性能 PR #7 の作り直し）](scene-matrix-performance.md) - 車内視点の 1 フレームで約 4.7 回だった updateMatrixWorld を 1 回に。main で行列の CPU 1.40〜1.46 → 0.38〜0.40 ms（−73 %、8 組とも同じ向き）、WebGPU・WebGL2 の昼夜で画素と行列が旧処理と一致
+
 - [GPUのuniform転送をまとめても描画CPUはほぼ変わらない](uniform-upload-measurements.md) - 実ワープの転送回数は約28〜36%減るが、交互比較の描画CPUは昼夜とも約0.35%差。全18874368画素byteは一致。50.1msが残るため本番適用を見送った。計測器はclose済みのPR #32に残る
 
 - [GitHub Actionsの開始前キャンセルを調べる](github-actions-runner-delays.md) - ランナー割り当て失敗をstepsとannotationsで確認する。未開始ジョブの再実行と2026-10-06 JSTの障害中の観測
