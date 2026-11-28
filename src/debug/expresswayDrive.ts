@@ -3,6 +3,7 @@ import { type DriveInput, RIDE_HEIGHT, type Vehicle } from "../physics/vehicle";
 import type { ExpresswayDecks } from "../world/expresswayDeck";
 import { laneCentreOffset } from "../world/laneChange";
 import { log } from "../log";
+import { deckPose } from "../game/expresswayWarp";
 import type { AutoDriver } from "../game/autoDriver";
 import { leftOf, laneOffset, type RoadGraph, type RoadHit, type Segment, speedLimit } from "../world/roads";
 
@@ -192,12 +193,9 @@ export function createExpresswayHooks(deps: ExpresswayDriveDeps) {
     const graph = deps.graph();
     const seg = graph?.segments.find((s) => s.line.xid === xid);
     if (!graph || !seg) return false;
-    const s = seg.length * share;
-    const { pos, dir } = graph.sample(seg, s);
-    const y = graph.surfaceY(seg, s);
-    if (y === null) return false;
-    const at = pos.add(leftOf(dir, laneCentreOffset(seg, lane))).setY(y + RIDE_HEIGHT + 0.05);
-    deps.vehicle.teleport(at, Math.atan2(dir.x, dir.z));
+    const pose = deckPose(graph, seg, seg.length * share, lane);
+    if (!pose) return false;
+    deps.vehicle.teleport(pose.at.setY(pose.surfaceY + RIDE_HEIGHT + 0.05), pose.yaw);
     deps.snapCamera();
     return true;
   };

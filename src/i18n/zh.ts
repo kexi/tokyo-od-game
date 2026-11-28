@@ -573,6 +573,10 @@ export const zh: Messages = {
   "warp.homeLabel": "家：{place}",
   "warp.homeSet": "已设置",
   "warp.noHome": "还没有设置家",
+  "warp.kind.xwEntrance": "城市高速入口",
+  "warp.kind.xwExit": "城市高速出口",
+  "warp.kind.xwRoute": "城市高速路线",
+  "warp.expresswayLoading": "正在读取城市高速的地点",
   "toast.noHome": "还没有家。可以用“将此处设为家”来设定",
   "toast.homeSet": "已将当前位置设为家",
   // main.ts: 時間帯・天気・視点・地面・音
@@ -971,6 +975,7 @@ export const zh: Messages = {
   "dialog.keepDriving": "继续驾驶",
   "warp.intro": "连人带车传送到想去的地方。到达后从附近道路的左侧出发。",
   "warp.toHome": "🏠 回家",
+  "warp.toExpressway": "🛣️ 去城市高速（最近处）",
   "warp.setHome": "将此处设为家",
   "warp.placeholder": "车站、景点、警察署、区名等（日文名称）",
   "dest.title": "目的地",

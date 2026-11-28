@@ -134,7 +134,7 @@ import {
   type LaneUse,
   type RegulationData,
 } from "./world/regulations";
-import { carriagewayWidth, isLaneChangeBanned, laneCentreOffset, laneOfOffset } from "./world/laneChange";
+import { carriagewayWidth, isLaneChangeBanned, laneOfOffset } from "./world/laneChange";
 import { lanesUnderPavement, sectionSummary } from "./world/roadMarkings";
 import { laneOffset, leftOf, speedLimit, type RoadGraph, type RoadLine, type Segment } from "./world/roads";
 import { laneChangeSide, laneCountedIn } from "./world/laneLinks";
@@ -197,6 +197,13 @@ import { drawShadowsOf, FrameComposer } from "./render/frame";
 import { NoticeLog, type NoticeKind } from "./game/noticeLog";
 import { loadHome, saveHome, searchPlaces, type Home, type Place as WarpPlace } from "./game/warp";
 import { byDistance, renderPlaceList } from "./game/placePicker";
+import {
+  deckLanding,
+  deckPose,
+  expresswaySpots,
+  fetchExpresswayTiles,
+  type XwWarpSpot,
+} from "./game/expresswayWarp";
 import { loadDestinations, type Destination } from "./game/destinations";
 import {
   charmOf,
@@ -1177,6 +1184,24 @@ async function main(): Promise<void> {
   };
 
   /**
+   * Put on a deck standing (by 移動, or placeOnStreet's deck branch) and not yet driven off: the
+   * expressway's 停止 check excuses it. Cleared once it moves, or the car is put elsewhere.
+   */
+  let isWaitingOnWarpDeck = false;
+  /** The car made kinematic by that hold (main loop): let go at the first pedal. */
+  let isWarpHoldParked = false;
+  /**
+   * The car on a deck at (seg, s), in its left lane facing the way it runs (deckPose), 0.9 m up:
+   * the pose, or null where the surface is unknown.
+   */
+  const putOnDeck = (graph: RoadGraph, seg: Segment, s: number) => {
+    const pose = deckPose(graph, seg, s);
+    if (!pose) return null;
+    vehicle.teleport(pose.at.clone().setY(pose.surfaceY + 0.9), pose.yaw);
+    chase.snap();
+    return pose;
+  };
+  /**
    * Put the car in the left lane of the nearest proper street, facing a legal way (one-way
    * streets their way, otherwise the way it already faced): spawn points are stations and
    * plazas, which are not roads.
@@ -1184,6 +1209,8 @@ async function main(): Promise<void> {
   const placeOnStreet = (): boolean => {
     const graph = roadGraph;
     if (!graph) return false;
+    // Put elsewhere: only the deck branch below puts the car on a deck standing again.
+    isWaitingOnWarpDeck = false;
     const car = vehicle.position();
     // Streets on the ground only: a ramp's ground connector is no place to put a car (spawn is open
     // to the expressway for the decks, below).
@@ -1199,13 +1226,10 @@ async function main(): Promise<void> {
     if (deckHit) {
       const seg = deckHit.seg;
       const s = Math.min(seg.length - 2, Math.max(2, deckHit.s));
-      const { pos, dir } = graph.sample(seg, s);
-      const y = graph.surfaceY(seg, s);
-      if (y === null) return false;
-      const at = pos.add(leftOf(dir, laneCentreOffset(seg, 0))).setY(y + 0.9);
-      vehicle.teleport(at, Math.atan2(dir.x, dir.z));
-      chase.snap();
-      return true;
+      const isPut = putOnDeck(graph, seg, s) !== null;
+      // Put there standing, as 移動 does: not a stop on the expressway until it first moves.
+      if (isPut) isWaitingOnWarpDeck = true;
+      return isPut;
     }
     // Wider and wider until a street turns up: a place chosen in 移動 or on the start screen (a
     // park, the palace, a ward's middle, a tower) can be far from one; a narrow lane only if no
@@ -1406,7 +1430,23 @@ async function main(): Promise<void> {
 
   // ---------- 移動（どこへでも） ----------
   /** While the destination loads the car waits there, frozen; then it starts on the nearest street. */
-  let warping: { label: string; since: number; yaw: number; span: Span } | null = null;
+  let warping: {
+    label: string;
+    since: number;
+    yaw: number;
+    span: Span;
+    /** An expressway spot: the chunk to put the car on and the spot's point (frame-free). */
+    deck?: { xid: string; lat: number; lon: number };
+  } | null = null;
+  /** How long a warp waits for the town and the decks (ms). */
+  const WARP_WAIT_MS = 12000;
+  /**
+   * How long a warp to an expressway spot waits for the road graph with its chunk (ms). Why longer
+   * than WARP_WAIT_MS: the graph that has the decks is the second one built after the move (the
+   * first comes before the tiles are read), and under load it came 25–40 s after the choice
+   * (2026-11-28, load average 60); the car waits frozen until then.
+   */
+  const WARP_DECK_WAIT_MS = 30000;
   const warpTo = (place: WarpPlace) => {
     if (enforcing()) return toast(i18n.t("toast.warpBusy"), "#ff6b6b");
     if (mode === "taxi") return toast(i18n.t("toast.warpInTaxi"));
@@ -1422,8 +1462,11 @@ async function main(): Promise<void> {
     vehicle.teleport(at, yaw);
     frozen = true;
     vehicle.setFrozen(true);
-    warping = { label: place.name, since: performance.now(), yaw, span: newSpan("warp") };
-    log("warp_start", { to: place.name, lat: place.lat, lon: place.lon }, warping.span);
+    const deck = place.xid ? { xid: place.xid, lat: place.lat, lon: place.lon } : undefined;
+    warping = { label: place.name, since: performance.now(), yaw, span: newSpan("warp"), deck };
+    isWaitingOnWarpDeck = false;
+    const kind = deck ? "expressway" : "street";
+    log("warp_start", { to: place.name, lat: place.lat, lon: place.lon, kind, xid: deck?.xid }, warping.span);
     // The local frame follows the car there, so the far town is near the origin again.
     // A tile request from the previous destination must not overwrite this warp's streets.
     roadLoadSerial++;
@@ -1440,23 +1483,97 @@ async function main(): Promise<void> {
     // The decks around the landing place too (knowledge/road-redesign-plan.md 4.5): open ground is
     // looked for by rays through the fixed colliders, so a deck still to come would not be seen.
     // Not forever: a deck tile that fails to load must not hold the warp (as the town's 12 s).
-    const areDecksReady = (expressway?.isSettledAt(g.lat, g.lon) ?? true) || now - warping.since > 12000;
+    const isWaitOver = now - warping.since > WARP_WAIT_MS;
+    const areDecksReady = (expressway?.isSettledAt(g.lat, g.lon) ?? true) || isWaitOver;
     const isGroundReady = terrain.hasColliderAt(g.lat, g.lon) && areDecksReady;
     // The town round the landing place, all of it (src/world/nearbyLoad.ts: the tiles within
     // 300 m, counted from when they began to be requested here). Why not 95 % of the whole load:
     // the nearby tiles can be the last 5 % (川口駅 landed with 1 of 5), and the value held between
     // two waves (0.998) passed it.
-    const isTownReady = buildings.nearbyLoadProgress() >= 0.999 || now - warping.since > 12000;
+    const isTownReady = buildings.nearbyLoadProgress() >= 0.999 || isWaitOver;
     if (!isGroundReady || !isTownReady) return;
+    const landing = warping.deck ? deckLandingNow(warping.deck) : null;
+    // A spot's chunk waits for the graph that has it and for its collider (isSettledAt says only
+    // that the last refresh was here). Not forever: after WARP_DECK_WAIT_MS the car takes a street.
+    const isDeckWaitOver = now - warping.since > WARP_DECK_WAIT_MS;
+    const isDeckPending = warping.deck !== undefined && landing === null && !isDeckWaitOver;
+    if (isDeckPending) return;
     buildings.buildCollidersNear(new Vector3());
-    vehicle.teleport(findOpenGround(0, 0), warping.yaw);
-    chase.snap();
-    needsStreetSpawn = true;
-    streetSpawnSince = now;
+    const durationMs = Math.round(now - warping.since);
+    const pose = landing && roadGraph ? putOnDeck(roadGraph, landing.seg, landing.s) : null;
+    if (pose) {
+      isWaitingOnWarpDeck = true;
+      // A street spawn left over from the start or an earlier warp would move it off the deck.
+      needsStreetSpawn = false;
+      expresswayWatch.reset();
+      const g2 = frame.toGeodetic(pose.at);
+      log(
+        "warp_landed",
+        {
+          to: warping.label,
+          durationMs,
+          kind: "expressway",
+          xid: landing!.seg.line.xid,
+          lat: Number(g2.lat.toFixed(6)),
+          lon: Number(g2.lon.toFixed(6)),
+          surfaceY: Number(pose.surfaceY.toFixed(2)),
+          yaw: Number(pose.yaw.toFixed(3)),
+        },
+        warping.span,
+      );
+    } else {
+      vehicle.teleport(findOpenGround(0, 0), warping.yaw);
+      chase.snap();
+      needsStreetSpawn = true;
+      streetSpawnSince = now;
+      const isDeckMissed = warping.deck !== undefined;
+      if (isDeckMissed)
+        warn("warp_deck_missed", { to: warping.label, xid: warping.deck!.xid, durationMs }, warping.span);
+      log("warp_landed", { to: warping.label, durationMs, kind: "street" }, warping.span);
+    }
     toast(i18n.t("toast.warped", { place: warping.label }), "#7dff9a");
-    log("warp_landed", { to: warping.label, durationMs: Math.round(now - warping.since) }, warping.span);
     warping = null;
   };
+  /**
+   * Where a spot's car goes now: its chunk in the road graph, with its collider (isCarSurface), or
+   * null while either is missing.
+   */
+  const deckLandingNow = (deck: { xid: string; lat: number; lon: number }) => {
+    const graph = roadGraph;
+    if (!graph) return null;
+    const p = frame.toLocal(deck.lat, deck.lon, frame.origin.h);
+    return deckLanding(graph, deck.xid, p, (seg) => isCarSurface(seg) && !seg.closed);
+  };
+  /** The expressway's spots (?expressway), read once when 移動 is first opened; null until then. */
+  let expresswaySpotList: XwWarpSpot[] | null = null;
+  let isLoadingExpresswaySpots = false;
+  const loadExpresswaySpots = () => {
+    const isNeeded = expressway !== null && expresswaySpotList === null && !isLoadingExpresswaySpots;
+    if (!isNeeded) return;
+    isLoadingExpresswaySpots = true;
+    void fetchExpresswayTiles(import.meta.env.BASE_URL).then((tiles) => {
+      expresswaySpotList = tiles ? expresswaySpots(tiles) : [];
+      log("warp_expressway_spots", { tiles: tiles?.length ?? 0, spots: expresswaySpotList.length });
+      const isOpen = $<HTMLDialogElement>("#warp").open;
+      if (isOpen) showWarpResults();
+    });
+  };
+  const expresswayKind = (role: XwWarpSpot["role"]) =>
+    role === "entrance"
+      ? i18n.t("warp.kind.xwEntrance")
+      : role === "exit"
+        ? i18n.t("warp.kind.xwExit")
+        : i18n.t("warp.kind.xwRoute");
+  const expresswayPlaces = (): WarpPlace[] =>
+    (expresswaySpotList ?? []).map((spot) => ({
+      name: spot.name,
+      kind: expresswayKind(spot.role),
+      lat: spot.lat,
+      lon: spot.lon,
+      xid: spot.xid,
+      // Found by 高速 / 都市高速 / expressway too, whatever the language in force.
+      aka: "高速道路 都市高速 expressway",
+    }));
   /** Everything with a name and a place: landmarks, police, the licence centres, spots, wards. */
   const warpPlaces = (): WarpPlace[] => {
     const label = new Map(categories.map((c) => [c.id, categoryLabel(c.id, c.label)]));
@@ -1493,6 +1610,7 @@ async function main(): Promise<void> {
         ward: p.ward,
       })),
       ...destinations.map(destinationPlace),
+      ...expresswayPlaces(),
     ];
   };
   /** Between a place's kind, ward and distance in the lists. */
@@ -1501,13 +1619,24 @@ async function main(): Promise<void> {
     const query = $<HTMLInputElement>("#warp-query").value;
     const places = warpPlaces();
     // Before typing: the landmarks and the wards to choose from (their kinds, in the language in force).
-    const firstKinds = new Set([i18n.t("warp.kind.landmark"), i18n.t("warp.kind.ward")]);
+    const firstKinds = new Set([
+      i18n.t("warp.kind.landmark"),
+      i18n.t("warp.kind.ward"),
+      i18n.t("warp.kind.xwEntrance"),
+      i18n.t("warp.kind.xwExit"),
+      i18n.t("warp.kind.xwRoute"),
+    ]);
     const shown = query.trim() ? searchPlaces(places, query) : places.filter((p) => firstKinds.has(p.kind));
     const pick = (p: WarpPlace) => {
       $<HTMLDialogElement>("#warp").close();
       warpTo(p);
     };
     renderPlaceList($("#warp-results"), shown, pick, { separator: kindSeparator() });
+    const nearestSpot = nearestExpresswayPlace();
+    const toExpressway = $<HTMLButtonElement>("#warp-expressway");
+    toExpressway.hidden = expressway === null;
+    toExpressway.disabled = nearestSpot === null;
+    toExpressway.title = nearestSpot ? nearestSpot.name : i18n.t("warp.expresswayLoading");
     $("#warp-home-label").textContent = home
       ? i18n.t("warp.homeLabel", { place: home.label ?? i18n.t("warp.homeSet") })
       : i18n.t("warp.noHome");
@@ -1517,6 +1646,19 @@ async function main(): Promise<void> {
     if (!home) return toast(i18n.t("toast.noHome"));
     $<HTMLDialogElement>("#warp").close();
     warpTo({ name: i18n.t("warp.home"), kind: i18n.t("warp.home"), lat: home.lat, lon: home.lon });
+  });
+  /** The expressway spot nearest the car (the one-tap 「都市高速へ」), or null before they are read. */
+  const nearestExpresswayPlace = (): WarpPlace | null => {
+    const places = expresswayPlaces();
+    if (places.length === 0) return null;
+    const g = frame.toGeodetic(focusPos());
+    return byDistance(places, g)[0];
+  };
+  $("#warp-expressway").addEventListener("click", () => {
+    const spot = nearestExpresswayPlace();
+    if (!spot) return;
+    $<HTMLDialogElement>("#warp").close();
+    warpTo(spot);
   });
   $("#warp-set-home").addEventListener("click", () => {
     const g = frame.toGeodetic(focusPos());
@@ -1577,6 +1719,7 @@ async function main(): Promise<void> {
     location.reload();
   });
   input.on("warp", () => {
+    loadExpresswaySpots();
     showWarpResults();
     $<HTMLDialogElement>("#warp").showModal();
     $<HTMLInputElement>("#warp-query").focus();
@@ -2818,6 +2961,16 @@ async function main(): Promise<void> {
     if (isInCar) controls.autoOperate(autoContext(manual.throttle), dt);
     const isHeld = controls.autoHold && !autopilot && !debugDrive;
     const powered = controls.engineOn || autopilot || debugDrive ? pedals : { ...pedals, throttle: 0 };
+    // Put on a deck standing by 移動 (isWaitingOnWarpDeck): held still, as a kinematic body (the
+    // parked car's), until a pedal is pressed. Why: on a grade (the 11号台場線's approach) it rolled
+    // back and was booked for 後退 5 s after landing (2026-11-28 QA). Why not the handbrake: it was
+    // on in every frame and the car still rolled back, to 4 km/h in 6 s.
+    const isPedalIdle = pedals.throttle === 0 && pedals.brake === 0;
+    const isHeldOnWarpDeck = isWaitingOnWarpDeck && isPedalIdle && isInCar && !autopilot && !debugDrive;
+    const isWarpHoldChanged = isHeldOnWarpDeck !== isWarpHoldParked;
+    // Out of the car the walker's code owns the parking (leaving parks it): only forget the hold.
+    if (isWarpHoldChanged && isInCar) vehicle.setParked(isHeldOnWarpDeck);
+    if (isWarpHoldChanged) isWarpHoldParked = isHeldOnWarpDeck;
     // At the roadside stop and through the story the car stays where it stopped.
     const drive = pursuitDirector.holdCar
       ? { ...powered, throttle: 0, brake: 0, handbrake: true }
@@ -2846,7 +2999,7 @@ async function main(): Promise<void> {
     let steps = 0;
     while (accumulator >= world.timestep && steps < 4) {
       // Held while it is being put on its street after a start or a 移動.
-      const isHeldForStreet = needsStreetSpawn;
+      const isHeldForStreet = needsStreetSpawn || isWarpHoldParked;
       if (!frozen && isInCar && !isHeldForStreet) vehicle.update(world.timestep, drive);
       taxi?.step(world.timestep);
       for (const unit of patrols) unit.step(world.timestep);
@@ -3006,7 +3159,12 @@ async function main(): Promise<void> {
         deckHit?.seg.line.xid !== undefined ? expressway.levelAt(deckHit.seg.line.xid, geo.lat, geo.lon) : 0;
       const isThroughBuilding = carOnDeck && vehicle.overlapsBuilding();
       if (isThroughBuilding) noteBuildingCrossed(carPos);
-      noteDeckStall(carPos, speed, isDeckReady, now);
+      // Put there standing by 移動 (isWaitingOnWarpDeck): a still car that is meant to be, not a stall.
+      // Why not also "off the deck": in the frame it lands, carPos can still be the ground point it
+      // waited at (57 m under the 11号台場線), and the flag went before the car stood on the deck.
+      const hasDrivenOff = Math.abs(speed) > 5;
+      if (hasDrivenOff) isWaitingOnWarpDeck = false;
+      if (!isWaitingOnWarpDeck) noteDeckStall(carPos, speed, isDeckReady, now);
     }
     const gy = groundY(carPos.x, carPos.z);
     // Fallen through the ground: put back. Not on a deck: in a tunnel or cut (P9) the road is more
@@ -3200,7 +3358,9 @@ async function main(): Promise<void> {
         hazard: controls.hazard,
         others,
         sinceCrashS: (now - lastCrashAt) / 1000,
-        mustStop: isAtStopLine || isHeldByPolice,
+        // A car 移動 put on the deck standing has not stopped there: excused until it first moves.
+        // Why not a time limit: a player reading the map after the warp has not parked either.
+        mustStop: isAtStopLine || isHeldByPolice || isWaitingOnWarpDeck,
         accident: emergency.incident !== null,
         yielding: autopilot?.driver.yieldingAtMerge ?? false,
         route: nav.route,

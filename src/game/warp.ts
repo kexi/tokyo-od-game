@@ -1,7 +1,8 @@
 /**
  * 移動（どこへでも）: the places the car can be sent to — home, the game's spots (stations and the
- * open-data POIs), landmarks, police stations and the licence centres (for 出頭) — and the search
- * over their names, plus where home is, remembered in this browser.
+ * open-data POIs), landmarks, police stations, the licence centres (for 出頭) and the expressway's
+ * entrances, exits and routes — and the search over their names, plus where home is, remembered
+ * in this browser.
  */
 export type Place = {
   name: string;
@@ -11,6 +12,11 @@ export type Place = {
   ward?: string;
   /** Other names it is found by, not shown: the English name, an official name, a station's lines. */
   aka?: string;
+  /**
+   * An expressway spot (?expressway, expresswayWarp.ts): the deck chunk the car is put on, in its
+   * left lane facing the way it runs, instead of the nearest street.
+   */
+  xid?: string;
 };
 
 /** Fold widths and case (ＪＲ → jr) so typing on a phone keyboard or a PC finds the same names. */
