@@ -6,6 +6,19 @@ import { launch } from "./browser.mjs";
 const out = join(".qa/perf", new Date().toISOString().replace(/[:.]/g, "-") + "-facade-shadow");
 mkdirSync(out, { recursive: true });
 const base = process.env.QA_URL ?? "http://localhost:5173/tokyo-od-game/";
+// The served tree's build label (GET <base>__log/build), at the start and the end: the fixture
+// page logs no session, so this is the report's only record of which tree served it. Why not the
+// git commit of this tool's tree alone: the tool and the server can be different trees.
+const servedBuild = async () => {
+  try {
+    const res = await fetch(new URL("__log/build", base), { signal: AbortSignal.timeout(10_000) });
+    const isOk = res.ok;
+    return isOk ? ((await res.json()).build ?? null) : null;
+  } catch {
+    return null;
+  }
+};
+const servedAtStart = await servedBuild();
 const browser = await launch(new URL("scripts/qa/facade-shadow-parity.html", base).href, {
   port: Number(process.env.QA_PORT ?? 9367),
 });
@@ -21,6 +34,7 @@ try {
   const rows = await browser.evaluate("window.__facadeShadowParity");
   const report = {
     commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+    served: { atStart: servedAtStart, atEnd: await servedBuild() },
     rows,
     logs: browser.logs,
   };
