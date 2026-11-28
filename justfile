@@ -460,6 +460,10 @@ measure-road-worker:
 measure-road-streaming:
     node scripts/qa/perf-road-streaming.mjs
 
+# 実道路・DEM2地域で高さと座標を旧処理と照合し、境界と橋を含め照会CPUを計測する
+measure-ground-queries:
+    node scripts/qa/perf-ground-queries.mjs
+
 # 型チェックを行う
 check-types:
     pnpm exec tsc --noEmit

@@ -50,6 +50,18 @@ describe("LocalFrame (x = east, y = up, -z = north)", () => {
     expect(back.distanceTo(local)).toBeLessThan(1e-4);
   });
 
+  it("keeps caller coordinates and previous results unchanged across consecutive queries", () => {
+    const local = new Vector3(812.5, 3.25, -431.75),
+      before = local.clone();
+    const first = frame.toGeodetic(local),
+      snapshot = { ...first };
+    const second = frame.toGeodetic(new Vector3(-1100, 150, 2000));
+    expect(local).toEqual(before);
+    expect(first).toEqual(snapshot);
+    expect(second).not.toEqual(first);
+    expect(frame.toGeodetic(local)).toEqual(first);
+  });
+
   it("re-anchoring preserves world points (floating origin)", () => {
     const next = new LocalFrame(TOCHO.lat + 0.013, TOCHO.lon - 0.017, 31);
     const m = next.transformFrom(frame);

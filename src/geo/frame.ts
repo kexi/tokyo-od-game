@@ -15,6 +15,7 @@ export class LocalFrame {
   readonly origin: Geodetic;
   readonly ecefToLocal = new Matrix4();
   readonly localToEcef = new Matrix4();
+  private readonly geodeticPoint = new Vector3();
 
   constructor(lat: number, lon: number, h: number) {
     this.origin = { lat, lon, h };
@@ -40,7 +41,7 @@ export class LocalFrame {
   }
 
   toGeodetic(local: Vector3): Geodetic {
-    const p = local.clone().applyMatrix4(this.localToEcef);
+    const p = this.geodeticPoint.copy(local).applyMatrix4(this.localToEcef);
     return ecefToGeodetic(p.x, p.y, p.z);
   }
 

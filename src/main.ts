@@ -1068,6 +1068,9 @@ async function main(): Promise<void> {
   for (const p of pois) wardTotals.set(p.ward, (wardTotals.get(p.ward) ?? 0) + 1);
 
   // ---------- helpers bound to the current frame ----------
+  // Reused by groundY for its query point and the terrain's local point (a call reads .y at once):
+  // a new Vector3 a call was one of the allocations of every ground query.
+  const groundPoint = new Vector3();
   /**
    * Height of what stands under (x, z): a bridge deck over water, else the terrain. With `nearY`
    * (the height of a car or a person there), the nearest surface at or below nearY + 0.5 m answers
@@ -1079,9 +1082,9 @@ async function main(): Promise<void> {
     // On a bridge the ground is its deck: the DEM there is the riverbed.
     const deck = water.deckAt(x, z);
     if (deck !== null) return deck;
-    const g = frame.toGeodetic(new Vector3(x, 0, z));
+    const g = frame.toGeodetic(groundPoint.set(x, 0, z));
     const h = dem.heightAt(g.lat, g.lon);
-    const terrainY = h === null ? null : frame.toLocal(g.lat, g.lon, h).y;
+    const terrainY = h === null ? null : frame.toLocal(g.lat, g.lon, h, groundPoint).y;
     const isAboveGround = nearY !== undefined && expressway !== null;
     if (!isAboveGround) return terrainY;
     const xw = expressway.surfaceBelow(x, nearY + 0.5, z);
