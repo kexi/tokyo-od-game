@@ -8,8 +8,9 @@
  */
 export const CAR_HALF = { x: 0.92, y: 0.38, z: 2.15 } as const;
 /**
- * The car's body centre (the chassis origin, what vehicle.position() answers) over the road it stands
- * on at rest, metres (game/carModel.ts: "the ground sits ~0.86 m below it"). The callers of
+ * The car's body centre (the chassis origin, what vehicle.position() answers) over the road it is
+ * placed at, metres (game/carModel.ts: "the ground sits ~0.86 m below it"). On its springs it settles
+ * 0.07–0.08 m lower, about 0.79 m over the road (the deck drives' dy, P2.7 R1-4a-1). The callers of
  * RoadGraph.nearestOnSurface / locate pass that point, and roads.ts reads from it which road the car
  * stands on (P2.7 R1-4a-1); the robotaxi and the police patrol place their cars by it.
  */

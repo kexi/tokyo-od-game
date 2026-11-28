@@ -388,7 +388,7 @@ export class RoadGraph {
    * ramp's centre there, and was booked at the ramp's 40 km/h for 3 s at 60 (review of P3).
    *
    * That order is asked among the decks on the surface the car stands on only (P2.7 R1-4a-1): the
-   * highest deck road at or below the car's feet — p.y − CAR_RIDE_HEIGHT, within MERGE_MAX_DZ — read
+   * highest deck road at or below the car's feet — p.y − CAR_RIDE_HEIGHT, within FEET_REACH — read
    * where p lies inside the segment, and the decks within MERGE_MAX_DZ of it (one surface, as the
    * merge makes one slab of them). With no such road, all decks as before. So p is taken to be a car's
    * body centre, as every caller passes (vehicle.position(): main.ts, navGuide, autoDriver,
@@ -400,7 +400,10 @@ export class RoadGraph {
    * height ((ホ) of R1-4a-1): on a main line under a ramp 0.15–0.86 m above it, the ramp's road is
    * below p, and 55 answers on the car's own surface in the central data turned to the ramp. Why not
    * the road nearest p in height ((ロ)): a deck 0.4–1.3 m over the road is nearer the body centre
-   * than the car's own road.
+   * than the car's own road. Known limit: a car sunk more than FEET_REACH under its placed height
+   * loses its own road from the feet, and a deck below it becomes the surface it stands on — worse
+   * than before there (the probe at −0.16 m: 13 more mix-ups in the default data, 112 in the central
+   * data, e.g. 45019020:40 answered with 45554540:30 below it).
    *
    * Where the terrain under a ground road has not loaded, its height is unknown: such a road is
    * the answer only when no road of known height passes, and the fallback is counted
@@ -589,9 +592,17 @@ export class RoadGraph {
 }
 
 /**
- * Order of the decks a point is on: a main line over a ramp, then the higher posted limit, then the
- * nearer centreline (the distance only breaks ties: it is below 100 m by the width gate).
+ * How far below the road a car's body centre may sit, past CAR_RIDE_HEIGHT, and still stand on it
+ * (deckUnderCar's feet: p.y − CAR_RIDE_HEIGHT + FEET_REACH). A car settles 0.07–0.08 m below the
+ * height it is placed at, and dips to 0.14 m on the deck drives (P2.7 R1-4a-1). Why its own name and
+ * not MERGE_MAX_DZ as before: that is the allowlist's one-surface width (SAME_SURFACE_ALLOWED_DZ_M +
+ * 0.01) and would move with it; tightened below 0.07 m, a car standing still would lose its own deck.
+ * Why not wider (0.3 m kept the mix-ups at 0 down to −0.16 m in the probe): a ramp 0.15–0.3 m over a
+ * main line would then be under a car on the main line's feet, and 34 answers on the car's own
+ * surface in the central data changed (left to the design's review).
  */
+export const FEET_REACH = 0.15;
+
 /**
  * Of the decks passing nearestOnSurface's gates, the one a car with its body centre at height y is
  * on: deckRank's best among those on the surface it stands on (see nearestOnSurface), else among all.
@@ -600,7 +611,7 @@ function deckUnderCar<D extends { rank: number; y: number; isInside: boolean }>(
   decks: readonly D[],
   y: number,
 ): D | null {
-  const feet = y - CAR_RIDE_HEIGHT + MERGE_MAX_DZ;
+  const feet = y - CAR_RIDE_HEIGHT + FEET_REACH;
   let stand: number | null = null;
   for (const d of decks) {
     const isUnderFeet = d.isInside && d.y <= feet;
@@ -616,6 +627,10 @@ function deckUnderCar<D extends { rank: number; y: number; isInside: boolean }>(
   return best;
 }
 
+/**
+ * Order of the decks a point is on: a main line over a ramp, then the higher posted limit, then the
+ * nearer centreline (the distance only breaks ties: it is below 100 m by the width gate).
+ */
 function deckRank(seg: Segment, dist: number): number {
   const isMainLine = classOf(seg.line) === "expressway";
   return (isMainLine ? 1e6 : 0) + speedLimit(seg) * 1e3 - dist;

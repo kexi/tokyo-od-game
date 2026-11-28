@@ -32,7 +32,15 @@ import { MERGE_MAX_DZ } from "../src/world/expresswayMerge.ts";
 import { expresswayRoadInput, joinExpressway } from "../src/world/expresswayRoads.ts";
 import { laneCentreOffset } from "../src/world/laneChange.ts";
 import { classOf, isOnGround } from "../src/world/roadClass.ts";
-import { DECK_REACH, leftOf, RoadGraph, type Segment, speedLimit, SURFACE_GATE } from "../src/world/roads.ts";
+import {
+  DECK_REACH,
+  FEET_REACH,
+  leftOf,
+  RoadGraph,
+  type Segment,
+  speedLimit,
+  SURFACE_GATE,
+} from "../src/world/roads.ts";
 import { readExpresswayFiles } from "./expresswayFiles.ts";
 import { framesOf } from "./expresswaySeams.ts";
 
@@ -46,12 +54,14 @@ const flag = (name: string) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : undefined;
 };
-const VALUED = new Set(["--out", "--points"]);
+const VALUED = new Set(["--out", "--points", "--dy"]);
 const target = args.find((a, i) => !a.startsWith("--") && !(i > 0 && VALUED.has(args[i - 1])));
 if (target === undefined)
   throw new Error("usage: expresswayLocateProbe.ts <dir|label> [--out <file>] [--forms]");
 const dir = target.includes("/") ? target : join(ROOT, ".cache", "expressway-area", target);
 const withForms = args.includes("--forms");
+/** The car's point moved this far from CAR_RIDE_HEIGHT over its road (m; −0.07 a car at rest, R1-4a-1 review A). */
+const DY = Number(flag("dy") ?? 0);
 const started = performance.now();
 const files = readExpresswayFiles(dir);
 const runs = [...new Map([...files.tiles.values()].flatMap((t) => t.runs).map((r) => [r.id, r])).values()];
@@ -67,10 +77,12 @@ function candidates(g: RoadGraph, p: Vector3): Candidate[] {
     if (isOnGround(seg.line)) continue;
     const on = g.nearestOn(seg, p);
     if (on.dist >= MAX_DIST_M) continue;
-    if (on.dist > seg.line.width / 2 + DECK_REACH) continue;
+    const isBesideDeck = on.dist > seg.line.width / 2 + DECK_REACH;
+    if (isBesideDeck) continue;
     const y = g.surfaceY(seg, on.s);
     if (y === null) continue;
-    if (Math.abs(p.y - y) > SURFACE_GATE) continue;
+    const isOtherLevel = Math.abs(p.y - y) > SURFACE_GATE;
+    if (isOtherLevel) continue;
     const isMain = classOf(seg.line) === "expressway";
     out.push({ seg, y, dist: on.dist, s: on.s, rank: (isMain ? 1e6 : 0) + speedLimit(seg) * 1e3 - on.dist });
   }
@@ -119,13 +131,26 @@ const FORMS: Record<string, (list: Candidate[], p: Vector3) => Candidate | null>
     return onSurface(list, on) ?? best(list);
   },
   // (ヘ) As (ホ), the road the car is on read from its body centre's height: candidates not over
-  // p.y − CAR_RIDE_HEIGHT + MERGE_MAX_DZ (needs the car's height in roads.ts: measured only).
+  // p.y − CAR_RIDE_HEIGHT + FEET_REACH (roads.ts deckUnderCar, the form taken).
   he: (list, p) => {
     const under = list.filter(
-      (c) => c.y <= p.y - CAR_RIDE_HEIGHT + MERGE_MAX_DZ && c.s > 0 && c.s < c.seg.length,
+      (c) => c.y <= p.y - CAR_RIDE_HEIGHT + FEET_REACH && c.s > 0 && c.s < c.seg.length,
     );
     const on = under.reduce<Candidate | null>((b, c) => (b === null || c.y > b.y ? c : b), null);
     return onSurface(list, on) ?? best(list);
+  },
+  // (ヘ') As (ヘ), the surface widened one step: the candidates within MERGE_MAX_DZ of the stand, and
+  // those within MERGE_MAX_DZ of any of them inside its segment and under the feet (a "same surface"
+  // read through a neighbour, which (ヘ) does not: R1-4a-1 review B).
+  he2: (list, p) => {
+    const feet = p.y - CAR_RIDE_HEIGHT + FEET_REACH;
+    const under = list.filter((c) => c.y <= feet && c.s > 0 && c.s < c.seg.length);
+    const on = under.reduce<Candidate | null>((b, c) => (b === null || c.y > b.y ? c : b), null);
+    if (on === null) return best(list);
+    const first = list.filter((c) => Math.abs(c.y - on.y) <= MERGE_MAX_DZ);
+    const links = first.filter((c) => c.y <= feet && c.s > 0 && c.s < c.seg.length);
+    const isReached = (c: Candidate) => links.some((l) => Math.abs(c.y - l.y) <= MERGE_MAX_DZ);
+    return best(list.filter(isReached));
   },
 };
 
@@ -175,6 +200,8 @@ const formStats: Record<
 > = {};
 const changed: Record<string, Array<Record<string, unknown>>> = {};
 const sameChangedList: Array<Record<string, unknown>> = [];
+/** Per form (--forms), the mix-ups it leaves where a car can be, one per point. */
+const formMixups: Record<string, Array<Record<string, unknown>>> = {};
 /** main's mix-ups, one per point, for a collider check (--points <file>). */
 const mainMixups: Array<Record<string, unknown>> = [];
 const pointsOut = flag("points");
@@ -201,7 +228,8 @@ keys.forEach((key, fi) => {
   );
   for (const seg of g.segments) {
     const xid = seg.line.xid;
-    if (xid === undefined || !own.has(xid)) continue;
+    const isOwnTile = xid !== undefined && own.has(xid);
+    if (!isOwnTile) continue;
     for (let lane = 0; lane < seg.lanes; lane++) {
       for (let s = 1; s < seg.length; s += STEP_M) {
         const y0 = g.surfaceY(seg, s);
@@ -210,7 +238,7 @@ keys.forEach((key, fi) => {
         const p = pos
           .clone()
           .add(leftOf(along, laneCentreOffset(seg, lane)))
-          .setY(y0 + CAR_RIDE_HEIGHT);
+          .setY(y0 + CAR_RIDE_HEIGHT + DY);
         counts.points++;
         const hit = g.locate(p, MAX_DIST_M);
         const list = candidates(g, p);
@@ -258,14 +286,17 @@ keys.forEach((key, fi) => {
         });
         // Whether a car can be at p beside a deck at height y (another surface than its own).
         const canBeBeside = (c: { seg: Segment; y: number; dist: number }) => {
-          if (c.y < y0) return true;
+          const isBelow = c.y < y0;
+          if (isBelow) return true;
           const other = chunkById.get(c.seg.line.xid ?? "");
           const half = c.seg.line.width / 2;
           const isOverFlange = c.dist <= half * GIRDER_BOTTOM_SHARE;
           const depth = isOverFlange ? Math.max(SLAB, other?.girder ?? SLAB) : SLAB;
           return c.y - depth >= y0 + CAR_RIDE_HEIGHT + CAR_HALF.y;
         };
-        if (kind === "same-surface" && hit.seg !== seg && speedLimit(hit.seg) < speedLimit(seg)) {
+        const isLowerOnSame =
+          kind === "same-surface" && hit.seg !== seg && speedLimit(hit.seg) < speedLimit(seg);
+        if (isLowerOnSame) {
           if (ownMain) sameSurfaceLower.ownMain++;
           else sameSurfaceLower.ownRamp++;
           sameLower.push(point(true));
@@ -289,26 +320,42 @@ keys.forEach((key, fi) => {
         }
         if (!withForms) continue;
         const isSameNow = isMainOnOwn;
+        // A point a car cannot be at: some deck over its road by more than MERGE_MAX_DZ within the car's
+        // height (canBeBeside false). Why not canBeBeside of the form's answer: on the car's own surface
+        // that answer is never "beside", and every such point read as one a car cannot be at.
+        const isCrowded = list.some((c) => c.y - y0 > MERGE_MAX_DZ && !canBeBeside(c));
         for (const [name, form] of Object.entries(FORMS)) {
           const a = form(list, p);
           if (a === null) continue;
           const isOther = runOf(a.seg.line.xid ?? "") !== runOf(xid) && Math.abs(a.y - y0) > MERGE_MAX_DZ;
-          if (isSameNow && a.seg !== now!.seg) {
+          const isSameChanged = isSameNow && a.seg !== now!.seg;
+          if (isSameChanged) {
             formStats[name].sameChanged++;
-            if (!canBeBeside(a)) formStats[name].sameChangedCannotBe++;
+            if (isCrowded) formStats[name].sameChangedCannotBe++;
             (changed[name] ??= []).push({
               own: xid,
               lane,
               s: runS(chunkById.get(xid)!, frame, p),
-              now: hit.seg.line.xid,
-              nowDz: Math.round(dz * 100) / 100,
+              now: now!.seg.line.xid,
+              nowDz: r(now!.y - y0),
+              crowded: isCrowded,
               form: a.seg.line.xid,
               formDz: Math.round((a.y - y0) * 100) / 100,
             });
           }
           if (!isOther) continue;
-          if (canBeBeside(a)) formStats[name].canBeLeft++;
-          else formStats[name].cannotBeLeft++;
+          const isCanBe = canBeBeside(a);
+          if (isCanBe) {
+            formStats[name].canBeLeft++;
+            (formMixups[name] ??= []).push({
+              own: xid,
+              lane,
+              s: runS(chunkById.get(xid)!, frame, p),
+              form: a.seg.line.xid,
+              formDz: r(a.y - y0),
+            });
+          }
+          if (!isCanBe) formStats[name].cannotBeLeft++;
         }
       }
     }
@@ -384,7 +431,14 @@ if (out !== undefined)
   await writeFile(
     out,
     JSON.stringify(
-      { ...fields, mixups: mixPairs, sameSurfaceLower: pairsOf(sameLower), sameChangedList, changed },
+      {
+        ...fields,
+        mixups: mixPairs,
+        sameSurfaceLower: pairsOf(sameLower),
+        sameChangedList,
+        changed,
+        formMixups,
+      },
       null,
       1,
     ) + "\n",

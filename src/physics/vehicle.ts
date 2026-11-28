@@ -1,7 +1,7 @@
 import RAPIER from "@dimforge/rapier3d-compat";
 import { Quaternion, Vector3, type Group, type SpotLight } from "three";
 import { createCarModel, WHEEL_RADIUS, type CarModel, type CarStyle } from "../game/carModel";
-import { CAR_HALF } from "./carBody";
+import { CAR_HALF, CAR_RIDE_HEIGHT } from "./carBody";
 import { BUILDING_GROUPS, VEHICLE_SOLVER_GROUPS } from "./groups";
 import { massContactsFor } from "./massContacts";
 import { VEHICLE_SPECS, type MassClass, type VehicleSpec } from "./masses";
@@ -27,8 +27,8 @@ export const WHEELBASE = 2.7;
 // up the damping, so the car accelerates by its power and the real air drag (see driveForce).
 const LINEAR_DAMPING = 0.12;
 const ROLLING = 0.77; // m/s², the light brake with no pedal
-/** The chassis centre above the road at rest (m). */
-export const RIDE_HEIGHT = 0.86;
+/** The chassis centre above the road it is placed at (m): physics/carBody.ts CAR_RIDE_HEIGHT. */
+export const RIDE_HEIGHT = CAR_RIDE_HEIGHT;
 /** Steering lock at a speed (m/s): less at speed keeps highway driving stable. */
 export const steerLimit = (speed: number) => MAX_STEER / (1 + Math.abs(speed) / 18);
 const G = 9.81;

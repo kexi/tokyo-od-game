@@ -1863,7 +1863,8 @@ export const LOG_EVENTS = {
    * the car's own surface), the answers on the same run /
    * another run on the same surface (and of those, a lower posted limit by the asking deck's class) /
    * another surface, the pairs, where a car can be and cannot be, the mix-ups whose limits differ, and
-   * per form of the fix (--forms) what it leaves and the same-surface answers it changes.
+   * per form of the fix (--forms) what it leaves and the same-surface answers it changes (and of those,
+   * the points a car cannot be at: a deck over its road past MERGE_MAX_DZ within the car's height).
    */
   expressway_locate_probed: info({
     dir: z.string(),

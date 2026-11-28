@@ -107,7 +107,7 @@ describe("rideHit: the ride on the autopilot's route (review of 7c1, A)", () => 
   it("falls back to the graph's locate off the route (a car on the main line under the ramp: the main line)", () => {
     // Before R1-4a-1 this asked at the car on the ramp and held the main line below as locate's answer
     // there: the mix-up R1-4a-1 fixed (roads.ts deckUnderCar). The ramp's side is below (locate: the deck a car stands on).
-    const onMain = frame.toLocal(35.68, 139.76, frame.origin.h).setY(0 + 0.8);
+    const onMain = frame.toLocal(35.68, 139.76, frame.origin.h).setY(0 + CAR_RIDE_HEIGHT);
     expect(rideHit(graph, onMain, [], null)?.seg).toBe(m);
     expect(rideHit(graph, onMain, [], new Set())?.seg).toBe(m);
   });
@@ -153,5 +153,34 @@ describe("locate: the deck a car stands on, where another deck passes within SUR
     const { graph, r } = pair(1.6);
     const beyond = r.line.width / 2 + DECK_REACH / 2;
     expect(graph.locate(carOn(r, beyond), 30)?.seg).toBe(r);
+  });
+
+  it("answers the ramp for a car on it sunk 0.1 m under its placed height (within FEET_REACH)", () => {
+    // A car settles 0.07–0.08 m on its springs and dips to 0.14 m on the deck drives.
+    const { graph, r } = pair(1.6);
+    expect(graph.locate(carOn(r).setY(1.6 + CAR_RIDE_HEIGHT - 0.1), 30)?.seg).toBe(r);
+  });
+
+  it("reads the surface a car stands on from inside a segment: the next chunk's clamped start does not lift it to another run's deck", () => {
+    // One ramp run of two chunks rising 8 %, the car 1 m before their joint: read at its clamped start,
+    // the next chunk stands 0.08 m over the car's road. A main line (80 km/h) 0.2 m over that road.
+    const ramp = (y0: number, y1: number, xid: string, ids: [string, string]): RoadLine => ({
+      ...deck(y0, y1, xid, 40, ids),
+      cls: "ramp",
+    });
+    const graph = new RoadGraph(
+      [
+        ramp(-100, 0, "900:0", ["a", "j"]),
+        ramp(0, 100, "900:1", ["j", "b"]),
+        deck(-50, 50, "800:0", 80, ["r0", "r1"]),
+      ],
+      frame,
+    );
+    const [a, b, o] = ["900:0", "900:1", "800:0"].map((x) => graph.segments.find((s) => s.line.xid === x)!);
+    a.elev = [-8, 0];
+    b.elev = [0, 8];
+    o.elev = [0.12, 0.12];
+    const car = frame.toLocal(35.68 - LAT, 139.76, frame.origin.h).setY(-0.08 + CAR_RIDE_HEIGHT);
+    expect(graph.locate(car, 30)?.seg).toBe(a);
   });
 });
