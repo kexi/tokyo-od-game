@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Terrain mask shader parity</title>
+  <body>
+    <script type="module">
+      import * as T from "three/webgpu";
+      import { texture, uv, vec2 } from "three/tsl";
+      import { bindTerrainMask } from "../../src/world/terrainMaterial";
+
+      const width = 320;
+      function mask(size, pattern) {
+        const data = Uint8Array.from({ length: size * size }, (_, i) =>
+          pattern(i % size, Math.floor(i / size)),
+        );
+        const t = new T.DataTexture(data, size, size, T.RedFormat);
+        t.magFilter = t.minFilter = T.LinearFilter;
+        t.needsUpdate = true;
+        return t;
+      }
+      const diff = (a, b) => {
+        let changed = 0,
+          max = 0;
+        for (let i = 0; i < a.length; i++) {
+          const d = Math.abs(a[i] - b[i]);
+          const hasDifference = d !== 0;
+          if (hasDifference) changed++;
+          max = Math.max(max, d);
+        }
+        return { changed, max, values: a.length };
+      };
+
+      async function capture(shared, forceWebGL, night) {
+        const renderer = new T.WebGPURenderer({ forceWebGL, antialias: false });
+        await renderer.init();
+        const correctBackend = forceWebGL
+          ? renderer.backend.isWebGLBackend
+          : renderer.backend.isWebGPUBackend;
+        if (!correctBackend) throw new Error("unexpected backend");
+        renderer.setSize(width, width);
+        const scene = new T.Scene();
+        scene.background = new T.Color(night ? 0x132030 : 0xaccdea);
+        const camera = new T.PerspectiveCamera(42, 1, 0.1, 100);
+        camera.position.set(9, 10, 11);
+        camera.lookAt(0, 0, 0);
+        const light = new T.DirectionalLight(0xffffff, night ? 0.7 : 3);
+        light.position.set(-2, 12, 8);
+        scene.add(light, new T.AmbientLight(0xffffff, night ? 0.1 : 0.5));
+        const masks = [
+          mask(1, () => 0),
+          mask(1, () => 255),
+          mask(4, (x, y) => (y < 2 ? 255 : 0)),
+          mask(4, (x, y) => (x < 2 ? 255 : 0)),
+          mask(8, (x, y) => ((x + y) % 2 ? 255 : 0)),
+          mask(8, (x, y) => x * 32),
+          mask(4, (x, y) => (x === y ? 255 : 0)),
+          mask(4, (x, y) => y * 85),
+        ];
+        const nodes = masks.map((t) => texture(t));
+        const meshes = [];
+        const photos = [];
+        for (let i = 0; i < 8; i++) {
+          const canvas = document.createElement("canvas");
+          canvas.width = canvas.height = 16;
+          const ctx = canvas.getContext("2d");
+          const image = ctx.createImageData(16, 16);
+          for (let p = 0; p < 256; p++)
+            image.data.set([50 + i * 20, 50 + (p % 16) * 10, 60 + Math.floor(p / 16) * 10, 255], p * 4);
+          ctx.putImageData(image, 0, 0);
+          const photo = new T.CanvasTexture(canvas);
+          photo.colorSpace = T.SRGBColorSpace;
+          photos.push(photo);
+          const material = new T.MeshStandardNodeMaterial({
+            color: 0xffffff,
+            roughness: 0.97,
+            metalness: 0,
+            map: photo,
+          });
+          const mesh = new T.Mesh(new T.PlaneGeometry(3, 3, 8, 8), material);
+          mesh.rotation.x = -Math.PI / 2;
+          mesh.position.set(((i % 4) - 1.5) * 3.2, i * 0.03, (Math.floor(i / 4) - 0.5) * 3.2);
+          const isShared = shared;
+          if (isShared) bindTerrainMask(material, nodes[i].value);
+          else material.maskNode = nodes[i].sample(vec2(uv().x, uv().y.oneMinus())).r.lessThanEqual(0.5);
+          scene.add(mesh);
+          meshes.push(mesh);
+        }
+        const builds = [];
+        renderer.debug.onNodeBuilderCreated = (builder) => {
+          const original = builder.build;
+          builder.build = function (...args) {
+            const start = performance.now();
+            try {
+              return original.apply(this, args);
+            } finally {
+              builds.push({ ms: performance.now() - start, fragment: this.fragmentShader.length });
+            }
+          };
+        };
+        const target = new T.RenderTarget(width, width, { type: T.UnsignedByteType });
+        const read = async () => {
+          renderer.setRenderTarget(target);
+          renderer.render(scene, camera);
+          await renderer.readRenderTargetPixelsAsync(target, 0, 0, width, width);
+          renderer.render(scene, camera);
+          return new Uint8Array(await renderer.readRenderTargetPixelsAsync(target, 0, 0, width, width));
+        };
+        const assign = (values) => {
+          for (let i = 0; i < meshes.length; i++) {
+            const isShared = shared;
+            if (isShared) bindTerrainMask(meshes[i].material, values[i]);
+            else nodes[i].value = values[i];
+          }
+        };
+        try {
+          const initial = await read();
+          const initialBuilds = [...builds];
+          assign(masks.map((t, i) => masks[(i + 3) % masks.length]));
+          const swapped = await read();
+          const replacement = mask(16, (x, y) => (x > y ? 255 : 0));
+          masks.push(replacement);
+          assign(Array(8).fill(replacement));
+          for (let i = 0; i < 8; i++) meshes[i].renderOrder = 8 - i;
+          const replaced = await read();
+          assign(Array(8).fill(masks[0]));
+          const dry = await read();
+          assign(Array(8).fill(masks[1]));
+          const wet = await read();
+          return {
+            pixels: [initial, swapped, replaced, dry, wet],
+            builds: initialBuilds,
+            laterBuilds: builds.length - initialBuilds.length,
+          };
+        } finally {
+          for (const mesh of meshes) {
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+          }
+          for (const t of [...masks, ...photos]) t.dispose();
+          target.dispose();
+          renderer.dispose();
+        }
+      }
+
+      window.__terrainMaskParity = (async () => {
+        const rows = [];
+        for (const forceWebGL of [false, true])
+          for (const night of [false, true]) {
+            const old = await capture(false, forceWebGL, night);
+            const current = await capture(true, forceWebGL, night);
+            const differences = old.pixels.map((a, i) => diff(a, current.pixels[i]));
+            const waterEffect = diff(old.pixels[3], old.pixels[4]);
+            const swapEffect = diff(old.pixels[0], old.pixels[1]);
+            const replacementEffect = diff(old.pixels[1], old.pixels[2]);
+            const valid =
+              differences.every((d) => d.changed === 0) &&
+              waterEffect.changed > 100 &&
+              swapEffect.changed > 100 &&
+              replacementEffect.changed > 100;
+            const build = (r) => ({
+              count: r.builds.length,
+              cpuMs: r.builds.reduce((s, b) => s + b.ms, 0),
+              laterBuilds: r.laterBuilds,
+            });
+            rows.push({
+              backend: forceWebGL ? "webgl2" : "webgpu",
+              night,
+              differences,
+              waterEffect,
+              swapEffect,
+              replacementEffect,
+              before: build(old),
+              after: build(current),
+              valid,
+            });
+          }
+        return rows;
+      })();
+    </script>
+  </body>
+</html>

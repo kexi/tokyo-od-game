@@ -14,7 +14,7 @@ import {
   Vector3,
   type Scene,
 } from "three";
-import { texture, uv, vec2 } from "three/tsl";
+import { texture } from "three/tsl";
 import { MeshStandardNodeMaterial, type TextureNode, type WebGPURenderer } from "three/webgpu";
 import {
   GSI,
@@ -34,6 +34,7 @@ import { FarGround, type TileRect } from "./farGround";
 import { TerrainHeight } from "./terrainHeight";
 import { colliderTriangles, type CutGridTest, type GridTest } from "./terrainCut";
 import { retireObject } from "../render/retire";
+import { bindTerrainMask } from "./terrainMaterial";
 
 type Chunk = {
   x: number;
@@ -425,6 +426,8 @@ export class Terrain {
     } else {
       chunk.water.value = NO_WATER;
     }
+    const hasMaskShader = chunk.mesh.material.maskNode !== null;
+    if (hasMaskShader) bindTerrainMask(chunk.mesh.material, chunk.water.value);
     if (!chunk.collider) return;
     this.removeCollider(chunk);
     this.createCollider(chunk);
@@ -478,7 +481,7 @@ export class Terrain {
     // Cut the water out of the ground: the photo there shows the river from above, and the water
     // layer draws the surface and the shore walls instead. Only once the photo is on, which is
     // also when the river would show as ground. The mask's rows run north first (v = 1 here).
-    material.maskNode ??= chunk.water.sample(vec2(uv().x, uv().y.oneMinus())).r.lessThanEqual(0.5);
+    bindTerrainMask(material, chunk.water.value);
     material.needsUpdate = true;
     chunk.imageryZoom = zoom;
     chunk.imageryStyle = style;
