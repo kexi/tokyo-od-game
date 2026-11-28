@@ -4,6 +4,8 @@ okf_version: "0.2"
 
 # ナレッジ索引
 
+- [地形の水域マスクのシェーダーをチャンクの間で共有する（性能 PR #11 の作り直し）](terrain-mask-performance.md) - チャンクごとの TextureNode をやめ、materialReference で同じ式を共有。main で 8 チャンクのシェーダーの作成 8 → 1 回、WebGPU・WebGL2 の昼夜で 20 画像が旧処理と一致
+
 - [GPUのuniform転送をまとめても描画CPUはほぼ変わらない](uniform-upload-measurements.md) - 実ワープの転送回数は約28〜36%減るが、交互比較の描画CPUは昼夜とも約0.35%差。全18874368画素byteは一致。50.1msが残るため本番適用を見送った。計測器はclose済みのPR #32に残る
 
 - [GitHub Actionsの開始前キャンセルを調べる](github-actions-runner-delays.md) - ランナー割り当て失敗をstepsとannotationsで確認する。未開始ジョブの再実行と2026-10-06 JSTの障害中の観測
