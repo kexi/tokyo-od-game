@@ -610,6 +610,10 @@ export const ja = {
   "warp.homeLabel": "自宅: {place}",
   "warp.homeSet": "設定済み",
   "warp.noHome": "自宅はまだありません",
+  "warp.kind.xwEntrance": "都市高速の入口",
+  "warp.kind.xwExit": "都市高速の出口",
+  "warp.kind.xwRoute": "都市高速の路線",
+  "warp.expresswayLoading": "都市高速の場所を読み込んでいます",
   "toast.noHome": "自宅がまだありません。「いまの場所を自宅にする」で決められます",
   "toast.homeSet": "いまの場所を自宅にしました",
   // 時間帯・天気・視点・地面・音
@@ -1018,6 +1022,7 @@ export const ja = {
   "dialog.keepDriving": "運転を続ける",
   "warp.intro": "行きたい場所へ車ごと移動します。着いたら近くの道路の左側から走り出します。",
   "warp.toHome": "🏠 自宅へ",
+  "warp.toExpressway": "🛣️ 都市高速へ（いちばん近い所）",
   "warp.setHome": "いまの場所を自宅にする",
   "warp.placeholder": "駅・スポット・警察署・区の名前など",
   "dest.title": "目的地",

@@ -484,6 +484,8 @@ export const LOG_EVENTS = {
    * The car stood still on a deck for 3 s (main.ts noteDeckStall): held (`frozen`) or touching
    * something (`touching`: the chassis' overlaps, PLATEAU buildings and everything else).
    */
+  /** A warp to an expressway spot whose chunk (`xid`) had no collider in the graph in time: put on a street. */
+  warp_deck_missed: warning({ to: z.string(), xid: z.string(), durationMs: z.number() }),
   expressway_car_stalled: warning({
     lat: z.number(),
     lon: z.number(),
@@ -990,8 +992,31 @@ export const LOG_EVENTS = {
   taxi_no_route: info({ to: z.string() }),
   taxi_ride: info({ fareYen: z.number(), distanceM: z.number(), slowS: z.number() }),
   /** Span `warp-<n>`: from the choice to the car standing in the loaded town (warp_landed). */
-  warp_start: info({ to: z.string(), lat: z.number(), lon: z.number() }),
-  warp_landed: info({ to: z.string(), durationMs: z.number() }),
+  warp_start: info({
+    to: z.string(),
+    lat: z.number(),
+    lon: z.number(),
+    /** street: the nearest street's left lane; expressway: a deck chunk (`xid`, expresswayWarp.ts). */
+    kind: z.enum(["street", "expressway"]).optional(),
+    xid: z.string().optional(),
+  }),
+  /**
+   * Landed: on the street (placeOnStreet follows), or on deck chunk `xid` at (lat, lon) in its left
+   * lane, `surfaceY` the deck's surface there (local m; the car stands 0.9 m above it) and `yaw`
+   * the chunk's direction (rad).
+   */
+  warp_landed: info({
+    to: z.string(),
+    durationMs: z.number(),
+    kind: z.enum(["street", "expressway"]).optional(),
+    xid: z.string().optional(),
+    lat: z.number().optional(),
+    lon: z.number().optional(),
+    surfaceY: z.number().optional(),
+    yaw: z.number().optional(),
+  }),
+  /** The expressway's spots for 移動 (?expressway): the tiles read and the spots named in them. */
+  warp_expressway_spots: info({ tiles: count, spots: count }),
   day_end: info({
     distanceM: z.number(),
     violations: count,

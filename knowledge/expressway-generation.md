@@ -7,6 +7,8 @@ status: draft
 stale_after: 2027-05-01T00:00:00Z
 generated: { by: claude-opus-5-5/1m, at: 2026-11-11T10:00:00+09:00 }
 verified:
+  - { by: process:vitest-warp-expressway, at: 2026-11-28T16:30:00Z }
+  - { by: process:headless-chrome-cdp-warp-expressway, at: 2026-11-28T16:56:00Z }
   - { by: process:vitest-r1-5-pr133, at: 2026-11-24T04:00:00Z }
   - { by: process:control-heights-r1-5a, at: 2026-11-24T00:40:00Z }
   - { by: process:vitest-format-main-r1-cs, at: 2026-11-24T00:45:00Z }
@@ -4933,6 +4935,30 @@ S6 PR 7c の街路の走行（`.qa/street-drive.mts`、git に無く古い workt
 [^p277-a1]: 指示は scratchpad の p27/s7r/plan.md 8 節と a1-answer.md（設計 Fable、2026-11-14〜15）。計測は `.qa/a1/`（dividers.mts・sides.mts・cmp.py・before.txt・after.txt、ローカル、git 管理外）。main は同じ commit の一時 worktree と vite :5312、A1 は :5311。
 
 [^r1-1a]: 指示は scratchpad の p27/s7r/r1-1a-instructions.md・r1a-answer1.md・r1a-answer2.md（設計 Fable、2026-11-17）と、ユーザーの決定 U2・U10・U11。計測は `scripts/expresswayScopeProbe.ts`（計画を読むだけ）・`scripts/expresswayDistrictSizes.ts`・`scripts/expresswayOutsideGround.ts` と、`.cache/expressway-area/r1-*`・`.qa/expressway/r1-*`・`scope-probe-*`・`border-ramps-cut.json`（ローカル、git 管理外）。
+
+## 移動で床版へ（feat/warp-expressway、2026-11-28）
+
+移動（ワープ）の候補に都市高速の入口・出口・路線を足し、選ぶと本線の床版の左車線に車線の向きで止めて置く（`src/game/expresswayWarp.ts`、`?expressway` のときだけ）。
+
+### 候補の数と名前の出どころ（公開範囲 public/data/expressway、11 タイル、meta v6）
+
+- **7 件**: 入口 2（汐留入口・芝公園入口）、出口 2（汐留出口・芝公園出口）、路線 3（都心環状線・1号羽田線・11号台場線）。
+- 名前の出どころ: 入口はタイルの `entrances[].name` に「入口」を付けたもの、出口はランプのチャンクの `name`（OSM）、路線は本線のチャンクの `name`。どれも名称層 `routeName`（roadNames.ts）を通す。汐留入口はチャンク名と entrances の両方にあり 1 件にまとめた。
+- `name` が null の entrance が 1 件（run 4848755、11号線）あり、候補にしない（名前は作らない）。JCT・PA の名前はデータに **0 件**（`meta.ranges` の名前からも作らない）。
+- 汐留入口・芝公園出口・芝公園入口のランプは公開範囲の端で分合流の前に切れている（本線側の端が `open`）。本線側の端から 100 m 以内でいちばん近い本線の測点に置く（実際の距離 11〜57 m）。実際に合流する車線とは限らない。結果として 7 件すべてが本線（cls expressway）のチャンクに置かれる。
+
+### 30 秒の待ちの根拠
+
+- 床版のワープは、町・地形・`isSettledAt` の待ち（12 s）に加えて、道路網にそのチャンクが入り当たり判定ができる（`isCarSurface`）まで待つ。上限は `WARP_DECK_WAIT_MS` = 30 s、過ぎたら街路へ置いて `warp_deck_missed`（warn）。
+- 負荷平均 60 のとき（他の担当の計測と並行）、床版の入った道路網が着いたのは選んでから 25〜40 s 後で、12 s では間に合わず街路へ逃げた。負荷 8〜17 のときは 9〜21 s で着地した（`warp_landed.durationMs`）。
+- 30 s を過ぎた道は、11号台場線の高架（路面 57 m）の地点で、道路網に無い xid を渡して確かめた。30.0 s で `warp_deck_missed`、`findOpenGround` と placeOnStreet で近くの地上の街路に着地し、その後 20 s 落ちも置き直しも無かった（`.qa/warp-expressway/run10.json`・`fallback.png`、git 管理外）。
+
+### 別件（記録のみ、このブランチでは直していない）
+
+- **ハンドブレーキが坂で車を止められない**: 11号台場線の坂に止めて置いた車は、`handbrake: true` を毎フレーム入れても後ろへ転がり、6 s で時速 4 km になった（後退の違反が付いた）。移動では、置いた車を駐車中と同じ kinematic にしてペダルで放すことにした。`controls.autoHold` も同じ入力なので、同じ坂では止まらない可能性がある。
+- **ワープ直後の 1 回目の道路網に床版が無い**: 移動の直後に組まれる道路網は `expressway_graph_joined` の chunks が 0 で、床版の入った道路網は 2 回目にしか来ない。床版のワープの待ちが長いのはこのため。
+
+確かめ（trust signal）: `tests/expresswayWarp.test.ts`（実データで候補・名称層・床版の上に置けること、13 件）、ヘッドレス Chrome（開発サーバー 5401、計測マシンの鍵つき）で汐留入口と 11号台場線に着地し 15 s 止まって違反・stall 無し、アクセルで放されること、止めた車から街路へのワープ、`?expressway` 無しでボタンが出ないこと（`.qa/warp-expressway/`、git 管理外）。
 
 [^r1-1b]: 指示は scratchpad の p27/s7r/r1-1b-instructions.md と r1-1b-review0.md（追記を含む、設計 Fable）。計測は `just check-expressway-ends`・`just check-expressway-end-walls`、`.cache/expressway-area/r1b-*`・`.qa/expressway/end-walls-*.json`・`ends-*.json`・`.qa/r1b/`（ローカル、git 管理外）。
 

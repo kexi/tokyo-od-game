@@ -604,6 +604,10 @@ export const en: Messages = {
   "warp.homeLabel": "Home: {place}",
   "warp.homeSet": "set",
   "warp.noHome": "No home set yet",
+  "warp.kind.xwEntrance": "Expressway entrance",
+  "warp.kind.xwExit": "Expressway exit",
+  "warp.kind.xwRoute": "Expressway route",
+  "warp.expresswayLoading": "Loading the expressway's places",
   "toast.noHome": "No home yet. Set one with “Make this place home”.",
   "toast.homeSet": "This place is now your home",
   // main.ts: 時間帯・天気・視点・地面・音
@@ -1022,6 +1026,7 @@ export const en: Messages = {
   "warp.intro":
     "Takes you and your car anywhere you like. You set off again from the left side of the nearest road.",
   "warp.toHome": "🏠 Home",
+  "warp.toExpressway": "🛣️ To the expressway (nearest)",
   "warp.setHome": "Make this place home",
   "warp.placeholder": "Station, spot, police station, ward… (Japanese names)",
   "dest.title": "Destination",
