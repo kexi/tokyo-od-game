@@ -48,9 +48,11 @@ import {
   decisionsRefusal,
   decisionTablesOf,
   districtsRefusal,
+  flagFormRefusal,
   portalApproachRefusal,
   shippedFolderRefusal,
 } from "./expresswayGuards";
+import { scorecardViolationsOf } from "./expresswayScorecardViolations.ts";
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -62,7 +64,6 @@ import {
   EXPECTED_EXTRACT_TIMESTAMP,
   pinnedExtractName,
 } from "../src/expressway/extract.ts";
-import { violationsOf } from "../src/expressway/violations.ts";
 import { isAllowed } from "../src/expressway/allowlist.ts";
 import { caseContextOf, type Ledger, ledgerVerdict, rampFloorOf } from "../src/expressway/ledger.ts";
 import { BLOCK_QUIET_FACTOR, COMPANIONS, HEIGHT_STRUCTURES } from "../src/expressway/assumptions.ts";
@@ -335,6 +336,8 @@ if (portalApproachReason) throw new Error(portalApproachReason);
 const isPortalApproachCut = portalApproachArg === "cut";
 // R1-3: --decisions all|none|feet-only|structures-only names the decisions' tables applied (all, the
 // default, both: footDeferrals.ts and structureDecisions.ts); measuring only, the rows stay through R1.
+const decisionsFormReason = flagFormRefusal(process.argv, "decisions");
+if (decisionsFormReason) throw new Error(decisionsFormReason);
 const decisionsArg = arg("decisions") ?? "all";
 const decisionsReason = decisionsRefusal(decisionsArg);
 if (decisionsReason) throw new Error(decisionsReason);
@@ -1183,13 +1186,12 @@ if (reportPath) {
           km: Math.round(lengthOf(chosenShip.rampsOutside)) / 1000,
         }
       : null,
-    violations: violationsOf(
+    violations: scorecardViolationsOf(
+      decisionsMode,
       record,
       result.chunks,
       rampFloorOf(ledger),
       structuresMode === "height",
-      // undefined (all): the table's, as before the flag.
-      decisionTables?.structureDecisions,
     ),
     structureDecks: meta.structures.flatMap((st) => st.decks),
     runs: result.runs,
